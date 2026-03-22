@@ -17,10 +17,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [chapter, setChapter] = useState(1);
   const [fontSize, setFontSize] = useState(18);
   const [isImmersive, setIsImmersive] = useState(false);
-  // Remove local isMinimized state to use prop, but keep as local backup if needed
   const [localIsMinimized, setLocalIsMinimized] = useState(isMinimized);
   const [iframeLoading, setIframeLoading] = useState(true);
-  
+
   useEffect(() => {
     setLocalIsMinimized(isMinimized);
   }, [isMinimized]);
@@ -61,7 +60,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       setLoading(true);
       setContent('');
       let firstChunk = true;
-      
+
       try {
         await streamBookChapter(book, chapter, (chunk) => {
           if (!mounted) return;
@@ -83,11 +82,11 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => {
-            console.error(`Error attempting to enable full-screen mode: ${err.message}`);
-        });
+      document.documentElement.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
     } else {
-        document.exitFullscreen();
+      document.exitFullscreen();
     }
   };
 
@@ -98,33 +97,33 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         onClick={toggleMinimized}
         className="fixed bottom-8 right-8 w-48 h-72 bg-bit-bg/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.8)] z-[1000] cursor-pointer hover:scale-105 hover:border-bit-accent/40 transition-all duration-500 overflow-hidden animate-fade-in group"
       >
-         <div className="relative w-full h-full overflow-hidden">
-            {book.coverUrl ? (
-                <img src={book.coverUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-700" alt="" />
-            ) : (
-                <div className={`w-full h-full bg-gradient-to-br ${book.coverGradient || 'from-bit-accent/10 to-transparent'} flex items-center justify-center p-6 text-center`}>
-                    <p className="text-white/40 font-display font-bold text-xs uppercase tracking-widest leading-relaxed">{book.title}</p>
-                </div>
-            )}
-            
-            {/* Minimalist Hover Overlay */}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 backdrop-blur-[2px]">
-                <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-full text-white border border-white/20">
-                    <Maximize2 size={20} />
-                </div>
-                <p className="text-[9px] text-white font-mono uppercase tracking-[0.2em] font-bold">Restore_Link</p>
+        <div className="relative w-full h-full overflow-hidden">
+          {book.coverUrl ? (
+            <img src={book.coverUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-700" alt="" />
+          ) : (
+            <div className={`w-full h-full bg-gradient-to-br ${book.coverGradient || 'from-bit-accent/10 to-transparent'} flex items-center justify-center p-6 text-center`}>
+              <p className="text-white/40 font-display font-bold text-xs uppercase tracking-widest leading-relaxed">{book.title}</p>
             </div>
+          )}
 
-            <div className="absolute top-2 right-2 flex gap-2 z-30">
-                <button
-                    onClick={(e) => { e.stopPropagation(); onClose(); }}
-                    className="p-1.5 bg-black/60 backdrop-blur-md rounded-full text-white hover:bg-red-500/80 transition-all opacity-0 group-hover:opacity-100"
-                    title="Terminate Stream"
-                >
-                    <X size={12} />
-                </button>
+          {/* Minimalist Hover Overlay */}
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 backdrop-blur-[2px]">
+            <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-full text-white border border-white/20">
+              <Maximize2 size={20} />
             </div>
-         </div>
+            <p className="text-[9px] text-white font-mono uppercase tracking-[0.2em] font-bold">Restore_Link</p>
+          </div>
+
+          <div className="absolute top-2 right-2 flex gap-2 z-30">
+            <button
+              onClick={(e) => { e.stopPropagation(); onClose(); }}
+              className="p-1.5 bg-black/60 backdrop-blur-md rounded-full text-white hover:bg-red-500/80 transition-all opacity-0 group-hover:opacity-100"
+              title="Terminate Stream"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -140,15 +139,15 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             className="flex items-center gap-2 pr-6 border-r border-white/10 group transition-all"
           >
             <div className="p-2 bg-white/5 rounded-full text-bit-accent group-hover:bg-bit-accent group-hover:text-black transition-all">
-               <ArrowLeft size={18} />
+              <ArrowLeft size={18} />
             </div>
             <span className="hidden sm:block text-[10px] font-mono font-bold text-white tracking-widest uppercase">END_SESSION</span>
           </button>
           <div>
             <h2 className="font-display font-semibold text-white tracking-tight line-clamp-1 max-w-[200px] md:max-w-md">{book.title}</h2>
             <div className="flex items-center gap-2">
-                <Zap size={10} className="text-bit-accent" />
-                <p className="text-[9px] text-bit-accent/60 font-mono uppercase tracking-widest">Sector_ID: {book.id.substring(0, 8)}</p>
+              <Zap size={10} className="text-bit-accent" />
+              <p className="text-[9px] text-bit-accent/60 font-mono uppercase tracking-widest">Sector_ID: {book.id.substring(0, 8)}</p>
             </div>
           </div>
         </div>
@@ -156,14 +155,14 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         <div className="flex items-center gap-6">
           {!isExternal && (
             <div className="hidden lg:flex items-center bg-white/5 rounded-lg border border-white/10 p-1">
-              <button 
+              <button
                 onClick={() => setFontSize(Math.max(12, fontSize - 2))}
                 className="p-2 hover:bg-white/10 rounded text-white/60 hover:text-white transition-colors"
               >
                 A-
               </button>
               <div className="w-[1px] h-4 bg-white/10 mx-1"></div>
-              <button 
+              <button
                 onClick={() => setFontSize(Math.min(32, fontSize + 2))}
                 className="p-2 hover:bg-white/10 rounded text-white/60 hover:text-white transition-colors"
               >
@@ -171,25 +170,25 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               </button>
             </div>
           )}
-          
+
           <div className="flex items-center gap-1 bg-white/5 rounded-xl border border-white/10 p-1">
             <button
-                onClick={toggleMinimized}
-                className="p-3 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent transition-all group"
-                title="Minimize stream (PiP)"
+              onClick={toggleMinimized}
+              className="p-3 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent transition-all group"
+              title="Minimize stream (PiP)"
             >
               <Layout size={18} className="group-hover:scale-110" />
             </button>
             <button
-                onClick={() => setIsImmersive(true)}
-                className="p-3 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent transition-all group"
-                title="Immersive Protocol"
+              onClick={() => setIsImmersive(true)}
+              className="p-3 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent transition-all group"
+              title="Immersive Protocol"
             >
               <Maximize2 size={18} className="group-hover:scale-110" />
             </button>
             <button
-                onClick={toggleFullscreen}
-                className="p-3 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent hidden md:block transition-all group"
+              onClick={toggleFullscreen}
+              className="p-3 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent hidden md:block transition-all group"
             >
               <Monitor size={18} className="group-hover:scale-110" />
             </button>
@@ -202,16 +201,17 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         {isExternal ? (
           <div className="w-full max-w-[1000px] h-full bg-white relative shadow-2xl border-x border-white/5 overflow-hidden">
             {iframeLoading && (
-                <div className="absolute inset-0 bg-[#050505] z-20 p-12 md:p-24 animate-fade-in flex flex-col gap-10">
-                    <div className="h-12 w-3/4 bg-white/[0.03] rounded-lg animate-pulse" />
-                    <div className="flex-1 flex flex-col gap-6">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => (
-                            <div key={i} className="h-4 w-full bg-white/[0.02] rounded animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
-                        ))}
-                        <div className="h-4 w-1/2 bg-white/[0.02] rounded animate-pulse" style={{ animationDelay: '1100ms' }} />
-                    </div>
+              <div className="absolute inset-0 bg-[#050505] z-20 p-12 md:p-24 animate-fade-in flex flex-col gap-10">
+                <div className="h-12 w-3/4 bg-white/[0.03] rounded-lg animate-pulse" />
+                <div className="flex-1 flex flex-col gap-6">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => (
+                    <div key={i} className="h-4 w-full bg-white/[0.02] rounded animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
+                  ))}
+                  <div className="h-4 w-1/2 bg-white/[0.02] rounded animate-pulse" style={{ animationDelay: '1100ms' }} />
                 </div>
+              </div>
             )}
+
             <iframe
               src={book.externalUrl}
               onLoad={() => setIframeLoading(false)}
@@ -221,9 +221,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               loading="lazy"
             ></iframe>
             {isImmersive && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/90 backdrop-blur-md border border-white/10 rounded-full text-[10px] text-bit-accent font-mono z-10 uppercase tracking-widest shadow-2xl">
-                    ARCHIVAL_CONDUIT_ACTIVE
-                </div>
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/90 backdrop-blur-md border border-white/10 rounded-full text-[10px] text-bit-accent font-mono z-10 uppercase tracking-widest shadow-2xl">
+                ARCHIVAL_CONDUIT_ACTIVE
+              </div>
             )}
           </div>
         ) : (
@@ -233,12 +233,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             <div className="absolute inset-y-0 -right-[1px] w-[1px] bg-gradient-to-b from-transparent via-bit-accent/40 to-transparent"></div>
 
             {loading && content.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-40 gap-6">
-                    <Loader2 className="animate-spin text-bit-accent" size={48} />
-                    <div className="text-center">
-                        <p className="font-mono text-xs text-bit-accent/60 mb-2 uppercase tracking-[0.3em]">Sector Synchronization</p>
-                        <p className="font-mono text-sm text-bit-accent uppercase tracking-widest animate-pulse">Establishing Neural Link...</p>
-                    </div>
+              <div className="flex flex-col items-center justify-center py-40 gap-6">
+                <Loader2 className="animate-spin text-bit-accent" size={48} />
+                <div className="text-center">
+                  <p className="font-mono text-xs text-bit-accent/60 mb-2 uppercase tracking-[0.3em]">Sector Synchronization</p>
+                  <p className="font-mono text-sm text-bit-accent uppercase tracking-widest animate-pulse">Establishing Neural Link...</p>
+                </div>
               </div>
             )}
 
@@ -276,20 +276,20 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       {/* Floating Rescue Controls - Accessible in immersive */}
       {isImmersive && (
         <div className="fixed top-6 right-6 flex gap-2 z-[10002] animate-fade-in group">
-           <button 
-             onClick={() => setIsImmersive(false)}
-             className="p-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl text-white/50 hover:text-bit-accent hover:border-bit-accent/50 transition-all shadow-2xl"
-             title="Restore Interface"
-           >
-             <Minimize2 size={18} />
-           </button>
-           <button 
-             onClick={onClose}
-             className="p-3 bg-red-500/10 backdrop-blur-xl border border-red-500/20 rounded-xl text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-2xl"
-             title="Terminate Stream"
-           >
-             <X size={18} />
-           </button>
+          <button
+            onClick={() => setIsImmersive(false)}
+            className="p-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl text-white/50 hover:text-bit-accent hover:border-bit-accent/50 transition-all shadow-2xl"
+            title="Restore Interface"
+          >
+            <Minimize2 size={18} />
+          </button>
+          <button
+            onClick={onClose}
+            className="p-3 bg-red-500/10 backdrop-blur-xl border border-red-500/20 rounded-xl text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-2xl"
+            title="Terminate Stream"
+          >
+            <X size={18} />
+          </button>
         </div>
       )}
     </div>
@@ -297,22 +297,22 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 };
 
 export const ReaderSkeleton: React.FC = () => {
-    return (
-      <div className="fixed inset-0 bg-black flex flex-col items-center animate-fade-in">
-        <div className="h-16 w-full border-b border-white/5 bg-black/50 p-6 flex justify-between">
-            <div className="h-4 w-32 bg-white/5 rounded-full animate-pulse" />
-            <div className="h-4 w-20 bg-white/5 rounded-full animate-pulse" />
-        </div>
-        <div className="w-full max-w-[560px] h-full p-20 space-y-8 bg-bit-bg/40 border-x border-white/5 shadow-2xl overflow-hidden">
-            <div className="h-10 w-3/4 bg-white/5 rounded animate-pulse" />
-            <div className="h-4 w-full bg-white/5 rounded animate-pulse" />
-            <div className="h-4 w-5/6 bg-white/5 rounded animate-pulse" />
-            <div className="h-4 w-3/4 bg-white/5 rounded animate-pulse" />
-            <div className="h-4 w-full bg-white/5 rounded animate-pulse" />
-            <div className="h-96 w-full bg-white/5 rounded animate-pulse" />
-        </div>
+  return (
+    <div className="fixed inset-0 bg-black flex flex-col items-center animate-fade-in">
+      <div className="h-16 w-full border-b border-white/5 bg-black/50 p-6 flex justify-between">
+        <div className="h-4 w-32 bg-white/5 rounded-full animate-pulse" />
+        <div className="h-4 w-20 bg-white/5 rounded-full animate-pulse" />
       </div>
-    );
+      <div className="w-full max-w-[560px] h-full p-20 space-y-8 bg-bit-bg/40 border-x border-white/5 shadow-2xl overflow-hidden">
+        <div className="h-10 w-3/4 bg-white/5 rounded animate-pulse" />
+        <div className="h-4 w-full bg-white/5 rounded animate-pulse" />
+        <div className="h-4 w-5/6 bg-white/5 rounded animate-pulse" />
+        <div className="h-4 w-3/4 bg-white/5 rounded animate-pulse" />
+        <div className="h-4 w-full bg-white/5 rounded animate-pulse" />
+        <div className="h-96 w-full bg-white/5 rounded animate-pulse" />
+      </div>
+    </div>
+  );
 };
 
 export default Reader;

@@ -6,10 +6,11 @@ import { Library as LibraryIcon, Bookmark, Clock, ArrowRight, Zap, Filter, Searc
 interface LibraryProps {
   borrowedBooks: Book[];
   onBookClick: (book: Book) => void;
+  onRead: (book: Book) => void;
   onExplore: () => void;
 }
 
-const Library: React.FC<LibraryProps> = ({ borrowedBooks, onBookClick, onExplore }) => {
+const Library: React.FC<LibraryProps> = ({ borrowedBooks, onBookClick, onRead, onExplore }) => {
   const [activeFilter, setActiveFilter] = useState<'all' | 'recent' | 'saved'>('all');
 
   return (
@@ -49,7 +50,7 @@ const Library: React.FC<LibraryProps> = ({ borrowedBooks, onBookClick, onExplore
       {borrowedBooks.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
            {borrowedBooks.map(book => (
-             <BookCard key={book.id} book={book} onClick={onBookClick} />
+             <BookCard key={book.id} book={book} onClick={onBookClick} onRead={onRead} />
            ))}
         </div>
       ) : (

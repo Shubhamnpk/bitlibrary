@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Book, ViewState } from '@/types/index';
 import { INITIAL_BOOKS, CATEGORIES } from '@/constants';
-import { searchBooksWithGemini } from '@/services/geminiService';
-import { searchBooksInGutendex, fetchBooksFromGutendex, fetchBookById } from '@/services/bookService';
+import { searchBooksWithGemini, generateSearchInsights } from '@/services/geminiService';
+import { searchBooksInGutendex, fetchBooksFromGutendex, fetchBookById, searchGoogleBooks, searchITBooks } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import Reader, { ReaderSkeleton } from '@/components/Reader';
 import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight } from 'lucide-react';
@@ -37,6 +37,8 @@ const App: React.FC = () => {
   const [activeBook, setActiveBook] = useState<Book | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const [readerLoading, setReaderLoading] = useState(false);
+  const [searchAIAnalysis, setSearchAIAnalysis] = useState<string | null>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   // Sync Global Reader with URL - DECOMMISSIONED (Moved to state-driven only)
   useEffect(() => {
@@ -63,12 +65,25 @@ const App: React.FC = () => {
       setSearchQuery(query);
       const performSearch = async () => {
         setIsSearching(true);
+        setSearchAIAnalysis(null);
         try {
-          const [geminiResults, archiveResults] = await Promise.all([
+          const [geminiResults, archiveResults, googleResults, itResults] = await Promise.all([
             searchBooksWithGemini(query),
-            searchBooksInGutendex(query)
+            searchBooksInGutendex(query),
+            searchGoogleBooks(query),
+            searchITBooks(query)
           ]);
-          setSearchResults([...archiveResults, ...geminiResults]);
+          
+          const merged: Book[] = [
+            ...geminiResults.map(b => ({ ...b, source: 'neural' as const })),
+            ...archiveResults.map(b => ({ ...b, source: 'traditional' as const })),
+            ...googleResults.map(b => ({ ...b, source: 'traditional' as const })),
+            ...itResults.map(b => ({ ...b, source: 'traditional' as const }))
+          ];
+          setSearchResults(merged);
+
+          // Asynchronous Insight Sync
+          generateSearchInsights(query).then(res => setSearchAIAnalysis(res));
         } catch (err) {
           console.error("Neural search failed:", err);
         }
@@ -88,8 +103,43 @@ const App: React.FC = () => {
     }
   };
 
+  // Auto-Search Neural Synchronization (Debounced after 3 characters)
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    // Neutral Constraint: Do not auto-navigate if the user has already entered a deep archival sector
+    const isDeepSector = location.pathname.startsWith('/book/') || location.pathname.startsWith('/reader/');
+    
+    if (trimmed.length >= 3 && !isDeepSector) {
+      const timer = setTimeout(() => {
+        // Deterministic Sync: Only trigger if the current search isn't already for this query
+        if (searchParams.get('q') !== trimmed) {
+          setSearchParams({ q: trimmed });
+          if (location.pathname !== '/search') navigate('/search');
+        }
+      }, 600); // 600ms debounce ensures optimal registry link stability
+      return () => clearTimeout(timer);
+    }
+  }, [searchQuery, searchParams, location.pathname, navigate]);
+
+  const isReaderActive = activeBook && !isMinimized;
   const activeTab = (path: string) => location.pathname === path;
-  const isReader = location.pathname.startsWith('/reader');
+
+  const handleReadBook = useCallback((book: Book) => {
+    setActiveBook(book);
+    setIsMinimized(false);
+  }, []);
+
+  // Global Search Keyboard Shortcut (/)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   return (
     <div className="min-h-screen bg-bit-bg text-bit-text font-sans selection:bg-bit-accent selection:text-black">
@@ -98,8 +148,8 @@ const App: React.FC = () => {
       <div className="fixed inset-0 bg-grid-pattern bg-[length:40px_40px] opacity-[0.03] pointer-events-none" />
       <div className="fixed inset-0 bg-gradient-to-b from-transparent via-bit-bg/50 to-bit-bg pointer-events-none" />
 
-      {/* Navigation - Hidden in Reader mode */}
-      {!isReader && (
+      {/* Navigation - Hidden in Full Reader mode */}
+      {!isReaderActive && (
         <nav className="fixed top-0 left-0 right-0 z-40 border-b border-white/5 bg-bit-bg/80 backdrop-blur-xl">
           <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
 
@@ -114,8 +164,9 @@ const App: React.FC = () => {
             <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center flex-1 max-w-lg mx-8 relative group">
               <Search className="absolute left-3 text-gray-500 group-focus-within:text-bit-accent transition-colors" size={18} />
               <input
+                ref={searchInputRef}
                 type="text"
-                placeholder="Search archival volumes..."
+                placeholder="Synchronize with registry... (Press /)"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-white/[0.03] border border-white/10 rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-bit-accent/50 focus:bg-white/[0.05] transition-all placeholder:text-gray-600 font-mono"
@@ -144,7 +195,7 @@ const App: React.FC = () => {
       )}
 
       {/* Main Layout */}
-      <main className={`pb-20 px-6 max-w-7xl mx-auto min-h-screen flex flex-col relative z-0 ${isReader ? '' : 'pt-24'}`}>
+      <main className={`pb-20 px-6 max-w-7xl mx-auto min-h-screen flex flex-col relative z-0 ${isReaderActive ? '' : 'pt-24'}`}>
 
         <Routes>
           {/* Home / Discovery */}
@@ -194,7 +245,7 @@ const App: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
                   {featuredBooks.map(book => (
-                    <BookCard key={book.id} book={book} onClick={(b) => navigate(`/book/${b.id}`)} />
+                    <BookCard key={book.id} book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
                   ))}
                 </div>
               </section>
@@ -224,28 +275,52 @@ const App: React.FC = () => {
           } />
 
           {/* Discovery / Library Registry */}
-          <Route path="/library" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} />} />
-          <Route path="/books" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} />} />
+          <Route path="/library" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
+          <Route path="/books" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
 
           {/* Personal Bookshelf */}
           <Route path="/mylibrary" element={
             <LibraryPage
               borrowedBooks={borrowedBooks}
               onBookClick={(b) => navigate(`/book/${b.id}`)}
+              onRead={handleReadBook}
               onExplore={() => navigate('/')}
             />
           } />
 
-          {/* Search Results */}
           <Route path="/search" element={
             <div className="animate-fade-in">
-              <div className="mb-12 border-b border-white/5 pb-8">
-                <h2 className="text-4xl font-display font-bold text-white">
-                  {isSearching ? <span className="animate-pulse">Scanning Grid...</span> : `Found ${searchResults.length} Results`}
-                </h2>
-                <p className="text-xs text-gray-500 font-mono mt-2 uppercase tracking-widest">
-                  SEARCH PARAMS: [QUERY: "{searchQuery.toUpperCase()}"]
-                </p>
+              <div className="mb-12">
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-8 mb-8">
+                  <div>
+                    <h2 className="text-4xl md:text-5xl font-display font-bold text-white tracking-tighter">
+                        {isSearching ? <span className="animate-pulse tracking-widest text-bit-accent text-3xl">SCANNING_GRID...</span> : `Sector Results: ${searchResults.length}`}
+                    </h2>
+                    <p className="text-xs text-gray-600 font-mono mt-2 uppercase tracking-[0.4em]">Archival_Link: {searchQuery.toUpperCase() || 'NULL'}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-bit-accent/5 border border-bit-accent/20 text-[8px] font-mono text-bit-accent">
+                        <Zap size={10} className="animate-pulse" /> NEURAL_SEARCH_ACTIVE
+                    </div>
+                  </div>
+                </div>
+
+                {!isSearching && searchAIAnalysis && (
+                  <div className="p-8 rounded-2xl bg-gradient-to-br from-bit-accent/5 to-transparent border border-white/5 mb-16 relative overflow-hidden group animate-fade-in">
+                     <div className="absolute top-0 left-0 w-[1px] h-full bg-gradient-to-b from-bit-accent/50 to-transparent" />
+                     <div className="flex items-start gap-4">
+                        <div className="p-2 bg-bit-accent/10 rounded-lg text-bit-accent mt-1 shrink-0">
+                           <Zap size={16} />
+                        </div>
+                        <div>
+                           <h3 className="text-[10px] font-mono text-bit-accent uppercase tracking-widest mb-3 font-bold">Neural Insight Syncing</h3>
+                           <p className="text-gray-200 leading-relaxed text-lg font-serif italic font-medium">
+                              "{searchAIAnalysis}"
+                           </p>
+                        </div>
+                     </div>
+                  </div>
+                )}
               </div>
 
               {isSearching ? (
@@ -255,15 +330,22 @@ const App: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12 mb-24">
                   {searchResults.length > 0 ? (
                     searchResults.map(book => (
-                      <BookCard key={book.id} book={book} onClick={(b) => navigate(`/book/${b.id}`)} />
+                      <div key={book.id} className="relative group">
+                         {book.source === 'neural' && (
+                           <div className="absolute -top-3 -right-3 z-20 px-2 py-1 bg-bit-accent text-black text-[8px] font-bold font-mono rounded rounded-bl-none shadow-[0_0_15px_rgba(255,77,0,0.4)] transition-transform group-hover:scale-110">
+                              NEURAL
+                           </div>
+                         )}
+                         <BookCard book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
+                      </div>
                     ))
                   ) : (
                     <div className="col-span-full py-40 text-center">
-                      <Zap className="mx-auto text-gray-800 mb-6" size={48} />
-                      <p className="text-gray-600 font-mono text-xs uppercase tracking-[0.3em]">Neural link severed. No results found.</p>
+                       <Zap className="mx-auto text-gray-800 mb-6" size={48} />
+                       <p className="text-gray-600 font-mono text-xs uppercase tracking-[0.3em]">Neural link severed. No results found.</p>
                     </div>
                   )}
                 </div>
@@ -304,7 +386,7 @@ const App: React.FC = () => {
       </main>
 
       {/* Enhanced Footer */}
-      {!isReader && (
+      {!isReaderActive && (
         <footer className="border-t border-white/5 pt-20 pb-12 bg-black relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-bit-accent/50 to-transparent opacity-20" />
 
@@ -448,7 +530,7 @@ const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, 
       book={book}
       allBooks={books}
       onClose={() => navigate('/library')}
-      onRead={() => onRead(book.id)}
+      onRead={(id) => onRead(id || book.id)}
       onBookClick={(b) => onBookClick(b.id)}
     />
   );

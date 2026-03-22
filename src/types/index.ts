@@ -11,6 +11,7 @@ export interface Book {
   popularity?: number; // 0-100
   externalUrl?: string;
   gutenbergId?: number;
+  source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab';
 }
 
 export enum ViewState {

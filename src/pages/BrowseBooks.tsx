@@ -7,9 +7,10 @@ import { Filter, Search, Zap, SlidersHorizontal, ChevronDown, LayoutGrid, List, 
 
 interface BrowseBooksProps {
   onBookClick: (book: Book) => void;
+  onRead: (book: Book) => void;
 }
 
-const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick }) => {
+const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -89,7 +90,7 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
            {books.map((book, idx) => (
               <div key={`${book.id}-${idx}`} className="animate-fade-in-up" style={{ animationDelay: `${(idx % 8) * 50}ms` }}>
-                 <BookCard book={book} onClick={onBookClick} />
+                 <BookCard book={book} onClick={onBookClick} onRead={onRead} />
               </div>
            ))}
         </div>

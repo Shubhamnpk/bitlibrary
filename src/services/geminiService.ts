@@ -50,6 +50,68 @@ export const searchBooksWithGemini = async (query: string): Promise<Book[]> => {
 };
 
 /**
+ * Generates a brief AI analysis of the search query.
+ */
+export const generateSearchInsights = async (query: string): Promise<string> => {
+  const apiKey = getApiKey();
+  if (!apiKey || apiKey.includes("PLACEHOLDER")) return "";
+  
+  try {
+    const response = await axios.post(NVIDIA_URL, {
+      model: MODEL,
+      messages: [{ 
+        role: "user", 
+        content: `Briefly analyze the topic "${query}" within the context of global knowledge archives. Markdown formatting. 2 sentences max.` 
+      }],
+      temperature: 0.7,
+      max_tokens: 512,
+      stream: false
+    }, {
+      headers: { 
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      }
+    });
+    
+    return response.data.choices[0].message.content;
+  } catch (err) {
+    console.error("Neural Insight Failed:", err);
+    return "";
+  }
+};
+
+/**
+ * Generates a brief high-fidelity summary for a book.
+ */
+export const generateNeuralSummary = async (book: Book): Promise<string> => {
+  const apiKey = getApiKey();
+  if (!apiKey || apiKey.includes("PLACEHOLDER")) return "Classical volume found in neural archives.";
+  
+  try {
+    const response = await axios.post(NVIDIA_URL, {
+      model: MODEL,
+      messages: [{ 
+        role: "user", 
+        content: `Generate a 4-5 sentence professional, high-fidelity archival summary for the book "${book.title}" by ${book.author}. Focus on context, key themes, and its historical significance. Return ONLY the text.` 
+      }],
+      temperature: 0.8,
+      max_tokens: 1024,
+      stream: false
+    }, {
+      headers: { 
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      }
+    });
+    
+    return response.data.choices[0].message.content;
+  } catch (err) {
+    console.error("Neural Summary Extraction Failed:", err);
+    return book.description || "Archival node integrity compromised.";
+  }
+};
+
+/**
  * Streams the book chapter content from NVIDIA Kimi.
  * For true streaming UI, this returns a function that takes a callback.
  */
