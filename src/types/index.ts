@@ -14,7 +14,8 @@ export enum ViewState {
   HOME = 'HOME',
   SEARCH = 'SEARCH',
   READER = 'READER',
-  LIBRARY = 'LIBRARY'
+  LIBRARY = 'LIBRARY',
+  DETAILS = 'DETAILS'
 }
 
 export interface SearchFilters {

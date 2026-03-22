@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Book, ViewState } from './types';
-import { INITIAL_BOOKS, CATEGORIES } from './constants';
-import { searchBooksWithGemini } from './services/geminiService';
-import BookCard from './components/BookCard';
-import Reader from './components/Reader';
+import { Book, ViewState } from '@/types/index';
+import { INITIAL_BOOKS, CATEGORIES } from '@/constants';
+import { searchBooksWithGemini } from '@/services/geminiService';
+import BookCard from '@/components/BookCard';
+import Reader from '@/components/Reader';
 import { Search, Library, Zap, Command, Menu, X, Github, Disc } from 'lucide-react';
 
 const App: React.FC = () => {

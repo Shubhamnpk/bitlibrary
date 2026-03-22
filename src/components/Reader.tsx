@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Book } from '../types';
-import { streamBookChapter } from '../services/geminiService';
+import { Book } from '@/types/index';
+import { streamBookChapter } from '@/services/geminiService';
 import { ArrowLeft, BookOpen, Settings, Share2, ChevronLeft, ChevronRight, Loader2, Maximize2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 

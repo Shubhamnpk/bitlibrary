@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Book } from "../types";
+import { Book } from "@/types/index";
 
 // Helper to check for API key
 const getApiKey = (): string => {

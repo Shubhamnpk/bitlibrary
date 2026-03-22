@@ -1,5 +1,5 @@
 import React from 'react';
-import { Book } from '../types';
+import { Book } from '@/types/index';
 import { BookOpen, User, Calendar, BarChart } from 'lucide-react';
 
 interface BookCardProps {
