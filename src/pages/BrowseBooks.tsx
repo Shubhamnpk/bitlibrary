@@ -1,28 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Book } from '@/types/index';
 import { CATEGORIES, INITIAL_BOOKS } from '@/constants';
 import BookCard from '@/components/BookCard';
-import { Filter, Search, Zap, SlidersHorizontal, ChevronDown, LayoutGrid, List } from 'lucide-react';
+import { fetchBooksFromGutendex } from '@/services/bookService';
+import { Filter, Search, Zap, SlidersHorizontal, ChevronDown, LayoutGrid, List, Disc } from 'lucide-react';
 
 interface BrowseBooksProps {
   onBookClick: (book: Book) => void;
 }
 
 const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick }) => {
+  const [books, setBooks] = useState<Book[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [activeTab, setActiveTab] = useState<'featured' | 'new' | 'popular'>('featured');
+  const [page, setPage] = useState(1);
 
-  const filteredBooks = selectedCategory === 'All' 
-    ? INITIAL_BOOKS 
-    : INITIAL_BOOKS.filter(b => b.category === selectedCategory);
+  useEffect(() => {
+    const loadBooks = async () => {
+      setLoading(true);
+      const { books: apiBooks } = await fetchBooksFromGutendex(1, selectedCategory);
+      // Fallback to INITIAL_BOOKS if API fails or for better seeding
+      setBooks(apiBooks.length > 0 ? apiBooks : INITIAL_BOOKS);
+      setLoading(false);
+      setPage(1);
+    };
+    loadBooks();
+  }, [selectedCategory]);
+
+  const handleLoadMore = async () => {
+    setLoadingMore(true);
+    const nextPage = page + 1;
+    const { books: moreBooks } = await fetchBooksFromGutendex(nextPage, selectedCategory);
+    if (moreBooks.length > 0) {
+       setBooks(prev => [...prev, ...moreBooks]);
+       setPage(nextPage);
+    }
+    setLoadingMore(false);
+  };
 
   return (
     <div className="animate-fade-in pb-20">
       <div className="mb-12">
-         <h1 className="text-5xl font-display font-bold text-white mb-4">The Book Vault</h1>
+         <h1 className="text-5xl font-display font-bold text-white mb-4">Neural Archive</h1>
          <p className="text-gray-500 font-mono text-sm max-w-xl">
-           Browse over 2.4 Million neural volumes synthesized from the world's knowledge. 
-           Access instantly via the Gemini Neural Engine.
+           Browsing the decentralized Gutendex network. 
+           Over 70,000 public domain volumes synchronized via Gemini nodes.
          </p>
       </div>
 
@@ -35,7 +58,7 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick }) => {
             >
                ALL
             </button>
-            {CATEGORIES.slice(0, 6).map(cat => (
+            {CATEGORIES.slice(0, 8).map(cat => (
                <button 
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
@@ -48,9 +71,6 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick }) => {
          
          <div className="flex items-center gap-4">
             <div className="h-10 w-[1px] bg-white/5 hidden md:block" />
-            <button className="flex items-center gap-2 px-4 py-2 bg-white/[0.03] border border-white/10 rounded-lg text-xs font-mono text-gray-300 hover:text-white transition-colors">
-               <SlidersHorizontal size={14} /> FILTERS
-            </button>
             <div className="flex gap-1 bg-white/[0.03] p-1 rounded-lg border border-white/5">
                 <button className="p-1.5 bg-white/10 rounded text-white transition-colors"><LayoutGrid size={16} /></button>
                 <button className="p-1.5 text-gray-600 hover:text-white transition-colors"><List size={16} /></button>
@@ -59,20 +79,38 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick }) => {
       </div>
 
       {/* Results Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
-         {filteredBooks.map(book => (
-            <div key={book.id} className="animate-fade-in-up" style={{ animationDelay: '50ms' }}>
-               <BookCard book={book} onClick={onBookClick} />
-            </div>
-         ))}
-      </div>
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
+            {[1,2,3,4,5,6,7,8].map(i => (
+                <div key={i} className="aspect-[2/3] w-full rounded-xl bg-white/[0.02] border border-white/5 animate-pulse" />
+            ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
+           {books.map((book, idx) => (
+              <div key={`${book.id}-${idx}`} className="animate-fade-in-up" style={{ animationDelay: `${(idx % 8) * 50}ms` }}>
+                 <BookCard book={book} onClick={onBookClick} />
+              </div>
+           ))}
+        </div>
+      )}
 
-      {/* Pagination Placeholder */}
-      <div className="mt-20 flex flex-col items-center gap-6">
+      {/* Pagination */}
+      <div className="mt-24 flex flex-col items-center gap-6">
          <div className="h-[1px] w-32 bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-         <button className="group flex flex-col items-center gap-2">
-            <span className="text-[10px] font-mono text-gray-600 group-hover:text-bit-accent transition-colors">LOAD MORE ENTITIES</span>
-            <ChevronDown className="text-gray-700 group-hover:text-bit-accent animate-bounce" />
+         <button 
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+            className="group flex flex-col items-center gap-2 disabled:opacity-50"
+         >
+            {loadingMore ? (
+               <Disc className="text-bit-accent animate-spin" size={24} />
+            ) : (
+               <>
+                 <span className="text-[10px] font-mono text-gray-600 group-hover:text-bit-accent transition-colors">PULL NEXT NODE STREAM</span>
+                 <ChevronDown className="text-gray-700 group-hover:text-bit-accent animate-bounce" />
+               </>
+            )}
          </button>
       </div>
     </div>

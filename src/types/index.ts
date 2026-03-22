@@ -4,10 +4,13 @@ export interface Book {
   author: string;
   category: string;
   description: string;
-  coverGradient: string;
-  year: number;
-  pages: number;
-  popularity: number; // 0-100
+  coverGradient?: string;
+  coverUrl?: string;
+  year?: number;
+  pages?: number;
+  popularity?: number; // 0-100
+  externalUrl?: string;
+  gutenbergId?: number;
 }
 
 export enum ViewState {

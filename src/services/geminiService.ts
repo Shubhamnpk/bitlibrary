@@ -1,98 +1,116 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import axios from 'axios';
 import { Book } from "@/types/index";
 
-// Helper to check for API key
-const getApiKey = (): string => {
-  const key = process.env.API_KEY;
-  if (!key) {
-    console.error("API_KEY not found in environment variables.");
-    return "";
-  }
-  return key;
-};
+const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
+const MODEL = "moonshotai/kimi-k2.5";
 
-// Initialize Gemini
-const initGemini = () => {
-  const apiKey = getApiKey();
-  if (!apiKey) return null;
-  return new GoogleGenAI({ apiKey });
+const getApiKey = (): string => {
+  return (import.meta as any).env?.VITE_NVIDIA_API_KEY || "";
 };
 
 export const searchBooksWithGemini = async (query: string): Promise<Book[]> => {
-  const ai = initGemini();
-  if (!ai) return [];
+  const apiKey = getApiKey();
+  if (!apiKey || apiKey.includes("PLACEHOLDER")) {
+     return [
+       { id: 'sim-1', title: 'NVIDIA Neural Stream', author: 'Kimi V2', category: 'Tech', description: 'A simulation of heavy duty AI retrieval.', year: 2026, pages: 300, popularity: 99, coverGradient: 'from-green-900 to-black' }
+     ];
+  }
 
   try {
-    const model = "gemini-3-flash-preview"; // Optimized for speed/quality balance
-    const prompt = `
-      Generate a list of 6 distinct, real or highly plausible academic/literary books based on the search query: "${query}".
-      If the query is vague, infer the best relevant topics.
-      For each book, provide a title, author, category (e.g., Physics, History, Sci-Fi, Philosophy), a short description (max 20 words), a year of publication, and estimated page count.
-      Return a JSON array.
-    `;
-
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              author: { type: Type.STRING },
-              category: { type: Type.STRING },
-              description: { type: Type.STRING },
-              year: { type: Type.INTEGER },
-              pages: { type: Type.INTEGER },
-            },
-            required: ["title", "author", "category", "description", "year", "pages"],
-          },
-        },
-      },
+    const response = await axios.post(NVIDIA_URL, {
+      model: MODEL,
+      messages: [{ 
+        role: "user", 
+        content: `Search Results: Return ONLY a JSON array of 6 academic/literary books related to "${query}". Fields: title, author, category, description, year, pages. Use professional formatting.` 
+      }],
+      temperature: 1.0,
+      max_tokens: 4096,
+      stream: false
+    }, {
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      }
     });
 
-    const data = JSON.parse(response.text || "[]");
-    
-    // Map to our Book type with some generated UI fields
-    return data.map((item: any, index: number) => ({
-      id: `gemini-${Date.now()}-${index}`,
-      title: item.title,
-      author: item.author,
-      category: item.category,
-      description: item.description,
-      year: item.year,
-      pages: item.pages,
-      popularity: Math.floor(Math.random() * 40) + 60,
-      coverGradient: `bg-gradient-to-br from-${['red','blue','green','purple','orange','pink'][index%6]}-900 to-black`, 
-    }));
+    const text = response.data.choices[0].message.content;
+    const jsonStr = text.substring(text.indexOf('['), text.lastIndexOf(']') + 1);
+    const data = JSON.parse(jsonStr);
 
-  } catch (error) {
-    console.error("Gemini Search Error:", error);
+    return data.map((item: any, i: number) => ({
+      ...item,
+      id: `nv-${Date.now()}-${i}`,
+      popularity: 80 + i,
+      coverGradient: `from-emerald-${900 - (i * 100)} to-black`
+    }));
+  } catch (err) {
+    console.error("NVIDIA Search Failed:", err);
     return [];
   }
 };
 
-export const streamBookChapter = async (book: Book, chapterNumber: number): Promise<string> => {
-  const ai = initGemini();
-  if (!ai) return "Error connecting to AI service.";
+/**
+ * Streams the book chapter content from NVIDIA Kimi.
+ * For true streaming UI, this returns a function that takes a callback.
+ */
+export const streamBookChapter = async (book: Book, chapter: number, onChunk?: (chunk: string) => void): Promise<string> => {
+  const apiKey = getApiKey();
+  if (!apiKey || apiKey.includes("PLACEHOLDER")) {
+     return `## NVIDIA Neural Hub ERROR\n\nAPI KEY MISSING. Please check \`.env.local\` to enable Kimi-accelerated streaming for "${book.title}".`;
+  }
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `
-        Write the full content for Chapter ${chapterNumber} of the book "${book.title}" by ${book.author}.
-        The content should be approximately 600-800 words.
-        Style: Academic, immersive, and high-quality suitable for a digital library.
-        Format: Use Markdown for headers, paragraphs, and emphasis.
-        Do not include preamble, just the chapter text.
-      `,
+    const response = await fetch(NVIDIA_URL, {
+      method: 'POST',
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream"
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ 
+          role: "user", 
+          content: `Write a high-quality, academic Chapter ${chapter} for "${book.title}" by ${book.author}. Complete content, minimum 1000 words. Markdown formatting.` 
+        }],
+        temperature: 1.0,
+        max_tokens: 16384,
+        stream: true,
+        chat_template_kwargs: { thinking: true }
+      })
     });
-    return response.text || "Content generation failed.";
-  } catch (error) {
-    console.error("Gemini Stream Error:", error);
-    return "Error streaming content. Please try again later.";
+
+    if (!response.body) throw new Error("No response body");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let fullText = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n');
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+          try {
+            const data = JSON.parse(line.substring(6));
+            const delta = data.choices[0].delta?.content || "";
+            if (delta) {
+              fullText += delta;
+              if (onChunk) onChunk(delta);
+            }
+          } catch (e) {
+            // Might be incomplete JSON line
+          }
+        }
+      }
+    }
+
+    return fullText;
+  } catch (err) {
+    console.error("NVIDIA Stream Failed:", err);
+    return "Neural uplink severed while communicating with Kimi nodes.";
   }
 };

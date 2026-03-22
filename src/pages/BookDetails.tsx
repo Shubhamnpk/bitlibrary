@@ -58,7 +58,14 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
         {/* Left Col: Book Identity (4 cols) */}
         <div className="lg:col-span-4 sticky top-24 h-fit">
           <div className={`aspect-[2/3] w-full rounded-2xl bg-gradient-to-br ${book.coverGradient || 'from-orange-500/20 to-purple-900/40'} shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10 overflow-hidden relative group`}>
-             <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-500" />
+             {book.coverUrl && (
+                <img 
+                  src={book.coverUrl} 
+                  className="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:opacity-60 transition-opacity duration-700" 
+                  alt="" 
+                />
+             )}
+             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent group-hover:via-black/20 transition-all duration-500" />
              <div className="absolute inset-0 flex flex-col justify-end p-8">
                 <span className="inline-block px-3 py-1 rounded bg-bit-accent text-black text-[10px] font-bold uppercase tracking-widest mb-4 w-fit">
                   {book.category}
@@ -66,9 +73,9 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                 <h1 className="text-4xl font-display font-bold text-white mb-4 leading-tight">{book.title}</h1>
                 <p className="text-lg text-white/60 mb-6 font-sans">by {book.author}</p>
                 <div className="flex items-center gap-2 text-xs text-white/40 font-mono">
-                    <span className="flex items-center gap-1"><Calendar size={12} /> {book.year}</span>
+                    <span className="flex items-center gap-1"><Calendar size={12} /> {book.year || 'N/A'}</span>
                     <span className="mx-2">•</span>
-                    <span className="flex items-center gap-1"><BookOpen size={12} /> {book.pages} Pages</span>
+                    <span className="flex items-center gap-1"><BookOpen size={12} /> {book.pages || 'INF'} Pages</span>
                 </div>
              </div>
           </div>

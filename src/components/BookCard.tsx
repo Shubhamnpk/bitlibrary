@@ -33,19 +33,37 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, variant = 'full' }) 
       </div>
 
       <div className="relative z-10 flex flex-col h-full">
-        {/* Cover Placeholder */}
-        <div className={`aspect-[2/3] w-full rounded-lg bg-gradient-to-b from-white/5 to-transparent mb-4 flex items-center justify-center border border-white/5 shadow-2xl overflow-hidden group-hover:scale-[1.02] transition-transform duration-500`}>
-           {/* Abstract Book Cover Art */}
-           <div className="w-full h-full relative">
-              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-              <div className="absolute bottom-4 left-4 right-4">
-                  <h3 className="font-display font-bold text-xl leading-tight text-white mb-1 line-clamp-3">{book.title}</h3>
-                  <p className="text-sm text-white/60 font-sans">{book.author}</p>
+        {/* Cover Aspect Ratio container */}
+        <div className={`aspect-[2/3] w-full rounded-lg bg-gradient-to-b from-white/10 to-transparent mb-4 flex items-center justify-center border border-white/5 shadow-2xl overflow-hidden group-hover:scale-[1.02] transition-transform duration-500 relative`}>
+           
+           {book.coverUrl ? (
+              <img 
+                src={book.coverUrl} 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[2s] ease-out"
+                alt={book.title}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1543005127-d0d080007886?q=80&w=300&auto=format&fit=crop';
+                  (e.target as HTMLImageElement).classList.add('opacity-40');
+                }}
+              />
+           ) : (
+              // Abstract Book Cover Art
+              <div className="w-full h-full relative">
+                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+                 <div className="absolute bottom-4 left-4 right-4">
+                     <h3 className="font-display font-bold text-xl leading-tight text-white mb-1 line-clamp-3">{book.title}</h3>
+                     <p className="text-sm text-white/60 font-sans">{book.author}</p>
+                 </div>
               </div>
-              <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-md px-2 py-1 rounded text-xs border border-white/10 uppercase tracking-wider font-mono text-bit-accent">
-                {book.category}
-              </div>
+           )}
+
+           {/* Always show category badge */}
+           <div className="absolute top-4 left-4 z-20 bg-black/50 backdrop-blur-md px-2 py-1 rounded text-[10px] border border-white/10 uppercase tracking-wider font-mono text-bit-accent">
+             {book.category}
            </div>
+
+           {/* Cinematic Overlay */}
+           <div className="absolute inset-0 bg-gradient-to-t from-bit-bg via-transparent to-transparent opacity-60 pointer-events-none" />
         </div>
 
         {variant === 'full' && (
