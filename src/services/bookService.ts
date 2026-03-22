@@ -5,6 +5,7 @@ const GUTENDEX_BASE = 'https://gutendex.com/books';
 const GOOGLE_BOOKS_BASE = 'https://www.googleapis.com/books/v1/volumes';
 const IT_BOOKSTORE_BASE = 'https://api.itbook.store/1.0';
 const OPEN_LIBRARY_BASE = 'https://openlibrary.org';
+const INTERNET_ARCHIVE_BASE = 'https://archive.org/advancedsearch.php';
 
 // --- Neural Cache Configuration (10 Minute TTL) ---
 const CACHE_TTL = 10 * 60 * 1000;
@@ -62,7 +63,8 @@ const mapGutendexToBook = (item: any): Book => {
     downloads: item.download_count,
     subjects: item.subjects,
     bookshelves: item.bookshelves?.map((b: string) => b.replace('Category: ', '')),
-    externalUrl: item.formats['text/html'] || item.formats['application/epub+zip'],
+    externalUrl: item.formats['text/html'] || item.formats['application/epub+zip'] || item.formats['text/plain; charset=us-ascii'] || item.formats['text/plain'],
+    downloadUrl: item.formats['application/epub+zip'] || item.formats['application/pdf'] || item.formats['application/x-mobipocket-ebook'],
     source: 'Gutendex'
   };
 };
@@ -113,7 +115,9 @@ const mapOpenLibraryToBook = (item: any): Book => {
     source: 'Open Library',
     subjects: item.subject?.slice(0, 5),
     popularity: item.ratings_average ? Math.round(item.ratings_average * 20) : undefined,
-    externalUrl
+    downloads: item.ratings_count || 0,
+    externalUrl,
+    downloadUrl: (item.ia && item.ia.length > 0) ? `https://archive.org/download/${item.ia[0]}` : undefined
   };
 };
 
@@ -127,6 +131,37 @@ const mapITToBook = (item: any): Book => {
     coverUrl: item.image,
     source: 'IT Bookstore',
     externalUrl: item.url
+  };
+};
+
+const mapArchiveToBook = (item: any): Book => {
+  if (!item) return {} as Book;
+  
+  const creator = item.creator || 'Unknown Archivist';
+  const author = Array.isArray(creator) ? creator.join(', ') : (typeof creator === 'string' ? creator : 'Unknown Archivist');
+  const id = item.identifier;
+  const coverUrl = `https://archive.org/services/img/${id}`;
+  const externalUrl = `https://archive.org/embed/${id}`;
+  const downloadUrl = `https://archive.org/download/${id}`;
+
+  const subjectArray = Array.isArray(item.subject) 
+    ? item.subject 
+    : (typeof item.subject === 'string' ? [item.subject] : []);
+
+  return {
+    id: `ia-${id}`,
+    title: item.title || 'Untitled Archive',
+    author: author,
+    authors: Array.isArray(creator) ? creator.map((n: any) => ({ name: String(n) })) : [{ name: String(author) }],
+    category: subjectArray[0] || 'Historical Archive',
+    description: item.description || 'De-centralized archival node from Internet Archive.',
+    coverUrl,
+    year: parseInt(String(item.date || '').split('-')[0]) || undefined,
+    source: 'Open Library', // Grouping with Open Library since they share IA identifiers
+    subjects: subjectArray.filter(s => typeof s === 'string').slice(0, 5),
+    downloads: parseInt(item.downloads || 0),
+    externalUrl,
+    downloadUrl
   };
 };
 
@@ -227,12 +262,43 @@ export const searchOpenLibrary = async (query: string): Promise<Book[]> => {
   }
 };
 
+export const searchInternetArchive = async (query: string): Promise<Book[]> => {
+  const cacheKey = `ia-search-${query}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `${INTERNET_ARCHIVE_BASE}?q=${encodeURIComponent(query)} AND mediatype:texts&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=date&fl[]=description&fl[]=subject&fl[]=mediatype&rows=10&page=1&output=json`;
+    const response = await fetch(url);
+    const data = await response.json();
+    const books = (data.response?.docs || [])
+      .filter((item: any) => item.mediatype === 'texts')
+      .map(mapArchiveToBook);
+    setInCache(cacheKey, books);
+    return books;
+  } catch (error) {
+    console.error('[Internet Archive Sync] Error:', error);
+    return [];
+  }
+};
+
 export const fetchBookById = async (id: string): Promise<Book | null> => {
   const cacheKey = `book-detail-${id}`;
   const cached = getFromCache<Book>(cacheKey);
   if (cached) return cached;
 
   try {
+    // Handle Internet Archive
+    if (id.startsWith('ia-')) {
+      const iaId = id.replace('ia-', '');
+      const response = await fetch(`https://archive.org/metadata/${iaId}`);
+      if (!response.ok) return null;
+      const data = await response.json();
+      const result = mapArchiveToBook(data.metadata);
+      setInCache(cacheKey, result);
+      return result;
+    }
+
     // Handle Gutenberg books
     if (id.startsWith('gutenberg-')) {
       const gutenbergId = id.replace('gutenberg-', '');

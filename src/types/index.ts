@@ -20,6 +20,7 @@ export interface Book {
   subjects?: string[];
   bookshelves?: string[];
   externalUrl?: string;
+  downloadUrl?: string;
   gutenbergId?: number;
   source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library';
 }

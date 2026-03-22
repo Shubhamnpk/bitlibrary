@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Book } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, BookOpen, Settings, Share2, ChevronLeft, ChevronRight, Loader2, Maximize2, X, Layout, Monitor, Minimize2, Zap } from 'lucide-react';
+import { ArrowLeft, BookOpen, Settings, ExternalLink, Download, ChevronLeft, ChevronRight, Loader2, Maximize2, X, Layout, Monitor, Minimize2, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface ReaderProps {
@@ -41,8 +41,6 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         if (isImmersive) {
           setIsImmersive(false);
         } else if (!isMinimized) {
-          // If already in normal view, maybe minimize or close? 
-          // Let's just exit immersive for now.
         }
       }
     };
@@ -172,6 +170,29 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           )}
 
           <div className="flex items-center gap-1 bg-white/5 rounded-xl border border-white/10 p-1">
+            {isExternal && (
+              <a 
+                href={book.externalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-3 hover:bg-white/10 rounded-lg text-bit-accent hover:text-white transition-all group border-r border-white/10"
+                title="Open External Archive"
+              >
+                <ExternalLink size={18} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+              </a>
+            )}
+            {book.downloadUrl && (
+              <a 
+                href={book.downloadUrl}
+                download={book.title}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-3 hover:bg-white/10 rounded-lg text-bit-accent hover:text-white transition-all group border-r border-white/10"
+                title="Download Archival Volume"
+              >
+                <Download size={18} className="group-hover:translate-y-0.5 transition-transform" />
+              </a>
+            )}
             <button
               onClick={toggleMinimized}
               className="p-3 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent transition-all group"
@@ -214,12 +235,16 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
             <iframe
               src={book.externalUrl}
-              onLoad={() => setIframeLoading(false)}
-              className="w-full h-full border-none"
+              onLoad={() => {
+                // Ensure the loading state is cleared even if some content is blocked
+                setTimeout(() => setIframeLoading(false), 2000);
+              }}
+              className="w-full h-full border-none bg-white"
               title={book.title}
-              sandbox="allow-scripts allow-same-origin"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock allow-modals"
               loading="lazy"
             ></iframe>
+
             {isImmersive && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/90 backdrop-blur-md border border-white/10 rounded-full text-[10px] text-bit-accent font-mono z-10 uppercase tracking-widest shadow-2xl">
                 ARCHIVAL_CONDUIT_ACTIVE

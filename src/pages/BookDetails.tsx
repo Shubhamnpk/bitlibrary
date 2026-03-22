@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Book, ViewState } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
-import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronRight, Share, Info, Maximize2, Library } from 'lucide-react';
+import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronRight, Share, Info, Maximize2, Library, Download } from 'lucide-react';
 import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
 
@@ -22,7 +22,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const [activeTab, setActiveTab] = useState<'overview' | 'read' | 'authors'>('overview');
   const [similarBooks, setSimilarBooks] = useState<Book[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
-  const [fullDescription, setFullDescription] = useState<string>(book.description);
+  const [fullDescription, setFullDescription] = useState<string>(book.description || '');
   const [descLoading, setDescLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [content, setContent] = useState<string>('');
@@ -31,7 +31,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   // Synchronize Neural History for generic volumes
   useEffect(() => {
     const isGeneric = book.description.length < 120 || book.description.includes('Classical volume found in neural archives');
-    
+
     const loadNeuralDesc = async () => {
       if (isGeneric) {
         setDescLoading(true);
@@ -50,7 +50,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
         setDescLoading(false);
       }
     };
-    
+
     loadNeuralDesc();
   }, [book.id]); // Reload on book change
 
@@ -129,17 +129,17 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
 
       {/* Neural Breadcrumb Navigation */}
       <nav className="mb-10 flex items-center gap-3 overflow-x-auto pb-4 no-scrollbar whitespace-nowrap border-b border-white/5">
-        <button 
-          onClick={onClose} 
+        <button
+          onClick={onClose}
           className="text-[10px] font-mono text-white/40 hover:text-white uppercase tracking-[0.2em] transition-colors flex items-center gap-2 group/bc"
         >
           <Library size={12} className="group-hover/bc:text-bit-accent" /> Library
         </button>
-        
+
         {breadcrumbPath.map((b, i) => (
           <React.Fragment key={`${b.id}-${i}`}>
             <ChevronRight size={10} className="text-white/10" />
-            <button 
+            <button
               onClick={() => onBreadcrumbClick ? onBreadcrumbClick(b, i) : onBookClick(b)}
               className="text-[10px] font-mono text-white/30 hover:text-bit-accent uppercase tracking-[0.2em] transition-colors"
             >
@@ -182,7 +182,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
             </div>
             <div className="absolute inset-0 flex flex-col justify-end p-8">
               <div className="flex flex-wrap items-center gap-2 mb-4">
-                <button 
+                <button
                   onClick={() => onCategoryClick?.(book.category)}
                   className="inline-block px-3 py-1 rounded bg-bit-accent text-black text-[10px] font-bold uppercase tracking-widest w-fit shadow-[0_0_15px_rgba(255,77,0,0.4)] hover:bg-white hover:text-black transition-all active:scale-95"
                 >
@@ -194,7 +194,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                 <span className="text-xl text-white/70 font-sans">by</span>
                 {book.authors && book.authors.length > 0 ? (
                   book.authors.map((author, idx) => (
-                    <button 
+                    <button
                       key={idx}
                       onClick={() => onAuthorClick?.(author.name)}
                       className="group/author text-left flex flex-col"
@@ -240,7 +240,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               AI CHAPTER EXTRACT
               {activeTab === 'read' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-bit-accent" />}
             </button>
-            
+
             {book.authors && book.authors.length > 1 && (
               <button
                 onClick={() => setActiveTab('authors')}
@@ -259,12 +259,25 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                   <h3 className="text-xl font-display font-semibold text-white flex items-center gap-2">
                     <Info size={18} className="text-bit-accent" /> Summary
                   </h3>
-                  <button
-                    onClick={() => onRead()}
-                    className="px-6 py-2.5 bg-bit-accent text-black rounded-lg shadow-[0_0_20px_rgba(255,77,0,0.3)] flex items-center gap-2 font-mono text-[10px] font-bold uppercase transition-all hover:scale-105 active:scale-95"
-                  >
-                    <BookOpen size={14} /> open book
-                  </button>
+                  <div className="flex gap-3">
+                    {book.downloadUrl && (
+                      <a 
+                        href={book.downloadUrl}
+                        download={book.title}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-6 py-2.5 bg-white/5 text-bit-accent border border-bit-accent/30 rounded-lg flex items-center gap-2 font-mono text-[10px] font-bold uppercase transition-all hover:bg-bit-accent hover:text-black hover:border-bit-accent active:scale-95 group/dl"
+                      >
+                        <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
+                      </a>
+                    )}
+                    <button
+                      onClick={() => onRead()}
+                      className="px-6 py-2.5 bg-bit-accent text-black rounded-lg shadow-[0_0_20px_rgba(255,77,0,0.3)] flex items-center gap-2 font-mono text-[10px] font-bold uppercase transition-all hover:scale-105 active:scale-95"
+                    >
+                      <BookOpen size={16} /> Open Book
+                    </button>
+                  </div>
                 </div>
                 <div className="text-lg text-gray-400 leading-relaxed max-w-3xl">
                   {descLoading ? (
@@ -278,14 +291,15 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                     </div>
                   ) : (
                     <>
-                      <p>
-                        {(!isExpanded && fullDescription.length > 400) 
-                          ? `${fullDescription.substring(0, 400)}...` 
-                          : fullDescription}
-                      </p>
-                      
+                      <div className="prose prose-invert prose-p:text-gray-400 max-w-none">
+                        <ReactMarkdown>
+                          {(!isExpanded && fullDescription.length > 400) 
+                            ? `${fullDescription.substring(0, 400)}...` 
+                            : fullDescription}
+                        </ReactMarkdown>
+                      </div>
                       {fullDescription.length > 400 && (
-                        <button 
+                        <button
                           onClick={() => setIsExpanded(!isExpanded)}
                           className="mt-4 text-[10px] font-mono text-bit-accent hover:text-white transition-colors uppercase tracking-widest flex items-center gap-2 group/more"
                         >
@@ -309,13 +323,13 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
                     <p className="text-[10px] font-mono text-gray-500 uppercase mb-1">Impact Score</p>
-                    <p className="text-2xl font-display font-bold text-white">{book.popularity}%</p>
+                    <p className="text-2xl font-display font-bold text-white">{book.popularity || 0}%</p>
                   </div>
                   <div className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
                     <p className="text-[10px] font-mono text-gray-500 uppercase mb-1">Downloads</p>
-                    <p className="text-2xl font-display font-bold text-white">{book.downloads?.toLocaleString() || 'UNK'}</p>
+                    <p className="text-2xl font-display font-bold text-white">{(book.downloads || 0).toLocaleString()}</p>
                   </div>
-                  <button 
+                  <button
                     onClick={() => onAuthorClick?.(book.author)}
                     className="p-4 rounded-xl border border-white/5 bg-white/[0.02] text-left hover:border-bit-accent/50 transition-colors group/meta"
                   >
@@ -335,8 +349,8 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                   <h3 className="text-xl font-display font-semibold text-white mb-6">Subject Inventory</h3>
                   <div className="flex flex-wrap gap-2">
                     {book.subjects?.map((s, i) => (
-                      <button 
-                        key={i} 
+                      <button
+                        key={i}
                         onClick={() => onCategoryClick?.(s)}
                         className="px-3 py-1.5 rounded-lg bg-bit-accent/5 border border-bit-accent/20 text-[9px] font-mono text-bit-accent uppercase tracking-[0.2em] hover:bg-bit-accent hover:text-black hover:border-bit-accent transition-all active:scale-95"
                       >
@@ -344,8 +358,8 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                       </button>
                     ))}
                     {book.bookshelves?.map((b, i) => (
-                      <button 
-                        key={i} 
+                      <button
+                        key={i}
                         onClick={() => onCategoryClick?.(b)}
                         className="px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/10 text-[9px] font-mono text-white/50 uppercase tracking-[0.2em] hover:bg-white hover:text-black hover:border-white transition-all active:scale-95"
                       >

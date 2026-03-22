@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Book, ViewState } from '@/types/index';
 import { INITIAL_BOOKS, CATEGORIES } from '@/constants';
 import { searchBooksWithGemini, generateSearchInsights } from '@/services/geminiService';
-import { searchBooksInGutendex, fetchBooksFromGutendex, fetchBookById, searchGoogleBooks, searchITBooks, searchOpenLibrary } from '@/services/bookService';
+import { searchBooksInGutendex, fetchBooksFromGutendex, fetchBookById, searchGoogleBooks, searchITBooks, searchOpenLibrary, searchInternetArchive } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import Reader, { ReaderSkeleton } from '@/components/Reader';
 import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight } from 'lucide-react';
@@ -71,15 +71,35 @@ const App: React.FC = () => {
         setSearchAIAnalysis(null);
         try {
           // Parallel Archival Fetch (Non-AI sources load first)
-          const [archiveResults, googleResults, itResults, olResults] = await Promise.all([
+          const [archiveResults, googleResults, itResults, iaResults] = await Promise.all([
             searchBooksInGutendex(query),
             searchGoogleBooks(query),
             searchITBooks(query),
-            searchOpenLibrary(query)
+            searchInternetArchive(query)
           ]);
 
-          const archiveMerged = [...archiveResults, ...googleResults, ...itResults, ...olResults];
-          setSearchResults(archiveMerged);
+          const archiveMerged = [...archiveResults, ...googleResults, ...itResults, ...iaResults];
+          // Neural Relevance Engine: Rank results by title fidelity then descriptive context
+          const ranked = archiveMerged
+            .filter((v, i, a) => a.findIndex(t => t.id === v.id) === i) // Ensure absolute sectoral uniqueness
+            .sort((a, b) => {
+              const q = query.toLowerCase();
+              const getWeight = (book: Book) => {
+                let weight = 0;
+                const title = book.title.toLowerCase();
+                const desc = (book.description || '').toLowerCase();
+
+                if (title === q) weight += 10000;
+                if (title.startsWith(q)) weight += 5000;
+                if (title.includes(q)) weight += 2000;
+                if (desc.includes(q)) weight += 500;
+                if (book.author?.toLowerCase().includes(q)) weight += 100;
+                return weight;
+              };
+              return getWeight(b) - getWeight(a);
+            });
+
+          setSearchResults(ranked);
           setIsSearching(false); // Skeletons out for traditional results
 
           // High-Latency Neural Synthesizer (Gemini results added post-initial sync)
