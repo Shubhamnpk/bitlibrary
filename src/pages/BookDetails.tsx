@@ -70,8 +70,8 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                 <span className="inline-block px-3 py-1 rounded bg-bit-accent text-black text-[10px] font-bold uppercase tracking-widest mb-4 w-fit">
                   {book.category}
                 </span>
-                <h1 className="text-4xl font-display font-bold text-white mb-4 leading-tight">{book.title}</h1>
-                <p className="text-lg text-white/60 mb-6 font-sans">by {book.author}</p>
+                <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-6 leading-[1.1] tracking-tight group-hover:text-bit-accent transition-colors duration-500">{book.title}</h1>
+                <p className="text-xl text-white/70 mb-10 font-sans border-l-2 border-bit-accent/30 pl-4 py-1 italic">by {book.author}</p>
                 <div className="flex items-center gap-2 text-xs text-white/40 font-mono">
                     <span className="flex items-center gap-1"><Calendar size={12} /> {book.year || 'N/A'}</span>
                     <span className="mx-2">•</span>
@@ -183,6 +183,26 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
       </div>
     </div>
   );
+};
+
+export const BookDetailsSkeleton: React.FC = () => {
+    return (
+      <div className="animate-fade-in pb-20 max-w-7xl mx-auto">
+        <div className="h-8 w-32 bg-white/5 rounded-md mb-8 animate-pulse" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+          <div className="lg:col-span-4 h-[500px] rounded-2xl bg-white/[0.02] border border-white/5 animate-pulse" />
+          <div className="lg:col-span-8 space-y-8">
+            <div className="h-4 w-1/4 bg-white/5 rounded animate-pulse" />
+            <div className="h-16 w-3/4 bg-white/5 rounded animate-pulse" />
+            <div className="h-12 w-full bg-white/5 rounded animate-pulse" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[1,2,3,4].map(i => <div key={i} className="h-24 rounded-xl bg-white/[0.01] border border-white/5 animate-pulse" />)}
+            </div>
+            <div className="h-64 rounded-2xl bg-white/[0.01] border border-white/5 animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
 };
 
 export default BookDetails;

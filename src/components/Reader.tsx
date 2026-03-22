@@ -7,15 +7,32 @@ import ReactMarkdown from 'react-markdown';
 interface ReaderProps {
   book: Book;
   onClose: () => void;
+  isMinimized?: boolean;
+  onToggleMinimize?: (minimized: boolean) => void;
 }
 
-const Reader: React.FC<ReaderProps> = ({ book, onClose }) => {
+const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onToggleMinimize }) => {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [chapter, setChapter] = useState(1);
   const [fontSize, setFontSize] = useState(18);
   const [isImmersive, setIsImmersive] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  // Remove local isMinimized state to use prop, but keep as local backup if needed
+  const [localIsMinimized, setLocalIsMinimized] = useState(isMinimized);
+  const [iframeLoading, setIframeLoading] = useState(true);
+  
+  useEffect(() => {
+    setLocalIsMinimized(isMinimized);
+  }, [isMinimized]);
+
+  const toggleMinimized = () => {
+    if (onToggleMinimize) {
+      onToggleMinimize(!localIsMinimized);
+    } else {
+      setLocalIsMinimized(!localIsMinimized);
+    }
+  };
+
   const contentRef = useRef<HTMLDivElement>(null);
   const isExternal = !!book.externalUrl;
 
@@ -74,152 +91,181 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose }) => {
     }
   };
 
-  if (isMinimized) {
+  // If minimized, render as a compact floating node (PiP)
+  if (localIsMinimized) {
     return (
       <div
-        onClick={() => setIsMinimized(false)}
-        className="fixed bottom-6 right-6 w-64 h-40 bg-bit-bg border border-bit-accent/30 rounded-xl shadow-2xl z-[100] cursor-pointer hover:scale-105 transition-all overflow-hidden animate-fade-in group"
+        onClick={toggleMinimized}
+        className="fixed bottom-8 right-8 w-48 h-72 bg-bit-bg/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.8)] z-[1000] cursor-pointer hover:scale-105 hover:border-bit-accent/40 transition-all duration-500 overflow-hidden animate-fade-in group"
       >
-         <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-60"></div>
-         {book.coverUrl ? (
-            <img src={book.coverUrl} className="w-full h-full object-cover opacity-40 group-hover:opacity-60 transition-opacity" alt="" />
-         ) : (
-            <div className={`w-full h-full bg-gradient-to-br from-bit-accent/10 to-transparent`}></div>
-         )}
-         <div className="absolute inset-x-4 bottom-4">
-            <h4 className="text-white text-xs font-bold truncate">{book.title}</h4>
-            <p className="text-[10px] text-bit-accent font-mono uppercase tracking-widest mt-1">Paused Node</p>
-         </div>
-         <div className="absolute top-2 right-2 flex gap-1">
-            <button
-              onClick={(e) => { e.stopPropagation(); onClose(); }}
-              className="p-1.5 bg-black/50 rounded-full text-white hover:bg-red-500/50"
-            >
-               <X size={12} />
-            </button>
+         <div className="relative w-full h-full overflow-hidden">
+            {book.coverUrl ? (
+                <img src={book.coverUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-700" alt="" />
+            ) : (
+                <div className={`w-full h-full bg-gradient-to-br ${book.coverGradient || 'from-bit-accent/10 to-transparent'} flex items-center justify-center p-6 text-center`}>
+                    <p className="text-white/40 font-display font-bold text-xs uppercase tracking-widest leading-relaxed">{book.title}</p>
+                </div>
+            )}
+            
+            {/* Minimalist Hover Overlay */}
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 backdrop-blur-[2px]">
+                <div className="p-2.5 bg-white/10 backdrop-blur-md rounded-full text-white border border-white/20">
+                    <Maximize2 size={20} />
+                </div>
+                <p className="text-[9px] text-white font-mono uppercase tracking-[0.2em] font-bold">Restore_Link</p>
+            </div>
+
+            <div className="absolute top-2 right-2 flex gap-2 z-30">
+                <button
+                    onClick={(e) => { e.stopPropagation(); onClose(); }}
+                    className="p-1.5 bg-black/60 backdrop-blur-md rounded-full text-white hover:bg-red-500/80 transition-all opacity-0 group-hover:opacity-100"
+                    title="Terminate Stream"
+                >
+                    <X size={12} />
+                </button>
+            </div>
          </div>
       </div>
     );
   }
 
+  // Final Immersive Render
   return (
-    <div className={`fixed inset-0 z-[1000] bg-bit-bg flex flex-col animate-fade-in overflow-hidden shadow-2xl transition-all duration-700`}>
-      {/* Smart Reveal / Fixed Header */}
-      <header className={`h-16 border-b border-white/10 bg-black/80 backdrop-blur-2xl flex items-center justify-between px-6 z-[10001] transition-all duration-310 ${isImmersive ? 'absolute top-0 left-0 right-0 -translate-y-[90%] hover:translate-y-0 opacity-0 hover:opacity-100 shadow-[0_0_50px_rgba(0,0,0,0.8)]' : 'relative'}`}>
+    <div className={`fixed inset-0 z-[1000] bg-black flex flex-col animate-fade-in overflow-hidden shadow-2xl transition-all duration-700`}>
+      {/* Smart Reveal Header */}
+      <header className={`h-16 border-b border-white/10 bg-black/80 backdrop-blur-2xl flex items-center justify-between px-6 z-[10001] transition-all duration-300 ${isImmersive ? 'absolute top-0 left-0 right-0 -translate-y-full hover:translate-y-0 opacity-0 hover:opacity-100' : 'relative'}`}>
         <div className="flex items-center gap-4">
           <button
             onClick={onClose}
-            className="flex items-center gap-2 pr-4 border-r border-white/10 group transition-all"
+            className="flex items-center gap-2 pr-6 border-r border-white/10 group transition-all"
           >
             <div className="p-2 bg-white/5 rounded-full text-bit-accent group-hover:bg-bit-accent group-hover:text-black transition-all">
                <ArrowLeft size={18} />
             </div>
-            <span className="hidden sm:block text-[10px] font-mono font-bold text-white tracking-widest uppercase">RETURN_TO_LAB</span>
+            <span className="hidden sm:block text-[10px] font-mono font-bold text-white tracking-widest uppercase">END_SESSION</span>
           </button>
-          <div className="pl-2">
+          <div>
             <h2 className="font-display font-semibold text-white tracking-tight line-clamp-1 max-w-[200px] md:max-w-md">{book.title}</h2>
-            <p className="text-[9px] text-bit-accent font-mono uppercase tracking-widest animate-pulse">
-                SYNC_NODE: {book.id.substring(0, 12)}...
-            </p>
+            <div className="flex items-center gap-2">
+                <Zap size={10} className="text-bit-accent" />
+                <p className="text-[9px] text-bit-accent/60 font-mono uppercase tracking-widest">Sector_ID: {book.id.substring(0, 8)}</p>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-6">
           {!isExternal && (
-            <div className="flex items-center gap-1 mr-4 bg-white/5 p-1 rounded-lg border border-white/5">
-              <button
+            <div className="hidden lg:flex items-center bg-white/5 rounded-lg border border-white/10 p-1">
+              <button 
                 onClick={() => setFontSize(Math.max(12, fontSize - 2))}
-                className="p-1 px-2 hover:bg-white/10 rounded text-white font-mono text-xs transition-colors"
-                title="Decrease font size"
+                className="p-2 hover:bg-white/10 rounded text-white/60 hover:text-white transition-colors"
               >
                 A-
               </button>
-              <div className="w-[1px] h-3 bg-white/10"></div>
-              <button
+              <div className="w-[1px] h-4 bg-white/10 mx-1"></div>
+              <button 
                 onClick={() => setFontSize(Math.min(32, fontSize + 2))}
-                className="p-1 px-2 hover:bg-white/10 rounded text-white font-mono text-xs transition-colors"
-                title="Increase font size"
+                className="p-2 hover:bg-white/10 rounded text-white/60 hover:text-white transition-colors"
               >
                 A+
               </button>
             </div>
           )}
           
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 bg-white/5 rounded-xl border border-white/10 p-1">
             <button
-                onClick={() => setIsMinimized(true)}
-                className="p-2.5 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent transition-all"
-                title="Minimize stream (PIP)"
+                onClick={toggleMinimized}
+                className="p-3 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent transition-all group"
+                title="Minimize stream (PiP)"
             >
-              <Layout size={18} />
+              <Layout size={18} className="group-hover:scale-110" />
             </button>
             <button
                 onClick={() => setIsImmersive(true)}
-                className="p-2.5 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent transition-all"
-                title="Neural Focus Mode"
+                className="p-3 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent transition-all group"
+                title="Immersive Protocol"
             >
-              <Maximize2 size={18} />
+              <Maximize2 size={18} className="group-hover:scale-110" />
             </button>
             <button
                 onClick={toggleFullscreen}
-                className="p-2.5 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent hidden md:block transition-all"
-                title="System Fullscreen"
+                className="p-3 hover:bg-white/10 rounded-lg text-white/60 hover:text-bit-accent hidden md:block transition-all group"
             >
-              <Monitor size={18} />
+              <Monitor size={18} className="group-hover:scale-110" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto relative scrollbar-hide bg-white/5">
+      {/* Main Content Area - Optimized Strip Layout */}
+      <main className="flex-1 overflow-y-auto relative scrollbar-hide bg-black/95 flex flex-col items-center">
         {isExternal ? (
-          <div className="w-full h-full bg-white relative">
+          <div className="w-full max-w-[1000px] h-full bg-white relative shadow-2xl border-x border-white/5 overflow-hidden">
+            {iframeLoading && (
+                <div className="absolute inset-0 bg-[#050505] z-20 p-12 md:p-24 animate-fade-in flex flex-col gap-10">
+                    <div className="h-12 w-3/4 bg-white/[0.03] rounded-lg animate-pulse" />
+                    <div className="flex-1 flex flex-col gap-6">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => (
+                            <div key={i} className="h-4 w-full bg-white/[0.02] rounded animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
+                        ))}
+                        <div className="h-4 w-1/2 bg-white/[0.02] rounded animate-pulse" style={{ animationDelay: '1100ms' }} />
+                    </div>
+                </div>
+            )}
             <iframe
               src={book.externalUrl}
+              onLoad={() => setIframeLoading(false)}
               className="w-full h-full border-none"
               title={book.title}
               sandbox="allow-scripts allow-same-origin"
               loading="lazy"
             ></iframe>
             {isImmersive && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 backdrop-blur-md border border-white/10 rounded-full text-[10px] text-bit-accent font-mono z-10 pointer-events-none uppercase tracking-[0.2em] shadow-2xl">
-                Encapsulated Registry View
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/90 backdrop-blur-md border border-white/10 rounded-full text-[10px] text-bit-accent font-mono z-10 uppercase tracking-widest shadow-2xl">
+                    ARCHIVAL_CONDUIT_ACTIVE
                 </div>
             )}
           </div>
         ) : (
-          <div className="max-w-3xl mx-auto px-6 py-12 md:py-20 animate-fade-in">
+          <div className="w-full max-w-[560px] min-h-full bg-bit-bg/40 px-10 md:px-16 py-24 md:py-40 animate-fade-in border-x border-white/10 shadow-[0_0_200px_rgba(0,0,0,0.9)] relative z-10">
+            {/* Visual Continuity Guides */}
+            <div className="absolute inset-y-0 -left-[1px] w-[1px] bg-gradient-to-b from-transparent via-bit-accent/40 to-transparent"></div>
+            <div className="absolute inset-y-0 -right-[1px] w-[1px] bg-gradient-to-b from-transparent via-bit-accent/40 to-transparent"></div>
+
             {loading && content.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 gap-4">
-                <Loader2 className="animate-spin text-bit-accent" size={40} />
-                <p className="font-mono text-sm text-bit-accent animate-pulse uppercase tracking-widest">Decrypting Neural Stream...</p>
+                <div className="flex flex-col items-center justify-center py-40 gap-6">
+                    <Loader2 className="animate-spin text-bit-accent" size={48} />
+                    <div className="text-center">
+                        <p className="font-mono text-xs text-bit-accent/60 mb-2 uppercase tracking-[0.3em]">Sector Synchronization</p>
+                        <p className="font-mono text-sm text-bit-accent uppercase tracking-widest animate-pulse">Establishing Neural Link...</p>
+                    </div>
               </div>
             )}
 
             <div
               ref={contentRef}
               style={{ fontSize: `${fontSize}px` }}
-              className={`prose prose-invert prose-p:text-gray-300 prose-headings:text-white prose-headings:font-display prose-strong:text-white prose-a:text-bit-accent max-w-none transition-all duration-300 leading-relaxed font-serif ${isImmersive ? 'opacity-100' : 'opacity-80 hover:opacity-100'}`}
+              className={`prose prose-invert prose-p:text-gray-300 prose-headings:text-white prose-headings:font-display prose-strong:text-bit-accent prose-a:text-bit-accent max-w-none transition-all duration-300 leading-[1.8] font-serif ${isImmersive ? 'opacity-100' : 'opacity-90'}`}
             >
               <ReactMarkdown>{content}</ReactMarkdown>
-              {loading && content.length > 0 && <span className="inline-block w-2 h-4 bg-bit-accent animate-pulse ml-1 align-middle"></span>}
+              {loading && content.length > 0 && <span className="inline-block w-2.5 h-5 bg-bit-accent animate-pulse ml-1 align-baseline"></span>}
             </div>
 
             {!loading && (
-              <div className="mt-20 flex items-center justify-between pt-10 border-t border-white/5">
+              <div className="mt-24 flex items-center justify-between pt-12 border-t border-white/5 opacity-40 hover:opacity-100 transition-opacity text-[10px] font-mono tracking-[0.4em] text-white/40">
                 <button
                   disabled={chapter <= 1}
                   onClick={() => setChapter(c => c - 1)}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-lg border border-white/10 font-mono text-xs transition-colors ${chapter <= 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/5 hover:border-bit-accent/50 text-white'}`}
+                  className={`flex items-center gap-2 px-6 py-4 rounded-xl border border-white/10 transition-all ${chapter <= 1 ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/5 hover:border-bit-accent/50 text-white'}`}
                 >
-                  <ChevronLeft size={16} /> PREV_CHUNK
+                  <ChevronLeft size={16} /> SYNC_PREV
                 </button>
+                <div className="hidden sm:block">CHUNK_NODE_{chapter}</div>
                 <button
                   onClick={() => setChapter(c => c + 1)}
-                  className="flex items-center gap-2 px-6 py-3 rounded-lg bg-bit-accent text-black font-bold font-mono text-xs hover:bg-orange-500 transition-all shadow-[0_0_20px_rgba(255,77,0,0.3)] hover:scale-95"
+                  className="flex items-center gap-3 px-8 py-4 rounded-xl bg-bit-accent text-black font-bold hover:scale-95 transition-all shadow-[0_0_30px_rgba(255,77,0,0.2)]"
                 >
-                  FETCH_NEXT <ChevronRight size={16} />
+                  SYNC_NEXT <ChevronRight size={16} />
                 </button>
               </div>
             )}
@@ -227,49 +273,46 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose }) => {
         )}
       </main>
 
-      {/* Natural Top-Right Command Capsule - Always accessible in Immersive/Fullscreen */}
-      <div className={`fixed top-4 right-6 flex items-center gap-2 p-1.5 bg-black/80 backdrop-blur-2xl border border-white/20 rounded-full z-[10005] transition-all duration-500 shadow-[0_0_30px_rgba(0,0,0,0.5)] ${isImmersive ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-12 pointer-events-none'}`}>
-        <div className="flex items-center gap-1.5 px-3 border-r border-white/10 group cursor-default">
-           <Zap className="text-bit-accent animate-pulse" size={14} />
-           <span className="text-[9px] text-white/60 font-mono uppercase tracking-[0.2em]">Live_Stream</span>
-        </div>
-        
-        <button
-          onClick={() => setIsImmersive(false)}
-          className="p-2 bg-white/5 hover:bg-bit-accent hover:text-black rounded-full transition-all text-white/40"
-          title="Restore HUD"
-        >
-            <Minimize2 size={16} />
-        </button>
-        
-        <button
-          onClick={onClose}
-          className="p-2 bg-red-500/20 hover:bg-red-500 hover:text-white rounded-full transition-all text-red-500"
-          title="Exit Neural Stream"
-        >
-            <X size={16} />
-        </button>
-      </div>
-
-      {/* Extreme Top Rescue Zone (Transparent Header Reveal) */}
+      {/* Floating Rescue Controls - Accessible in immersive */}
       {isImmersive && (
-        <div className="fixed top-0 left-0 right-0 h-2 bg-gradient-to-b from-bit-accent/30 to-transparent opacity-0 hover:opacity-100 transition-all duration-300 z-[10000] cursor-n-resize group">
-           <div className="absolute top-2 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-bit-accent text-black text-[9px] font-bold font-mono rounded-b-lg shadow-[0_0_20px_rgba(255,77,0,0.5)] transform -translate-y-6 group-hover:translate-y-0 transition-all">
-              NODE_OPERATIONAL // REVEAL HEADER
-           </div>
-        </div>
-      )}
-
-      {/* Lab UI footer bar */}
-      {!isImmersive && (
-        <div className="h-2 bg-bit-bg flex border-t border-white/5 relative z-10">
-          <div className="h-full bg-bit-accent/10 w-1/4 border-r border-white/5"></div>
-          <div className="h-full bg-bit-accent/60 w-1/2 shadow-[0_0_20px_rgba(255,77,0,0.3)]"></div>
-          <div className="h-full bg-bit-bg w-1/4"></div>
+        <div className="fixed top-6 right-6 flex gap-2 z-[10002] animate-fade-in group">
+           <button 
+             onClick={() => setIsImmersive(false)}
+             className="p-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl text-white/50 hover:text-bit-accent hover:border-bit-accent/50 transition-all shadow-2xl"
+             title="Restore Interface"
+           >
+             <Minimize2 size={18} />
+           </button>
+           <button 
+             onClick={onClose}
+             className="p-3 bg-red-500/10 backdrop-blur-xl border border-red-500/20 rounded-xl text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-2xl"
+             title="Terminate Stream"
+           >
+             <X size={18} />
+           </button>
         </div>
       )}
     </div>
   );
+};
+
+export const ReaderSkeleton: React.FC = () => {
+    return (
+      <div className="fixed inset-0 bg-black flex flex-col items-center animate-fade-in">
+        <div className="h-16 w-full border-b border-white/5 bg-black/50 p-6 flex justify-between">
+            <div className="h-4 w-32 bg-white/5 rounded-full animate-pulse" />
+            <div className="h-4 w-20 bg-white/5 rounded-full animate-pulse" />
+        </div>
+        <div className="w-full max-w-[560px] h-full p-20 space-y-8 bg-bit-bg/40 border-x border-white/5 shadow-2xl overflow-hidden">
+            <div className="h-10 w-3/4 bg-white/5 rounded animate-pulse" />
+            <div className="h-4 w-full bg-white/5 rounded animate-pulse" />
+            <div className="h-4 w-5/6 bg-white/5 rounded animate-pulse" />
+            <div className="h-4 w-3/4 bg-white/5 rounded animate-pulse" />
+            <div className="h-4 w-full bg-white/5 rounded animate-pulse" />
+            <div className="h-96 w-full bg-white/5 rounded animate-pulse" />
+        </div>
+      </div>
+    );
 };
 
 export default Reader;

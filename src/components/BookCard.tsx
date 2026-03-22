@@ -33,13 +33,13 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, variant = 'full' }) 
       </div>
 
       <div className="relative z-10 flex flex-col h-full">
-        {/* Cover Aspect Ratio container */}
-        <div className={`aspect-[2/3] w-full rounded-lg bg-gradient-to-b from-white/10 to-transparent mb-4 flex items-center justify-center border border-white/5 shadow-2xl overflow-hidden group-hover:scale-[1.02] transition-transform duration-500 relative`}>
+        {/* Cover Aspect Ratio container - Decreased height ratio */}
+        <div className={`aspect-[4/5] w-full rounded-lg bg-gradient-to-b from-white/10 to-transparent mb-3 flex items-center justify-center border border-white/5 shadow-2xl overflow-hidden group-hover:scale-[1.01] transition-transform duration-500 relative`}>
            
            {book.coverUrl ? (
               <img 
                 src={book.coverUrl} 
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[2s] ease-out"
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[3s] ease-out opacity-80 group-hover:opacity-100"
                 alt={book.title}
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1543005127-d0d080007886?q=80&w=300&auto=format&fit=crop';
@@ -51,29 +51,29 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, variant = 'full' }) 
               <div className="w-full h-full relative">
                  <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
                  <div className="absolute bottom-4 left-4 right-4">
-                     <h3 className="font-display font-bold text-xl leading-tight text-white mb-1 line-clamp-3">{book.title}</h3>
-                     <p className="text-sm text-white/60 font-sans">{book.author}</p>
+                     <h3 className="font-display font-bold text-lg leading-tight text-white mb-1 line-clamp-3">{book.title}</h3>
+                     <p className="text-[10px] text-white/40 font-mono tracking-widest uppercase">{book.author}</p>
                  </div>
               </div>
            )}
 
            {/* Always show category badge */}
-           <div className="absolute top-4 left-4 z-20 bg-black/50 backdrop-blur-md px-2 py-1 rounded text-[10px] border border-white/10 uppercase tracking-wider font-mono text-bit-accent">
+           <div className="absolute top-3 left-3 z-20 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded border border-white/10 text-[9px] uppercase tracking-wider font-mono text-bit-accent shadow-xl">
              {book.category}
            </div>
 
            {/* Cinematic Overlay */}
-           <div className="absolute inset-0 bg-gradient-to-t from-bit-bg via-transparent to-transparent opacity-60 pointer-events-none" />
+           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60 pointer-events-none" />
         </div>
 
         {variant === 'full' && (
-          <div className="mt-auto space-y-3">
-             <p className="text-sm text-gray-400 line-clamp-2 leading-relaxed">{book.description}</p>
+          <div className="mt-auto space-y-2">
+             <p className="text-[11px] text-gray-500 line-clamp-1 leading-relaxed font-sans group-hover:text-gray-400 transition-colors uppercase tracking-tight">{book.description}</p>
              
-             <div className="flex items-center justify-between text-xs text-gray-500 font-mono pt-3 border-t border-white/5">
-                <span className="flex items-center gap-1"><Calendar size={12} /> {book.year}</span>
-                <span className="flex items-center gap-1"><BookOpen size={12} /> {book.pages}p</span>
-                <span className="flex items-center gap-1"><BarChart size={12} /> {book.popularity}%</span>
+             <div className="flex items-center justify-between text-[9px] text-gray-600 font-mono pt-2 border-t border-white/5 group-hover:border-bit-accent/20 transition-colors">
+                <span className="flex items-center gap-1 uppercase">NODE_{book.year || 'UNK'}</span>
+                <span className="flex items-center gap-1 uppercase">{book.pages || 'INF'}_PAGES</span>
+                <span className="flex items-center gap-1 uppercase">{book.popularity}%_RANK</span>
              </div>
           </div>
         )}
