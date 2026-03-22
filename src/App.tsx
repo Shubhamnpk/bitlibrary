@@ -35,35 +35,14 @@ const App: React.FC = () => {
 
   // Persistent Global Reader State
   const [activeBook, setActiveBook] = useState<Book | null>(null);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [readerLoading, setReaderLoading] = useState(false);
 
-  // Sync Global Reader with URL (For direct entry or back/forward)
+  // Sync Global Reader with URL - DECOMMISSIONED (Moved to state-driven only)
   useEffect(() => {
-    const readerMatch = location.pathname.match(/\/reader\/(.+)/);
-    if (readerMatch) {
-      const id = readerMatch[1];
-      
-      // OPTIMISTIC SYNC: Instant load from registry (including initial foundation nodes)
-      const bookFromCache = [...featuredBooks, ...searchResults, ...INITIAL_BOOKS].find(b => b.id === id);
-      if (bookFromCache) {
-          setActiveBook(bookFromCache);
-          setReaderLoading(false);
-      } else {
-          setReaderLoading(true);
-      }
-
-      // BACKGROUND FRESH SYNC
-      fetchBookById(id).then(b => {
-          if (b) {
-              setActiveBook(b);
-          }
-          setReaderLoading(false);
-      }).catch(() => setReaderLoading(false));
-    } else {
-      // If we navigate AWAY from reader, we KEEP the activeBook (for PiP)
-      // but we don't start loading new ones here unless the URL matches.
-    }
-  }, [location.pathname, featuredBooks, searchResults]);
+    // We no longer sync from URL. 
+    // The reader is triggered via onRead state in the overlay system.
+  }, []);
 
   // Sync Data on Load
   useEffect(() => {
@@ -149,9 +128,9 @@ const App: React.FC = () => {
             </form>
 
             <div className="hidden md:flex items-center gap-6 font-mono text-xs tracking-wider">
-              <Link to="/" className={`hover:text-white transition-colors uppercase ${activeTab('/') ? 'text-bit-accent' : 'text-gray-400'}`}>Discover</Link>
-              <Link to="/books" className={`hover:text-white transition-colors uppercase ${activeTab('/books') ? 'text-bit-accent' : 'text-gray-400'}`}>Registry</Link>
-              <Link to="/library" className={`hover:text-white transition-colors uppercase ${activeTab('/library') ? 'text-bit-accent' : 'text-gray-400'}`}>Archive</Link>
+               <Link to="/" className={`hover:text-white transition-colors uppercase ${activeTab('/') ? 'text-bit-accent' : 'text-gray-400'}`}>Discover</Link>
+              <Link to="/library" className={`hover:text-white transition-colors uppercase ${activeTab('/library') ? 'text-bit-accent' : 'text-gray-400'}`}>Library</Link>
+              <Link to="/mylibrary" className={`hover:text-white transition-colors uppercase ${activeTab('/mylibrary') ? 'text-bit-accent' : 'text-gray-400'}`}>My Library</Link>
               <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-900 border border-white/10 flex items-center justify-center cursor-pointer">
                 <span className="text-[10px] font-bold text-white">US</span>
               </div>
@@ -244,11 +223,12 @@ const App: React.FC = () => {
             </div>
           } />
 
-          {/* Discovery / Archive */}
+          {/* Discovery / Library Registry */}
+          <Route path="/library" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} />} />
           <Route path="/books" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} />} />
 
-          {/* Library */}
-          <Route path="/library" element={
+          {/* Personal Bookshelf */}
+          <Route path="/mylibrary" element={
             <LibraryPage
               borrowedBooks={borrowedBooks}
               onBookClick={(b) => navigate(`/book/${b.id}`)}
@@ -292,8 +272,28 @@ const App: React.FC = () => {
           } />
 
           {/* Deep Routes (Wrappers for details/reader) */}
-          <Route path="/book/:id" element={<BookDetailsRoute books={[...featuredBooks, ...searchResults]} onRead={(id) => navigate(`/reader/${id}`)} onBookClick={(id) => navigate(`/book/${id}`)} />} />
-          <Route path="/reader/:id" element={<ReaderRoute books={[...featuredBooks, ...searchResults]} />} />
+          <Route path="/book/:id" element={
+            <BookDetailsRoute 
+              books={[...featuredBooks, ...searchResults]} 
+              onRead={(id) => {
+                const b = [...featuredBooks, ...searchResults, ...INITIAL_BOOKS].find(node => node.id === id);
+                if (b) {
+                  setActiveBook(b);
+                  setIsMinimized(false);
+                } else {
+                  setReaderLoading(true);
+                  fetchBookById(id).then(res => {
+                    if (res) {
+                      setActiveBook(res);
+                      setIsMinimized(false);
+                    }
+                    setReaderLoading(false);
+                  });
+                }
+              }} 
+              onBookClick={(id) => navigate(`/book/${id}`)} 
+            />
+          } />
 
           {/* Static Pages */}
           <Route path="/terms" element={<StaticPage type="terms" onBack={() => navigate('/')} />} />
@@ -329,11 +329,11 @@ const App: React.FC = () => {
 
               <div className="lg:col-span-5 grid grid-cols-2 md:grid-cols-3 gap-8 text-[10px] font-mono">
                 <div>
-                  <h4 className="text-white font-medium mb-6 uppercase tracking-widest opacity-40">Registry</h4>
+                  <h4 className="text-white font-medium mb-6 uppercase tracking-widest opacity-40">Library Hub</h4>
                   <ul className="space-y-4 text-gray-500">
-                    <li><Link to="/books" className="hover:text-bit-accent transition-all">BROWSE ALL</Link></li>
+                    <li><Link to="/library" className="hover:text-bit-accent transition-all">CENTRAL REGISTRY</Link></li>
                     <li><Link to="/" className="hover:text-bit-accent transition-all">COLLECTIONS</Link></li>
-                    <li><Link to="/library" className="hover:text-bit-accent transition-all">MY ARCHIVE</Link></li>
+                    <li><Link to="/mylibrary" className="hover:text-bit-accent transition-all">MY ARCHIVE</Link></li>
                   </ul>
                 </div>
                 <div>
@@ -411,21 +411,9 @@ const App: React.FC = () => {
       {activeBook && (
         <Reader 
           book={activeBook} 
-          isMinimized={!location.pathname.startsWith('/reader')}
-          onClose={() => { 
-            const cid = activeBook?.id;
-            setActiveBook(null); 
-            if(location.pathname.includes('/reader')) navigate(cid ? `/book/${cid}` : '/');
-          }} 
-          onToggleMinimize={(min) => {
-            if (min) {
-              // If minimizing, go back to the library/details page
-              navigate(-1);
-            } else {
-              // If restoring, go to the reader route
-              navigate(`/reader/${activeBook.id}`);
-            }
-          }}
+          isMinimized={isMinimized}
+          onClose={() => setActiveBook(null)} 
+          onToggleMinimize={(min) => setIsMinimized(min)}
         />
       )}
     </div>
@@ -459,7 +447,7 @@ const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, 
     <BookDetails
       book={book}
       allBooks={books}
-      onClose={() => navigate(-1)}
+      onClose={() => navigate('/library')}
       onRead={() => onRead(book.id)}
       onBookClick={(b) => onBookClick(b.id)}
     />
