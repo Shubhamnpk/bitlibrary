@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Book, ViewState } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
-import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronRight, Share, Info, Maximize2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronRight, Share, Info, Maximize2, Library } from 'lucide-react';
+import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
 
 interface BookDetailsProps {
@@ -11,31 +12,46 @@ interface BookDetailsProps {
   onClose: () => void;
   onRead: (id?: string) => void;
   onBookClick: (book: Book) => void;
+  onAuthorClick?: (name: string) => void;
+  onCategoryClick?: (category: string) => void;
+  onBreadcrumbClick?: (book: Book, index: number) => void;
+  breadcrumbPath?: Book[];
 }
 
-const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRead, onBookClick }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'read'>('overview');
+const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRead, onBookClick, onAuthorClick, onCategoryClick, onBreadcrumbClick, breadcrumbPath = [] }) => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'read' | 'authors'>('overview');
   const [similarBooks, setSimilarBooks] = useState<Book[]>([]);
+  const [similarLoading, setSimilarLoading] = useState(false);
   const [fullDescription, setFullDescription] = useState<string>(book.description);
   const [descLoading, setDescLoading] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
   // Synchronize Neural History for generic volumes
   useEffect(() => {
-    if (book.description.startsWith('Classical volume found in neural archives')) {
-      const loadNeuralDesc = async () => {
+    const isGeneric = book.description.length < 120 || book.description.includes('Classical volume found in neural archives');
+    
+    const loadNeuralDesc = async () => {
+      if (isGeneric) {
         setDescLoading(true);
-        const { generateNeuralSummary } = await import('@/services/geminiService');
-        const summary = await generateNeuralSummary(book);
-        setFullDescription(summary);
+        try {
+          const { generateNeuralSummary } = await import('@/services/geminiService');
+          const summary = await generateNeuralSummary(book);
+          setFullDescription(summary);
+        } catch (err) {
+          console.error("Neural Summary Synthesis Failed:", err);
+          setFullDescription(book.description);
+        } finally {
+          setDescLoading(false);
+        }
+      } else {
+        setFullDescription(book.description);
         setDescLoading(false);
-      };
-      loadNeuralDesc();
-    } else {
-      setFullDescription(book.description);
-      setDescLoading(false);
-    }
+      }
+    };
+    
+    loadNeuralDesc();
   }, [book.id]); // Reload on book change
 
   // Synchronize Similar Books
@@ -50,18 +66,25 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
 
       // 2. Deep ARCHIVE Synchronization if local registry is small
       if (local.length < 3 && book.category) {
-        const { searchBooksInGutendex, searchGoogleBooks } = await import('@/services/bookService');
-        const [gutenberg, google] = await Promise.all([
-          searchBooksInGutendex(book.category),
-          searchGoogleBooks(book.category)
-        ]);
+        setSimilarLoading(true);
+        try {
+          const { searchBooksInGutendex, searchGoogleBooks } = await import('@/services/bookService');
+          const [gutenberg, google] = await Promise.all([
+            searchBooksInGutendex(book.category),
+            searchGoogleBooks(book.category)
+          ]);
 
-        const merged = [...local, ...gutenberg, ...google]
-          .filter((v, i, a) => a.findIndex(t => t.id === v.id) === i) // Unique
-          .filter(b => b.id !== book.id)
-          .slice(0, 3);
+          const merged = [...local, ...gutenberg, ...google]
+            .filter((v, i, a) => a.findIndex(t => t.id === v.id) === i) // Unique
+            .filter(b => b.id !== book.id)
+            .slice(0, 3);
 
-        setSimilarBooks(merged);
+          setSimilarBooks(merged);
+        } catch (err) {
+          console.error("Similar Node Sync Failed:", err);
+        } finally {
+          setSimilarLoading(false);
+        }
       }
     };
     syncSimilar();
@@ -104,6 +127,33 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
         </div>
       </div>
 
+      {/* Neural Breadcrumb Navigation */}
+      <nav className="mb-10 flex items-center gap-3 overflow-x-auto pb-4 no-scrollbar whitespace-nowrap border-b border-white/5">
+        <button 
+          onClick={onClose} 
+          className="text-[10px] font-mono text-white/40 hover:text-white uppercase tracking-[0.2em] transition-colors flex items-center gap-2 group/bc"
+        >
+          <Library size={12} className="group-hover/bc:text-bit-accent" /> Library
+        </button>
+        
+        {breadcrumbPath.map((b, i) => (
+          <React.Fragment key={`${b.id}-${i}`}>
+            <ChevronRight size={10} className="text-white/10" />
+            <button 
+              onClick={() => onBreadcrumbClick ? onBreadcrumbClick(b, i) : onBookClick(b)}
+              className="text-[10px] font-mono text-white/30 hover:text-bit-accent uppercase tracking-[0.2em] transition-colors"
+            >
+              {b.title.length > 20 ? `${b.title.substring(0, 20)}...` : b.title}
+            </button>
+          </React.Fragment>
+        ))}
+
+        <ChevronRight size={10} className="text-white/10" />
+        <span className="text-[10px] font-mono text-bit-accent uppercase tracking-[0.3em] font-bold">
+          {book.title.length > 30 ? `${book.title.substring(0, 30)}...` : book.title}
+        </span>
+      </nav>
+
       {/* Main Content: Immersive Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
 
@@ -132,12 +182,37 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
             </div>
             <div className="absolute inset-0 flex flex-col justify-end p-8">
               <div className="flex flex-wrap items-center gap-2 mb-4">
-                <span className="inline-block px-3 py-1 rounded bg-bit-accent text-black text-[10px] font-bold uppercase tracking-widest w-fit shadow-[0_0_15px_rgba(255,77,0,0.4)]">
+                <button 
+                  onClick={() => onCategoryClick?.(book.category)}
+                  className="inline-block px-3 py-1 rounded bg-bit-accent text-black text-[10px] font-bold uppercase tracking-widest w-fit shadow-[0_0_15px_rgba(255,77,0,0.4)] hover:bg-white hover:text-black transition-all active:scale-95"
+                >
                   {book.category}
-                </span>
+                </button>
               </div>
               <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-6 leading-[1.1] tracking-tight group-hover:text-bit-accent transition-colors duration-500">{book.title}</h1>
-              <p className="text-xl text-white/70 mb-10 font-sans border-l-2 border-bit-accent/30 pl-4 py-1 italic">by {book.author}</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-6 mb-10 border-l-2 border-bit-accent/30 pl-4 py-1 italic">
+                <span className="text-xl text-white/70 font-sans">by</span>
+                {book.authors && book.authors.length > 0 ? (
+                  book.authors.map((author, idx) => (
+                    <button 
+                      key={idx}
+                      onClick={() => onAuthorClick?.(author.name)}
+                      className="group/author text-left flex flex-col"
+                    >
+                      <span className="text-xl text-white hover:text-bit-accent transition-colors font-sans">
+                        {author.name}{idx < book.authors!.length - 1 ? ',' : ''}
+                      </span>
+                      {author.birth_year && (
+                        <span className="block text-[10px] font-mono text-white/30 uppercase mt-1 not-italic tracking-[0.2em] group-hover/author:text-bit-accent/50 transition-colors">
+                          {author.birth_year} — {author.death_year || 'Decelerated'}
+                        </span>
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  <span className="text-xl text-white/70 font-sans">{book.author}</span>
+                )}
+              </div>
               <div className="flex items-center gap-2 text-xs text-white/40 font-mono">
                 <span className="flex items-center gap-1"><Calendar size={12} /> {book.year || 'N/A'}</span>
                 <span className="mx-2">•</span>
@@ -165,6 +240,16 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               AI CHAPTER EXTRACT
               {activeTab === 'read' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-bit-accent" />}
             </button>
+            
+            {book.authors && book.authors.length > 1 && (
+              <button
+                onClick={() => setActiveTab('authors')}
+                className={`pb-4 text-sm font-mono tracking-wider transition-colors relative ${activeTab === 'authors' ? 'text-bit-accent' : 'text-gray-500 hover:text-white'}`}
+              >
+                CONTRIBUTORS
+                {activeTab === 'authors' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-bit-accent" />}
+              </button>
+            )}
           </div>
 
           {activeTab === 'overview' && (
@@ -172,10 +257,10 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               <section className="mb-12">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-xl font-display font-semibold text-white flex items-center gap-2">
-                    <Info size={18} className="text-bit-accent" /> History
+                    <Info size={18} className="text-bit-accent" /> Summary
                   </h3>
                   <button
-                    onClick={onRead}
+                    onClick={() => onRead()}
                     className="px-6 py-2.5 bg-bit-accent text-black rounded-lg shadow-[0_0_20px_rgba(255,77,0,0.3)] flex items-center gap-2 font-mono text-[10px] font-bold uppercase transition-all hover:scale-105 active:scale-95"
                   >
                     <BookOpen size={14} /> open book
@@ -193,7 +278,22 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                     </div>
                   ) : (
                     <>
-                      <p>{fullDescription}</p>
+                      <p>
+                        {(!isExpanded && fullDescription.length > 400) 
+                          ? `${fullDescription.substring(0, 400)}...` 
+                          : fullDescription}
+                      </p>
+                      
+                      {fullDescription.length > 400 && (
+                        <button 
+                          onClick={() => setIsExpanded(!isExpanded)}
+                          className="mt-4 text-[10px] font-mono text-bit-accent hover:text-white transition-colors uppercase tracking-widest flex items-center gap-2 group/more"
+                        >
+                          <div className={`w-1 h-1 rounded-full bg-bit-accent transition-all group-hover/more:scale-150 ${isExpanded ? 'bg-white' : 'animate-pulse'}`} />
+                          {isExpanded ? 'Show Less' : 'Show More'}
+                        </button>
+                      )}
+
                       {fullDescription !== book.description && (
                         <span className="block mt-6 text-[10px] font-mono text-white/20 uppercase tracking-widest border-t border-white/5 pt-4">
                           (This is an automatically generated neural summary)
@@ -206,25 +306,55 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
 
               <section className="mb-12">
                 <h3 className="text-xl font-display font-semibold text-white mb-6">Metadata Archive</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
                     <p className="text-[10px] font-mono text-gray-500 uppercase mb-1">Impact Score</p>
                     <p className="text-2xl font-display font-bold text-white">{book.popularity}%</p>
                   </div>
                   <div className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
-                    <p className="text-[10px] font-mono text-gray-500 uppercase mb-1">Volume Type</p>
-                    <p className="text-2xl font-display font-bold text-white">Full Stream</p>
+                    <p className="text-[10px] font-mono text-gray-500 uppercase mb-1">Downloads</p>
+                    <p className="text-2xl font-display font-bold text-white">{book.downloads?.toLocaleString() || 'UNK'}</p>
                   </div>
-                  <div className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
-                    <p className="text-[10px] font-mono text-gray-500 uppercase mb-1">Source Node</p>
-                    <p className="text-2xl font-display font-bold text-white">Gemini-3</p>
-                  </div>
+                  <button 
+                    onClick={() => onAuthorClick?.(book.author)}
+                    className="p-4 rounded-xl border border-white/5 bg-white/[0.02] text-left hover:border-bit-accent/50 transition-colors group/meta"
+                  >
+                    <p className="text-[10px] font-mono text-gray-500 uppercase mb-1 group-hover/meta:text-bit-accent transition-colors">By Artist</p>
+                    <p className="text-xl font-display font-bold text-white truncate group-hover/meta:text-bit-accent transition-colors">{book.author}</p>
+                  </button>
                   <div className="p-4 rounded-xl border border-white/5 bg-white/[0.02]">
                     <p className="text-[10px] font-mono text-gray-500 uppercase mb-1">Language</p>
                     <p className="text-2xl font-display font-bold text-white">English</p>
                   </div>
                 </div>
               </section>
+
+              {/* Archival Subjects & Collections */}
+              {((book.subjects && book.subjects.length > 0) || (book.bookshelves && book.bookshelves.length > 0)) && (
+                <section className="mb-12">
+                  <h3 className="text-xl font-display font-semibold text-white mb-6">Subject Inventory</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {book.subjects?.map((s, i) => (
+                      <button 
+                        key={i} 
+                        onClick={() => onCategoryClick?.(s)}
+                        className="px-3 py-1.5 rounded-lg bg-bit-accent/5 border border-bit-accent/20 text-[9px] font-mono text-bit-accent uppercase tracking-[0.2em] hover:bg-bit-accent hover:text-black hover:border-bit-accent transition-all active:scale-95"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                    {book.bookshelves?.map((b, i) => (
+                      <button 
+                        key={i} 
+                        onClick={() => onCategoryClick?.(b)}
+                        className="px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/10 text-[9px] font-mono text-white/50 uppercase tracking-[0.2em] hover:bg-white hover:text-black hover:border-white transition-all active:scale-95"
+                      >
+                        {b}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
           )}
 
@@ -243,6 +373,37 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
             </div>
           )}
 
+          {activeTab === 'authors' && book.authors && (
+            <div className="animate-fade-in-up space-y-6">
+              <h3 className="text-xl font-display font-semibold text-white mb-8 px-2 flex items-center gap-3">
+                <User size={20} className="text-bit-accent" /> Collaborative Registry
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {book.authors.map((author, index) => (
+                  <button
+                    key={index}
+                    onClick={() => onAuthorClick?.(author.name)}
+                    className="flex items-center gap-6 p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-bit-accent/30 transition-all group/author-card text-left relative overflow-hidden"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-bit-accent/5 to-transparent pr-4 opacity-0 group-hover/author-card:opacity-100 transition-opacity" />
+                    <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-bit-accent group-hover/author-card:bg-bit-accent group-hover/author-card:text-black transition-all duration-500 relative z-10">
+                      <User size={24} />
+                    </div>
+                    <div className="relative z-10 flex-1">
+                      <h4 className="text-lg font-display font-bold text-white group-hover/author-card:text-bit-accent transition-colors">{author.name}</h4>
+                      {author.birth_year && (
+                        <p className="font-mono text-[10px] text-gray-500 uppercase tracking-widest mt-1">
+                          {author.birth_year} — {author.death_year || 'Decelerated'}
+                        </p>
+                      )}
+                    </div>
+                    <ChevronRight size={16} className="text-white/10 group-hover/author-card:text-bit-accent group-hover/author-card:translate-x-1 transition-all relative z-10" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Related Collections Section */}
           <section className="mt-20">
             <div className="flex items-center justify-between mb-8">
@@ -250,31 +411,15 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               <ChevronRight className="text-bit-accent" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-              {similarBooks.map(b => (
-                <BookCard key={b.id} book={b} onClick={onBookClick} onRead={(sb) => onRead(sb.id)} variant="compact" />
-              ))}
+              {similarLoading ? (
+                [1, 2, 3].map(i => <BookCardSkeleton key={i} />)
+              ) : (
+                similarBooks.map(b => (
+                  <BookCard key={b.id} book={b} onClick={onBookClick} onRead={(sb) => onRead(sb.id)} variant="compact" />
+                ))
+              )}
             </div>
           </section>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export const BookDetailsSkeleton: React.FC = () => {
-  return (
-    <div className="animate-fade-in pb-20 max-w-7xl mx-auto">
-      <div className="h-8 w-32 bg-white/5 rounded-md mb-8 animate-pulse" />
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-        <div className="lg:col-span-4 h-[500px] rounded-2xl bg-white/[0.02] border border-white/5 animate-pulse" />
-        <div className="lg:col-span-8 space-y-8">
-          <div className="h-4 w-1/4 bg-white/5 rounded animate-pulse" />
-          <div className="h-16 w-3/4 bg-white/5 rounded animate-pulse" />
-          <div className="h-12 w-full bg-white/5 rounded animate-pulse" />
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(i => <div key={i} className="h-24 rounded-xl bg-white/[0.01] border border-white/5 animate-pulse" />)}
-          </div>
-          <div className="h-64 rounded-2xl bg-white/[0.01] border border-white/5 animate-pulse" />
         </div>
       </div>
     </div>

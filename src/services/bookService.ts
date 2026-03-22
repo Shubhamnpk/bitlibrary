@@ -4,15 +4,15 @@ import { INITIAL_BOOKS } from '@/constants';
 const GUTENDEX_BASE = 'https://gutendex.com/books';
 const GOOGLE_BOOKS_BASE = 'https://www.googleapis.com/books/v1/volumes';
 const IT_BOOKSTORE_BASE = 'https://api.itbook.store/1.0';
+const OPEN_LIBRARY_BASE = 'https://openlibrary.org';
 
-// --- Neural Cache Configuration (5 Minute TTL) ---
-const CACHE_TTL = 5 * 60 * 1000; 
+// --- Neural Cache Configuration (10 Minute TTL) ---
+const CACHE_TTL = 10 * 60 * 1000;
 const cache: Record<string, { data: any, timestamp: number }> = {};
 
 const getFromCache = <T>(key: string): T | null => {
   const item = cache[key];
   if (item && Date.now() - item.timestamp < CACHE_TTL) {
-    console.log(`[Cache Sync] Synchronized Node ${key} from memory registry.`);
     return item.data as T;
   }
   return null;
@@ -22,21 +22,46 @@ const setInCache = (key: string, data: any) => {
   cache[key] = { data, timestamp: Date.now() };
 };
 
+// --- Neural Format Helpers ---
+const formatAuthorName = (name: string): string => {
+  if (!name || !name.includes(',')) return name;
+  const parts = name.split(',').map(p => p.trim());
+  // Standard Surname, Given format (e.g., "Shakespeare, William")
+  if (parts.length === 2) {
+    return `${parts[1]} ${parts[0]}`;
+  }
+  return name;
+};
+
 // --- Archival Data Mappers ---
 const mapGutendexToBook = (item: any): Book => {
-  const author = item.authors && item.authors.length > 0 ? item.authors.map((a: any) => a.name).join(', ') : 'Unknown Entity';
+  const formattedAuthors = (item.authors || []).map((a: any) => ({
+    ...a,
+    name: formatAuthorName(a.name)
+  }));
+  const author = formattedAuthors.map(a => a.name).join(', ');
+
   const category = item.subjects && item.subjects.length > 0 ? item.subjects[0].split(' -- ')[0] : 'Unknown Science';
   const coverUrl = item.formats['image/jpeg'] || `https://covers.openlibrary.org/b/id/${item.id}-L.jpg`;
+
+  // High-Fidelity Data Extraction: Prioritize authentic summaries if available in the archive
+  const description = (item.summaries && item.summaries.length > 0)
+    ? item.summaries[0]
+    : `Classical volume found in neural archives. ${category}.`;
 
   return {
     id: `gutenberg-${item.id}`,
     gutenbergId: item.id,
     title: item.title,
     author,
+    authors: formattedAuthors,
     category,
-    description: `Classical volume found in neural archives. ${category}.`,
+    description,
     coverUrl,
     popularity: Math.min(Math.round(item.download_count / 100), 100),
+    downloads: item.download_count,
+    subjects: item.subjects,
+    bookshelves: item.bookshelves?.map((b: string) => b.replace('Category: ', '')),
     externalUrl: item.formats['text/html'] || item.formats['application/epub+zip'],
     source: 'Gutendex'
   };
@@ -50,14 +75,45 @@ const mapGoogleToBook = (item: any): Book => {
   return {
     id: `google-${item.id}`,
     title: info.title || 'Unknown Volume',
-    author: (info.authors || []).join(', ') || 'Unknown Author',
+    author: (info.authors || []).map(formatAuthorName).join(', ') || 'Unknown Author',
+    authors: (info.authors || []).map((name: string) => ({ name: formatAuthorName(name) })),
     category: (info.categories || [])[0] || 'Uncategorized',
     description: info.description || 'No neural description found for this volume.',
     coverUrl: info.imageLinks?.thumbnail || `https://covers.openlibrary.org/b/isbn/${info.industryIdentifiers?.[0]?.identifier}-L.jpg`,
     year: parseInt(info.publishedDate?.split('-')[0]) || undefined,
     pages: info.pageCount,
     source: 'Google Books',
-    externalUrl: embedUrl
+    externalUrl: embedUrl,
+    subjects: info.categories,
+    downloads: info.ratingsCount // Approximate for Google Books
+  };
+};
+
+const mapOpenLibraryToBook = (item: any): Book => {
+  const author = item.author_name ? item.author_name.join(', ') : 'Unknown Author';
+  const coverUrl = item.cover_i 
+    ? `https://covers.openlibrary.org/b/id/${item.cover_i}-L.jpg` 
+    : (item.isbn && item.isbn[0]) 
+      ? `https://covers.openlibrary.org/b/isbn/${item.isbn[0]}-L.jpg`
+      : `https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=400`;
+
+  const externalUrl = (item.ia && item.ia.length > 0)
+    ? `https://archive.org/embed/${item.ia[0]}`
+    : `https://openlibrary.org${item.key}`;
+
+  return {
+    id: `ol-${item.key.replace('/works/', '')}`,
+    title: item.title,
+    author: (item.author_name || []).map(formatAuthorName).join(', '),
+    authors: (item.author_name || []).map((name: string) => ({ name: formatAuthorName(name) })),
+    category: item.subject ? item.subject[0] : 'Library Volume',
+    description: item.first_sentence ? item.first_sentence[0] : 'Historical volume from Open Library Archive.',
+    coverUrl,
+    year: item.first_publish_year,
+    source: 'Open Library',
+    subjects: item.subject?.slice(0, 5),
+    popularity: item.ratings_average ? Math.round(item.ratings_average * 20) : undefined,
+    externalUrl
   };
 };
 
@@ -139,18 +195,34 @@ export const searchGoogleBooks = async (query: string): Promise<Book[]> => {
 };
 
 export const searchITBooks = async (query: string): Promise<Book[]> => {
-  const cacheKey = `itbooks-search-${query}`;
+  const cacheKey = `it-search-${query}`;
   const cached = getFromCache<Book[]>(cacheKey);
   if (cached) return cached;
 
   try {
     const response = await fetch(`${IT_BOOKSTORE_BASE}/search/${encodeURIComponent(query)}`);
     const data = await response.json();
-    const result = (data.books || []).map((item: any) => mapITToBook(item));
-    setInCache(cacheKey, result);
-    return result;
-  } catch (err) {
-    console.error('IT Bookstore sync failed:', err);
+    const books = (data.books || []).map(mapITToBook);
+    setInCache(cacheKey, books);
+    return books;
+  } catch (error) {
+    return [];
+  }
+};
+
+export const searchOpenLibrary = async (query: string): Promise<Book[]> => {
+  const cacheKey = `ol-search-${query}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const response = await fetch(`${OPEN_LIBRARY_BASE}/search.json?q=${encodeURIComponent(query)}&limit=10`);
+    const data = await response.json();
+    const books = (data.docs || []).map(mapOpenLibraryToBook);
+    setInCache(cacheKey, books);
+    return books;
+  } catch (error) {
+    console.error('[Open Library Sync] Error:', error);
     return [];
   }
 };

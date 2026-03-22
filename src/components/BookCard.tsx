@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Book } from '@/types/index';
 import { BookOpen, User, Calendar, BarChart } from 'lucide-react';
 
@@ -6,10 +7,12 @@ interface BookCardProps {
   book: Book;
   onClick: (book: Book) => void;
   onRead?: (book: Book) => void;
+  onAuthorClick?: (name: string) => void;
   variant?: 'compact' | 'full';
 }
 
-const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, variant = 'full' }) => {
+const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, onAuthorClick, variant = 'full' }) => {
+  const navigate = useNavigate();
   // Generate a deterministic aesthetic gradient based on ID
   const gradients = [
     "from-orange-500/20 to-purple-900/40",
@@ -59,9 +62,12 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, variant = 'f
           )}
 
           {/* Always show category badge */}
-          <div className="absolute top-3 left-3 z-20 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded border border-white/10 text-[9px] uppercase tracking-wider font-mono text-bit-accent shadow-xl">
+          <button 
+            onClick={(e) => { e.stopPropagation(); navigate(`/category/${encodeURIComponent(book.category)}`); }}
+            className="absolute top-3 left-3 z-30 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded border border-white/10 text-[9px] uppercase tracking-wider font-mono text-bit-accent shadow-xl hover:bg-bit-accent hover:text-black hover:border-bit-accent transition-all active:scale-95"
+          >
             {book.category}
-          </div>
+          </button>
 
           {/* Cinematic Overlay & Action HUD Stack */}
           <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 backdrop-blur-[6px] transition-all duration-500 flex flex-col items-center justify-center p-6 gap-3 z-20">
@@ -91,7 +97,12 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, variant = 'f
           <div className="flex flex-col h-full">
             <div className={variant === 'full' ? 'mb-4' : ''}>
               <h3 className={`font-display font-bold text-white leading-tight line-clamp-2 group-hover:text-bit-accent transition-colors mb-1 ${variant === 'full' ? 'text-base' : 'text-sm'}`}>{book.title}</h3>
-              <p className="text-[9px] text-gray-500 font-mono tracking-widest uppercase">By {book.author}</p>
+              <button 
+                onClick={(e) => { e.stopPropagation(); onAuthorClick?.(book.author); }}
+                className="text-[9px] text-gray-500 hover:text-bit-accent font-mono tracking-widest uppercase transition-colors text-left"
+              >
+                By {book.author}
+              </button>
             </div>
 
             {variant === 'full' && (

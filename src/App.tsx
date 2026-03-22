@@ -2,14 +2,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Book, ViewState } from '@/types/index';
 import { INITIAL_BOOKS, CATEGORIES } from '@/constants';
 import { searchBooksWithGemini, generateSearchInsights } from '@/services/geminiService';
-import { searchBooksInGutendex, fetchBooksFromGutendex, fetchBookById, searchGoogleBooks, searchITBooks } from '@/services/bookService';
+import { searchBooksInGutendex, fetchBooksFromGutendex, fetchBookById, searchGoogleBooks, searchITBooks, searchOpenLibrary } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import Reader, { ReaderSkeleton } from '@/components/Reader';
 import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight } from 'lucide-react';
-import BookDetails, { BookDetailsSkeleton } from '@/pages/BookDetails';
+import BookDetails from '@/pages/BookDetails';
+import { BookCardSkeleton, BookGridSkeleton, SearchInsightSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import LibraryPage from '@/pages/Library';
 import BrowseBooks from '@/pages/BrowseBooks';
 import StaticPage from '@/pages/StaticPage';
+import AuthorDetails from '@/pages/AuthorDetails';
+import CategoryDetails from '@/pages/CategoryDetails';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams } from 'react-router-dom';
 
@@ -67,27 +70,34 @@ const App: React.FC = () => {
         setIsSearching(true);
         setSearchAIAnalysis(null);
         try {
-          const [geminiResults, archiveResults, googleResults, itResults] = await Promise.all([
-            searchBooksWithGemini(query),
+          // Parallel Archival Fetch (Non-AI sources load first)
+          const [archiveResults, googleResults, itResults, olResults] = await Promise.all([
             searchBooksInGutendex(query),
             searchGoogleBooks(query),
-            searchITBooks(query)
+            searchITBooks(query),
+            searchOpenLibrary(query)
           ]);
-          
-          const merged: Book[] = [
-            ...geminiResults.map(b => ({ ...b, source: 'neural' as const })),
-            ...archiveResults.map(b => ({ ...b, source: 'traditional' as const })),
-            ...googleResults.map(b => ({ ...b, source: 'traditional' as const })),
-            ...itResults.map(b => ({ ...b, source: 'traditional' as const }))
-          ];
-          setSearchResults(merged);
+
+          const archiveMerged = [...archiveResults, ...googleResults, ...itResults, ...olResults];
+          setSearchResults(archiveMerged);
+          setIsSearching(false); // Skeletons out for traditional results
+
+          // High-Latency Neural Synthesizer (Gemini results added post-initial sync)
+          searchBooksWithGemini(query).then(geminiResults => {
+            if (geminiResults.length > 0) {
+              setSearchResults(prev => [
+                ...geminiResults.map(b => ({ ...b, source: 'neural' as const })),
+                ...prev
+              ]);
+            }
+          });
 
           // Asynchronous Insight Sync
           generateSearchInsights(query).then(res => setSearchAIAnalysis(res));
         } catch (err) {
           console.error("Neural search failed:", err);
+          setIsSearching(false);
         }
-        setIsSearching(false);
       };
       performSearch();
     } else {
@@ -106,10 +116,12 @@ const App: React.FC = () => {
   // Auto-Search Neural Synchronization (Debounced after 3 characters)
   useEffect(() => {
     const trimmed = searchQuery.trim();
-    // Neutral Constraint: Do not auto-navigate if the user has already entered a deep archival sector
-    const isDeepSector = location.pathname.startsWith('/book/') || location.pathname.startsWith('/reader/');
-    
-    if (trimmed.length >= 3 && !isDeepSector) {
+    const isDeepSector = location.pathname.startsWith('/book/') ||
+      location.pathname.startsWith('/reader/') ||
+      location.pathname.startsWith('/author/');
+
+    const isSearchableSector = location.pathname === '/' || location.pathname === '/search';
+    if (trimmed.length >= 3 && !isDeepSector && isSearchableSector) {
       const timer = setTimeout(() => {
         // Deterministic Sync: Only trigger if the current search isn't already for this query
         if (searchParams.get('q') !== trimmed) {
@@ -179,7 +191,7 @@ const App: React.FC = () => {
             </form>
 
             <div className="hidden md:flex items-center gap-6 font-mono text-xs tracking-wider">
-               <Link to="/" className={`hover:text-white transition-colors uppercase ${activeTab('/') ? 'text-bit-accent' : 'text-gray-400'}`}>Discover</Link>
+              <Link to="/" className={`hover:text-white transition-colors uppercase ${activeTab('/') ? 'text-bit-accent' : 'text-gray-400'}`}>Discover</Link>
               <Link to="/library" className={`hover:text-white transition-colors uppercase ${activeTab('/library') ? 'text-bit-accent' : 'text-gray-400'}`}>Library</Link>
               <Link to="/mylibrary" className={`hover:text-white transition-colors uppercase ${activeTab('/mylibrary') ? 'text-bit-accent' : 'text-gray-400'}`}>My Library</Link>
               <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-900 border border-white/10 flex items-center justify-center cursor-pointer">
@@ -275,8 +287,9 @@ const App: React.FC = () => {
           } />
 
           {/* Discovery / Library Registry */}
-          <Route path="/library" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
-          <Route path="/books" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
+          <Route path="/library/:categoryId?" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
+          <Route path="/books/:categoryId?" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
+          <Route path="/browse/:categoryId?" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
 
           {/* Personal Bookshelf */}
           <Route path="/mylibrary" element={
@@ -294,58 +307,57 @@ const App: React.FC = () => {
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-8 mb-8">
                   <div>
                     <h2 className="text-4xl md:text-5xl font-display font-bold text-white tracking-tighter">
-                        {isSearching ? <span className="animate-pulse tracking-widest text-bit-accent text-3xl">SCANNING_GRID...</span> : `Sector Results: ${searchResults.length}`}
+                      {isSearching ? <span className="animate-pulse tracking-widest text-bit-accent text-3xl">SCANNING_GRID...</span> : `Sector Results: ${searchResults.length}`}
                     </h2>
                     <p className="text-xs text-gray-600 font-mono mt-2 uppercase tracking-[0.4em]">Archival_Link: {searchQuery.toUpperCase() || 'NULL'}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-bit-accent/5 border border-bit-accent/20 text-[8px] font-mono text-bit-accent">
-                        <Zap size={10} className="animate-pulse" /> NEURAL_SEARCH_ACTIVE
+                      <Zap size={10} className="animate-pulse" /> NEURAL_SEARCH_ACTIVE
                     </div>
                   </div>
                 </div>
 
                 {!isSearching && searchAIAnalysis && (
                   <div className="p-8 rounded-2xl bg-gradient-to-br from-bit-accent/5 to-transparent border border-white/5 mb-16 relative overflow-hidden group animate-fade-in">
-                     <div className="absolute top-0 left-0 w-[1px] h-full bg-gradient-to-b from-bit-accent/50 to-transparent" />
-                     <div className="flex items-start gap-4">
-                        <div className="p-2 bg-bit-accent/10 rounded-lg text-bit-accent mt-1 shrink-0">
-                           <Zap size={16} />
-                        </div>
-                        <div>
-                           <h3 className="text-[10px] font-mono text-bit-accent uppercase tracking-widest mb-3 font-bold">Neural Insight Syncing</h3>
-                           <p className="text-gray-200 leading-relaxed text-lg font-serif italic font-medium">
-                              "{searchAIAnalysis}"
-                           </p>
-                        </div>
-                     </div>
+                    <div className="absolute top-0 left-0 w-[1px] h-full bg-gradient-to-b from-bit-accent/50 to-transparent" />
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 bg-bit-accent/10 rounded-lg text-bit-accent mt-1 shrink-0">
+                        <Zap size={16} />
+                      </div>
+                      <div>
+                        <h3 className="text-[10px] font-mono text-bit-accent uppercase tracking-widest mb-3 font-bold">Neural Insight Syncing</h3>
+                        <p className="text-gray-200 leading-relaxed text-lg font-serif italic font-medium">
+                          "{searchAIAnalysis}"
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
 
               {isSearching ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-                    <div key={i} className="aspect-[2/3] rounded-xl bg-white/[0.02] border border-white/5 animate-pulse"></div>
-                  ))}
+                <div className="animate-fade-in">
+                  <SearchInsightSkeleton />
+                  <BookGridSkeleton count={8} />
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12 mb-24">
                   {searchResults.length > 0 ? (
                     searchResults.map(book => (
                       <div key={book.id} className="relative group">
-                         {book.source === 'neural' && (
-                           <div className="absolute -top-3 -right-3 z-20 px-2 py-1 bg-bit-accent text-black text-[8px] font-bold font-mono rounded rounded-bl-none shadow-[0_0_15px_rgba(255,77,0,0.4)] transition-transform group-hover:scale-110">
-                              NEURAL
-                           </div>
-                         )}
-                         <BookCard book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
+                        {book.source === 'neural' && (
+                          <div className="absolute -top-3 -right-3 z-20 px-2 py-1 bg-bit-accent text-black text-[8px] font-bold font-mono rounded rounded-bl-none shadow-[0_0_15px_rgba(255,77,0,0.4)] transition-transform group-hover:scale-110">
+                            NEURAL
+                          </div>
+                        )}
+                        <BookCard book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
                       </div>
                     ))
                   ) : (
                     <div className="col-span-full py-40 text-center">
-                       <Zap className="mx-auto text-gray-800 mb-6" size={48} />
-                       <p className="text-gray-600 font-mono text-xs uppercase tracking-[0.3em]">Neural link severed. No results found.</p>
+                      <Zap className="mx-auto text-gray-800 mb-6" size={48} />
+                      <p className="text-gray-600 font-mono text-xs uppercase tracking-[0.3em]">Neural link severed. No results found.</p>
                     </div>
                   )}
                 </div>
@@ -355,10 +367,10 @@ const App: React.FC = () => {
 
           {/* Deep Routes (Wrappers for details/reader) */}
           <Route path="/book/:id" element={
-            <BookDetailsRoute 
-              books={[...featuredBooks, ...searchResults]} 
+            <BookDetailsRoute
+              books={[...featuredBooks, ...searchResults]}
               onRead={(id) => {
-                const b = [...featuredBooks, ...searchResults, ...INITIAL_BOOKS].find(node => node.id === id);
+                const b = [...featuredBooks, ...searchResults].find(node => node.id === id);
                 if (b) {
                   setActiveBook(b);
                   setIsMinimized(false);
@@ -372,9 +384,19 @@ const App: React.FC = () => {
                     setReaderLoading(false);
                   });
                 }
-              }} 
-              onBookClick={(id) => navigate(`/book/${id}`)} 
+              }}
+              onBookClick={(id) => navigate(`/book/${id}`)}
+              onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
+              onCategoryClick={(cat) => navigate(`/category/${encodeURIComponent(cat)}`)}
             />
+          } />
+
+          <Route path="/author/:name" element={
+            <AuthorDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+          } />
+
+          <Route path="/category/:categoryId" element={
+            <CategoryDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
           } />
 
           {/* Static Pages */}
@@ -491,10 +513,10 @@ const App: React.FC = () => {
       {/* Global PiP Overlay */}
       {readerLoading && !activeBook && <ReaderSkeleton />}
       {activeBook && (
-        <Reader 
-          book={activeBook} 
+        <Reader
+          book={activeBook}
           isMinimized={isMinimized}
-          onClose={() => setActiveBook(null)} 
+          onClose={() => setActiveBook(null)}
           onToggleMinimize={(min) => setIsMinimized(min)}
         />
       )}
@@ -503,10 +525,12 @@ const App: React.FC = () => {
 };
 
 // Route Wrappers to handle fetching by ID
-const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, onBookClick: (id: string) => void }> = ({ books, onRead, onBookClick }) => {
+const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, onBookClick: (id: string) => void, onAuthorClick: (name: string) => void, onCategoryClick: (cat: string) => void }> = ({ books, onRead, onBookClick, onAuthorClick, onCategoryClick }) => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [book, setBook] = useState<Book | null>(() => books.find(b => b.id === id) || INITIAL_BOOKS.find(b => b.id === id) || null);
+  const location = useLocation();
+
+  const [book, setBook] = useState<Book | null>(() => books.find(b => b.id === id) || null);
   const [loading, setLoading] = useState(!book);
 
   useEffect(() => {
@@ -515,7 +539,7 @@ const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, 
       // Background sync - even if we have local cache
       const data = await fetchBookById(id);
       if (data) {
-          setBook(data);
+        setBook(data);
       }
       setLoading(false);
     };
@@ -530,8 +554,16 @@ const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, 
       book={book}
       allBooks={books}
       onClose={() => navigate('/library')}
-      onRead={(id) => onRead(id || book.id)}
-      onBookClick={(b) => onBookClick(b.id)}
+      onRead={(rid) => onRead(rid || book.id)}
+      onBookClick={(b) => navigate(`/book/${b.id}`, { state: { path: [...(location.state?.path || []), book] } })}
+      onAuthorClick={onAuthorClick}
+      onCategoryClick={onCategoryClick}
+      onBreadcrumbClick={(b, index) => {
+        const currentPath = location.state?.path || [];
+        // Truncate path to avoid circular loops
+        navigate(`/book/${b.id}`, { state: { path: currentPath.slice(0, index) } });
+      }}
+      breadcrumbPath={location.state?.path || []}
     />
   );
 };
