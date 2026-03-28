@@ -1,20 +1,66 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Book, ViewState } from '@/types/index';
 import { INITIAL_BOOKS, CATEGORIES } from '@/constants';
-import { searchBooksWithGemini, generateSearchInsights } from '@/services/geminiService';
-import { searchBooksInGutendex, fetchBooksFromGutendex, fetchBookById, searchGoogleBooks, searchITBooks, searchOpenLibrary, searchInternetArchive } from '@/services/bookService';
+import { fetchBooksFromGutendex, fetchBookById } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import Reader, { ReaderSkeleton } from '@/components/Reader';
 import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight } from 'lucide-react';
 import BookDetails from '@/pages/BookDetails';
-import { BookCardSkeleton, BookGridSkeleton, SearchInsightSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
+import { BookDetailsSkeleton } from '@/components/Skeletons';
 import LibraryPage from '@/pages/Library';
 import BrowseBooks from '@/pages/BrowseBooks';
 import StaticPage from '@/pages/StaticPage';
 import AuthorDetails from '@/pages/AuthorDetails';
 import CategoryDetails from '@/pages/CategoryDetails';
+import SearchPage from '@/pages/Search';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams } from 'react-router-dom';
+
+const SEARCH_DEBOUNCE_MS = 350;
+const MIN_SEARCH_LENGTH = 3;
+const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
+const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
+
+interface ExploreCachePayload {
+  featuredBooks: Book[];
+  borrowedBooks: Book[];
+  timestamp: number;
+}
+
+const readExploreCache = (): ExploreCachePayload | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(EXPLORE_CACHE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as ExploreCachePayload;
+    if (!parsed?.timestamp || Date.now() - parsed.timestamp > EXPLORE_CACHE_TTL) {
+      window.localStorage.removeItem(EXPLORE_CACHE_KEY);
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const writeExploreCache = (payload: Omit<ExploreCachePayload, 'timestamp'>) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(
+      EXPLORE_CACHE_KEY,
+      JSON.stringify({
+        ...payload,
+        timestamp: Date.now(),
+      })
+    );
+  } catch {
+    // Ignore storage failures and continue with network-backed state.
+  }
+};
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -40,8 +86,25 @@ const App: React.FC = () => {
   const [activeBook, setActiveBook] = useState<Book | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const [readerLoading, setReaderLoading] = useState(false);
-  const [searchAIAnalysis, setSearchAIAnalysis] = useState<string | null>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
+  const navigateToSearch = useCallback((rawQuery: string) => {
+    const trimmed = rawQuery.trim();
+
+    if (!trimmed) {
+      if (location.pathname === '/search') {
+        setSearchParams({});
+      }
+      return;
+    }
+
+    const nextSearch = `?q=${encodeURIComponent(trimmed)}`;
+    if (location.pathname === '/search') {
+      setSearchParams({ q: trimmed });
+      return;
+    }
+
+    navigate(`/search${nextSearch}`);
+  }, [location.pathname, navigate, setSearchParams]);
 
   // Sync Global Reader with URL - DECOMMISSIONED (Moved to state-driven only)
   useEffect(() => {
@@ -51,86 +114,37 @@ const App: React.FC = () => {
 
   // Sync Data on Load
   useEffect(() => {
+    const cached = readExploreCache();
+    if (cached) {
+      setFeaturedBooks(cached.featuredBooks);
+      setBorrowedBooks(cached.borrowedBooks);
+    }
+
     const syncData = async () => {
       const { books: apiBooks } = await fetchBooksFromGutendex(1);
       if (apiBooks.length > 0) {
-        setFeaturedBooks(apiBooks.slice(0, 8));
-        setBorrowedBooks([apiBooks[0], apiBooks[1]]);
+        const nextFeaturedBooks = apiBooks.slice(0, 8);
+        const nextBorrowedBooks = apiBooks.slice(0, 2);
+
+        setFeaturedBooks(nextFeaturedBooks);
+        setBorrowedBooks(nextBorrowedBooks);
+        writeExploreCache({
+          featuredBooks: nextFeaturedBooks,
+          borrowedBooks: nextBorrowedBooks,
+        });
       }
     };
-    syncData();
+
+    void syncData();
   }, []);
 
-  // Neural Search Hub
   useEffect(() => {
-    const query = searchParams.get('q');
-    if (query) {
-      setSearchQuery(query);
-      const performSearch = async () => {
-        setIsSearching(true);
-        setSearchAIAnalysis(null);
-        try {
-          // Parallel Archival Fetch (Non-AI sources load first)
-          const [archiveResults, googleResults, itResults, iaResults] = await Promise.all([
-            searchBooksInGutendex(query),
-            searchGoogleBooks(query),
-            searchITBooks(query),
-            searchInternetArchive(query)
-          ]);
-
-          const archiveMerged = [...archiveResults, ...googleResults, ...itResults, ...iaResults];
-          // Neural Relevance Engine: Rank results by title fidelity then descriptive context
-          const ranked = archiveMerged
-            .filter((v, i, a) => a.findIndex(t => t.id === v.id) === i) // Ensure absolute sectoral uniqueness
-            .sort((a, b) => {
-              const q = query.toLowerCase();
-              const getWeight = (book: Book) => {
-                let weight = 0;
-                const title = book.title.toLowerCase();
-                const desc = (book.description || '').toLowerCase();
-
-                if (title === q) weight += 10000;
-                if (title.startsWith(q)) weight += 5000;
-                if (title.includes(q)) weight += 2000;
-                if (desc.includes(q)) weight += 500;
-                if (book.author?.toLowerCase().includes(q)) weight += 100;
-                return weight;
-              };
-              return getWeight(b) - getWeight(a);
-            });
-
-          setSearchResults(ranked);
-          setIsSearching(false); // Skeletons out for traditional results
-
-          // High-Latency Neural Synthesizer (Gemini results added post-initial sync)
-          searchBooksWithGemini(query).then(geminiResults => {
-            if (geminiResults.length > 0) {
-              setSearchResults(prev => [
-                ...geminiResults.map(b => ({ ...b, source: 'neural' as const })),
-                ...prev
-              ]);
-            }
-          });
-
-          // Asynchronous Insight Sync
-          generateSearchInsights(query).then(res => setSearchAIAnalysis(res));
-        } catch (err) {
-          console.error("Neural search failed:", err);
-          setIsSearching(false);
-        }
-      };
-      performSearch();
-    } else {
-      setSearchResults([]);
-    }
+    setSearchQuery(searchParams.get('q') || '');
   }, [searchParams]);
 
   const handleSearchSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (searchQuery.trim()) {
-      setSearchParams({ q: searchQuery.trim() });
-      if (location.pathname !== '/search') navigate('/search');
-    }
+    navigateToSearch(searchQuery);
   };
 
   // Auto-Search Neural Synchronization (Debounced after 3 characters)
@@ -141,17 +155,15 @@ const App: React.FC = () => {
       location.pathname.startsWith('/author/');
 
     const isSearchableSector = location.pathname === '/' || location.pathname === '/search';
-    if (trimmed.length >= 3 && !isDeepSector && isSearchableSector) {
+    if (trimmed.length >= MIN_SEARCH_LENGTH && !isDeepSector && isSearchableSector) {
       const timer = setTimeout(() => {
-        // Deterministic Sync: Only trigger if the current search isn't already for this query
         if (searchParams.get('q') !== trimmed) {
-          setSearchParams({ q: trimmed });
-          if (location.pathname !== '/search') navigate('/search');
+          navigateToSearch(trimmed);
         }
-      }, 600); // 600ms debounce ensures optimal registry link stability
+      }, SEARCH_DEBOUNCE_MS);
       return () => clearTimeout(timer);
     }
-  }, [searchQuery, searchParams, location.pathname, navigate]);
+  }, [searchQuery, searchParams, location.pathname, navigateToSearch]);
 
   const isReaderActive = activeBook && !isMinimized;
   const activeTab = (path: string) => location.pathname === path;
@@ -253,7 +265,7 @@ const App: React.FC = () => {
                     {CATEGORIES.slice(0, 6).map(cat => (
                       <button
                         key={cat}
-                        onClick={() => { setSearchQuery(cat); setSearchParams({ q: cat }); navigate('/search'); }}
+                        onClick={() => { setSearchQuery(cat); navigateToSearch(cat); }}
                         className="px-4 py-2 rounded-lg bg-white/[0.02] border border-white/5 hover:border-bit-accent/40 hover:bg-white/[0.05] text-[10px] text-gray-400 hover:text-white transition-all font-mono uppercase tracking-widest"
                       >
                         {cat}
@@ -286,7 +298,7 @@ const App: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-display font-bold text-white mb-10">Neural Clusters</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[500px]">
-                  <div onClick={() => navigate('/search?q=Quantum')} className="col-span-1 md:col-span-2 rounded-3xl border border-white/5 bg-white/[0.01] p-10 relative overflow-hidden group cursor-pointer hover:border-bit-accent/30 transition-all">
+                  <div onClick={() => navigateToSearch('Quantum')} className="col-span-1 md:col-span-2 rounded-3xl border border-white/5 bg-white/[0.01] p-10 relative overflow-hidden group cursor-pointer hover:border-bit-accent/30 transition-all">
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 to-transparent" />
                     <h3 className="text-4xl font-display font-bold text-white relative z-10">Quantum Era</h3>
                     <p className="text-gray-500 mt-4 max-w-xs relative z-10 leading-relaxed text-sm">Synthetic analysis of particle logic and future computation streams.</p>
@@ -294,7 +306,7 @@ const App: React.FC = () => {
                       <Zap size={80} />
                     </div>
                   </div>
-                  <div onClick={() => navigate('/search?q=Philosophy')} className="rounded-3xl border border-white/5 bg-white/[0.01] p-8 relative group overflow-hidden cursor-pointer hover:border-bit-accent/30 transition-all">
+                  <div onClick={() => navigateToSearch('Philosophy')} className="rounded-3xl border border-white/5 bg-white/[0.01] p-8 relative group overflow-hidden cursor-pointer hover:border-bit-accent/30 transition-all">
                     <div className="absolute -top-10 -right-10 opacity-5 group-hover:opacity-20 transition-opacity">
                       <Library size={120} />
                     </div>
@@ -322,67 +334,13 @@ const App: React.FC = () => {
           } />
 
           <Route path="/search" element={
-            <div className="animate-fade-in">
-              <div className="mb-12">
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-8 mb-8">
-                  <div>
-                    <h2 className="text-4xl md:text-5xl font-display font-bold text-white tracking-tighter">
-                      {isSearching ? <span className="animate-pulse tracking-widest text-bit-accent text-3xl">SCANNING_GRID...</span> : `Sector Results: ${searchResults.length}`}
-                    </h2>
-                    <p className="text-xs text-gray-600 font-mono mt-2 uppercase tracking-[0.4em]">Archival_Link: {searchQuery.toUpperCase() || 'NULL'}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-bit-accent/5 border border-bit-accent/20 text-[8px] font-mono text-bit-accent">
-                      <Zap size={10} className="animate-pulse" /> NEURAL_SEARCH_ACTIVE
-                    </div>
-                  </div>
-                </div>
-
-                {!isSearching && searchAIAnalysis && (
-                  <div className="p-8 rounded-2xl bg-gradient-to-br from-bit-accent/5 to-transparent border border-white/5 mb-16 relative overflow-hidden group animate-fade-in">
-                    <div className="absolute top-0 left-0 w-[1px] h-full bg-gradient-to-b from-bit-accent/50 to-transparent" />
-                    <div className="flex items-start gap-4">
-                      <div className="p-2 bg-bit-accent/10 rounded-lg text-bit-accent mt-1 shrink-0">
-                        <Zap size={16} />
-                      </div>
-                      <div>
-                        <h3 className="text-[10px] font-mono text-bit-accent uppercase tracking-widest mb-3 font-bold">Neural Insight Syncing</h3>
-                        <p className="text-gray-200 leading-relaxed text-lg font-serif italic font-medium">
-                          "{searchAIAnalysis}"
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {isSearching ? (
-                <div className="animate-fade-in">
-                  <SearchInsightSkeleton />
-                  <BookGridSkeleton count={8} />
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12 mb-24">
-                  {searchResults.length > 0 ? (
-                    searchResults.map(book => (
-                      <div key={book.id} className="relative group">
-                        {book.source === 'neural' && (
-                          <div className="absolute -top-3 -right-3 z-20 px-2 py-1 bg-bit-accent text-black text-[8px] font-bold font-mono rounded rounded-bl-none shadow-[0_0_15px_rgba(255,77,0,0.4)] transition-transform group-hover:scale-110">
-                            NEURAL
-                          </div>
-                        )}
-                        <BookCard book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
-                      </div>
-                    ))
-                  ) : (
-                    <div className="col-span-full py-40 text-center">
-                      <Zap className="mx-auto text-gray-800 mb-6" size={48} />
-                      <p className="text-gray-600 font-mono text-xs uppercase tracking-[0.3em]">Neural link severed. No results found.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <SearchPage
+              onBookClick={(book) => navigate(`/book/${book.id}`)}
+              onRead={handleReadBook}
+              onResultsChange={setSearchResults}
+              onSearchingChange={setIsSearching}
+              onQuerySync={setSearchQuery}
+            />
           } />
 
           {/* Deep Routes (Wrappers for details/reader) */}

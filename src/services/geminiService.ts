@@ -1,36 +1,45 @@
 import axios from 'axios';
 import { Book } from "@/types/index";
 
-const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-const MODEL = "moonshotai/kimi-k2.5";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const DEFAULT_MODEL = "minimax/minimax-m2.5:free";
 
 const getApiKey = (): string => {
-  return (import.meta as any).env?.VITE_NVIDIA_API_KEY || "";
+  return (import.meta as any).env?.VITE_OPENROUTER_API_KEY || "";
+};
+
+const getModel = (): string => {
+  return (import.meta as any).env?.VITE_OPENROUTER_MODEL || DEFAULT_MODEL;
+};
+
+const getOpenRouterHeaders = (apiKey: string) => {
+  const env = (import.meta as any).env || {};
+  return {
+    "Authorization": `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    "HTTP-Referer": env.VITE_OPENROUTER_SITE_URL || "http://localhost:5173",
+    "X-Title": env.VITE_OPENROUTER_APP_NAME || "BitLibrary",
+  };
 };
 
 export const searchBooksWithGemini = async (query: string): Promise<Book[]> => {
   const apiKey = getApiKey();
   if (!apiKey || apiKey.includes("PLACEHOLDER")) {
-     return [
-       { id: 'sim-1', title: 'NVIDIA Neural Stream', author: 'Kimi V2', category: 'Tech', description: 'A simulation of heavy duty AI retrieval.', year: 2026, pages: 300, popularity: 99, coverGradient: 'from-green-900 to-black' }
-     ];
+     return [];
   }
 
   try {
-    const response = await axios.post(NVIDIA_URL, {
-      model: MODEL,
+    const response = await axios.post(OPENROUTER_URL, {
+      model: getModel(),
       messages: [{ 
         role: "user", 
         content: `Search Results: Return ONLY a JSON array of 6 academic/literary books related to "${query}". Fields: title, author, category, description, year, pages. Use professional formatting.` 
       }],
-      temperature: 1.0,
-      max_tokens: 4096,
+      temperature: 0.7,
+      max_tokens: 2048,
       stream: false
     }, {
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      }
+      headers: getOpenRouterHeaders(apiKey)
     });
 
     const text = response.data.choices[0].message.content;
@@ -44,7 +53,7 @@ export const searchBooksWithGemini = async (query: string): Promise<Book[]> => {
       coverGradient: `from-emerald-${900 - (i * 100)} to-black`
     }));
   } catch (err) {
-    console.error("NVIDIA Search Failed:", err);
+    console.error("OpenRouter search failed:", err);
     return [];
   }
 };
@@ -57,8 +66,8 @@ export const generateSearchInsights = async (query: string): Promise<string> => 
   if (!apiKey || apiKey.includes("PLACEHOLDER")) return "";
   
   try {
-    const response = await axios.post(NVIDIA_URL, {
-      model: MODEL,
+    const response = await axios.post(OPENROUTER_URL, {
+      model: getModel(),
       messages: [{ 
         role: "user", 
         content: `Briefly analyze the topic "${query}" within the context of global knowledge archives. Markdown formatting. 2 sentences max.` 
@@ -67,15 +76,12 @@ export const generateSearchInsights = async (query: string): Promise<string> => 
       max_tokens: 512,
       stream: false
     }, {
-      headers: { 
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      }
+      headers: getOpenRouterHeaders(apiKey)
     });
     
     return response.data.choices[0].message.content;
   } catch (err) {
-    console.error("Neural Insight Failed:", err);
+    console.error("OpenRouter insight failed:", err);
     return "";
   }
 };
@@ -88,8 +94,8 @@ export const generateNeuralSummary = async (book: Book): Promise<string> => {
   if (!apiKey || apiKey.includes("PLACEHOLDER")) return "Classical volume found in neural archives.";
   
   try {
-    const response = await axios.post(NVIDIA_URL, {
-      model: MODEL,
+    const response = await axios.post(OPENROUTER_URL, {
+      model: getModel(),
       messages: [{ 
         role: "user", 
         content: `Generate a 4-5 sentence professional, high-fidelity archival summary for the book "${book.title}" by ${book.author}. Focus on context, key themes, and its historical significance. Return ONLY the text.` 
@@ -98,39 +104,35 @@ export const generateNeuralSummary = async (book: Book): Promise<string> => {
       max_tokens: 1024,
       stream: false
     }, {
-      headers: { 
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      }
+      headers: getOpenRouterHeaders(apiKey)
     });
     
     return response.data.choices[0].message.content;
   } catch (err) {
-    console.error("Neural Summary Extraction Failed:", err);
+    console.error("OpenRouter summary extraction failed:", err);
     return book.description || "Archival node integrity compromised.";
   }
 };
 
 /**
- * Streams the book chapter content from NVIDIA Kimi.
+ * Streams the book chapter content from OpenRouter.
  * For true streaming UI, this returns a function that takes a callback.
  */
 export const streamBookChapter = async (book: Book, chapter: number, onChunk?: (chunk: string) => void): Promise<string> => {
   const apiKey = getApiKey();
   if (!apiKey || apiKey.includes("PLACEHOLDER")) {
-     return `## NVIDIA Neural Hub ERROR\n\nAPI KEY MISSING. Please check \`.env.local\` to enable Kimi-accelerated streaming for "${book.title}".`;
+     return `## OpenRouter ERROR\n\nAPI key missing. Please check \`.env.local\` to enable AI streaming for "${book.title}".`;
   }
 
   try {
-    const response = await fetch(NVIDIA_URL, {
+    const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+        ...getOpenRouterHeaders(apiKey),
         "Accept": "text/event-stream"
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: getModel(),
         messages: [{ 
           role: "user", 
           content: `Write a high-quality, academic Chapter ${chapter} for "${book.title}" by ${book.author}. Complete content, minimum 1000 words. Markdown formatting.` 
@@ -172,7 +174,7 @@ export const streamBookChapter = async (book: Book, chapter: number, onChunk?: (
 
     return fullText;
   } catch (err) {
-    console.error("NVIDIA Stream Failed:", err);
-    return "Neural uplink severed while communicating with Kimi nodes.";
+    console.error("OpenRouter stream failed:", err);
+    return "Neural uplink severed while communicating with OpenRouter.";
   }
 };

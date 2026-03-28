@@ -23,6 +23,8 @@ const setInCache = (key: string, data: any) => {
   cache[key] = { data, timestamp: Date.now() };
 };
 
+const normalizeCacheKey = (value: string) => value.trim().toLowerCase();
+
 // --- Neural Format Helpers ---
 const formatAuthorName = (name: string): string => {
   if (!name || !name.includes(',')) return name;
@@ -167,7 +169,7 @@ const mapArchiveToBook = (item: any): Book => {
 
 // --- Exported Archival Connectors ---
 
-export const fetchBooksFromGutendex = async (page = 1, category?: string): Promise<{ books: Book[], next: string | null }> => {
+export const fetchBooksFromGutendex = async (page = 1, category?: string, signal?: AbortSignal): Promise<{ books: Book[], next: string | null }> => {
   const cacheKey = `gutendex-list-${page}-${category || 'all'}`;
   const cached = getFromCache<{ books: Book[], next: string | null }>(cacheKey);
   if (cached) return cached;
@@ -178,7 +180,7 @@ export const fetchBooksFromGutendex = async (page = 1, category?: string): Promi
       url += `&topic=${encodeURIComponent(category)}`;
     }
 
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
     const data = await response.json();
 
     const result = {
@@ -193,14 +195,14 @@ export const fetchBooksFromGutendex = async (page = 1, category?: string): Promi
   }
 };
 
-export const searchBooksInGutendex = async (query: string): Promise<Book[]> => {
-  const cacheKey = `gutendex-search-${query}`;
+export const searchBooksInGutendex = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `gutendex-search-${normalizeCacheKey(query)}`;
   const cached = getFromCache<Book[]>(cacheKey);
   if (cached) return cached;
 
   try {
     const url = `${GUTENDEX_BASE}/?search=${encodeURIComponent(query)}&languages=en`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
     const data = await response.json();
 
     const result = data.results.map((item: any) => mapGutendexToBook(item));
@@ -212,13 +214,13 @@ export const searchBooksInGutendex = async (query: string): Promise<Book[]> => {
   }
 };
 
-export const searchGoogleBooks = async (query: string): Promise<Book[]> => {
-  const cacheKey = `google-search-${query}`;
+export const searchGoogleBooks = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `google-search-${normalizeCacheKey(query)}`;
   const cached = getFromCache<Book[]>(cacheKey);
   if (cached) return cached;
 
   try {
-    const response = await fetch(`${GOOGLE_BOOKS_BASE}?q=${encodeURIComponent(query)}&maxResults=10`);
+    const response = await fetch(`${GOOGLE_BOOKS_BASE}?q=${encodeURIComponent(query)}&maxResults=10`, { signal });
     const data = await response.json();
     const result = (data.items || []).map((item: any) => mapGoogleToBook(item));
     setInCache(cacheKey, result);
@@ -229,13 +231,13 @@ export const searchGoogleBooks = async (query: string): Promise<Book[]> => {
   }
 };
 
-export const searchITBooks = async (query: string): Promise<Book[]> => {
-  const cacheKey = `it-search-${query}`;
+export const searchITBooks = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `it-search-${normalizeCacheKey(query)}`;
   const cached = getFromCache<Book[]>(cacheKey);
   if (cached) return cached;
 
   try {
-    const response = await fetch(`${IT_BOOKSTORE_BASE}/search/${encodeURIComponent(query)}`);
+    const response = await fetch(`${IT_BOOKSTORE_BASE}/search/${encodeURIComponent(query)}`, { signal });
     const data = await response.json();
     const books = (data.books || []).map(mapITToBook);
     setInCache(cacheKey, books);
@@ -245,13 +247,13 @@ export const searchITBooks = async (query: string): Promise<Book[]> => {
   }
 };
 
-export const searchOpenLibrary = async (query: string): Promise<Book[]> => {
-  const cacheKey = `ol-search-${query}`;
+export const searchOpenLibrary = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `ol-search-${normalizeCacheKey(query)}`;
   const cached = getFromCache<Book[]>(cacheKey);
   if (cached) return cached;
 
   try {
-    const response = await fetch(`${OPEN_LIBRARY_BASE}/search.json?q=${encodeURIComponent(query)}&limit=10`);
+    const response = await fetch(`${OPEN_LIBRARY_BASE}/search.json?q=${encodeURIComponent(query)}&limit=10`, { signal });
     const data = await response.json();
     const books = (data.docs || []).map(mapOpenLibraryToBook);
     setInCache(cacheKey, books);
@@ -262,14 +264,14 @@ export const searchOpenLibrary = async (query: string): Promise<Book[]> => {
   }
 };
 
-export const searchInternetArchive = async (query: string): Promise<Book[]> => {
-  const cacheKey = `ia-search-${query}`;
+export const searchInternetArchive = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `ia-search-${normalizeCacheKey(query)}`;
   const cached = getFromCache<Book[]>(cacheKey);
   if (cached) return cached;
 
   try {
     const url = `${INTERNET_ARCHIVE_BASE}?q=${encodeURIComponent(query)} AND mediatype:texts&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=date&fl[]=description&fl[]=subject&fl[]=mediatype&rows=10&page=1&output=json`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
     const data = await response.json();
     const books = (data.response?.docs || [])
       .filter((item: any) => item.mediatype === 'texts')
