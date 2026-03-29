@@ -12,12 +12,11 @@ import BrowseBooks from '@/pages/BrowseBooks';
 import StaticPage from '@/pages/StaticPage';
 import AuthorDetails from '@/pages/AuthorDetails';
 import CategoryDetails from '@/pages/CategoryDetails';
-import SearchPage from '@/pages/Search';
+import SearchPage, { SEARCH_MIN_QUERY_LENGTH } from '@/pages/Search';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams } from 'react-router-dom';
 
 const SEARCH_DEBOUNCE_MS = 350;
-const MIN_SEARCH_LENGTH = 3;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 
@@ -155,7 +154,7 @@ const App: React.FC = () => {
       location.pathname.startsWith('/author/');
 
     const isSearchableSector = location.pathname === '/' || location.pathname === '/search';
-    if (trimmed.length >= MIN_SEARCH_LENGTH && !isDeepSector && isSearchableSector) {
+    if (trimmed.length >= SEARCH_MIN_QUERY_LENGTH && !isDeepSector && isSearchableSector) {
       const timer = setTimeout(() => {
         if (searchParams.get('q') !== trimmed) {
           navigateToSearch(trimmed);

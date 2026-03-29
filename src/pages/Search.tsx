@@ -7,9 +7,10 @@ import { BookGridSkeleton, SearchInsightSkeleton } from '@/components/Skeletons'
 import { useSearchParams } from 'react-router-dom';
 import { Zap } from 'lucide-react';
 
-const MIN_SEARCH_LENGTH = 2;
+export const SEARCH_MIN_QUERY_LENGTH = 2;
 const SEARCH_CACHE_KEY = 'bitlibrary-search-cache-v1';
 const SEARCH_CACHE_TTL = 15 * 60 * 1000;
+const SEARCH_CACHE_MAX_ENTRIES = 20;
 
 interface SearchCacheEntry {
   results: Book[];
@@ -57,17 +58,37 @@ const rankBooks = (books: Book[], query: string): Book[] => {
   return [...books].sort((a, b) => getWeight(b) - getWeight(a));
 };
 
+const readSearchCacheState = (): Record<string, SearchCacheEntry> => {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(SEARCH_CACHE_KEY);
+    if (!raw) return {};
+
+    return JSON.parse(raw) as Record<string, SearchCacheEntry>;
+  } catch {
+    return {};
+  }
+};
+
+const pruneSearchCache = (cache: Record<string, SearchCacheEntry>) => {
+  const now = Date.now();
+  const freshEntries = Object.entries(cache)
+    .filter(([, entry]) => now - entry.timestamp <= SEARCH_CACHE_TTL)
+    .sort((a, b) => b[1].timestamp - a[1].timestamp)
+    .slice(0, SEARCH_CACHE_MAX_ENTRIES);
+
+  return Object.fromEntries(freshEntries);
+};
+
 const readSearchCache = (query: string): Book[] | null => {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = window.localStorage.getItem(SEARCH_CACHE_KEY);
-    if (!raw) return null;
-
-    const cache = JSON.parse(raw) as Record<string, SearchCacheEntry>;
+    const cache = pruneSearchCache(readSearchCacheState());
+    window.localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(cache));
     const entry = cache[query.trim().toLowerCase()];
     if (!entry) return null;
-    if (Date.now() - entry.timestamp > SEARCH_CACHE_TTL) return null;
     return entry.results || null;
   } catch {
     return null;
@@ -78,13 +99,13 @@ const writeSearchCache = (query: string, results: Book[]) => {
   if (typeof window === 'undefined') return;
 
   try {
-    const raw = window.localStorage.getItem(SEARCH_CACHE_KEY);
-    const current = raw ? JSON.parse(raw) as Record<string, SearchCacheEntry> : {};
+    const current = readSearchCacheState();
     current[query.trim().toLowerCase()] = {
       results,
       timestamp: Date.now(),
     };
-    window.localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(current));
+    const nextCache = pruneSearchCache(current);
+    window.localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(nextCache));
   } catch {
     // Ignore storage failures; network search still works.
   }
@@ -93,6 +114,7 @@ const writeSearchCache = (query: string, results: Book[]) => {
 interface SearchPageProps {
   onBookClick: (book: Book) => void;
   onRead: (book: Book) => void;
+  onAuthorClick: (name: string) => void;
   onResultsChange: (books: Book[]) => void;
   onSearchingChange: (value: boolean) => void;
   onQuerySync: (value: string) => void;
@@ -101,6 +123,7 @@ interface SearchPageProps {
 const SearchPage: React.FC<SearchPageProps> = ({
   onBookClick,
   onRead,
+  onAuthorClick,
   onResultsChange,
   onSearchingChange,
   onQuerySync,
@@ -125,7 +148,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
       return;
     }
 
-    if (query.length < MIN_SEARCH_LENGTH) {
+    if (query.length < SEARCH_MIN_QUERY_LENGTH) {
       setSearchResults([]);
       setSearchAIAnalysis(null);
       setIsSearching(false);
@@ -289,7 +312,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
                     NEURAL
                   </div>
                 )}
-                <BookCard book={book} onClick={onBookClick} onRead={onRead} />
+                <BookCard book={book} onClick={onBookClick} onRead={onRead} onAuthorClick={onAuthorClick} />
               </div>
             ))
           ) : (
