@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Book } from '@/types/index';
-import { BookOpen, User, Calendar, BarChart } from 'lucide-react';
+import { BookOpen, Bookmark, Calendar, BarChart } from 'lucide-react';
+import { toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 
 interface BookCardProps {
   book: Book;
@@ -13,6 +14,8 @@ interface BookCardProps {
 
 const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, onAuthorClick, variant = 'full' }) => {
   const navigate = useNavigate();
+  const { state } = useLocalUserState();
+  const isSaved = state.savedBooks.some((entry) => entry.id === book.id);
   // Generate a deterministic aesthetic gradient based on ID
   const gradients = [
     "from-orange-500/20 to-purple-900/40",
@@ -67,6 +70,17 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, onAuthorClic
             className="absolute top-3 left-3 z-30 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded border border-white/10 text-[9px] uppercase tracking-wider font-mono text-bit-accent shadow-xl hover:bg-bit-accent hover:text-black hover:border-bit-accent transition-all active:scale-95"
           >
             {book.category}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleSavedBook(book); }}
+            className={`absolute top-3 right-3 z-30 h-9 w-9 rounded-full border backdrop-blur-md flex items-center justify-center transition-all active:scale-95 ${
+              isSaved
+                ? 'bg-bit-accent text-black border-bit-accent shadow-[0_0_20px_rgba(255,77,0,0.35)]'
+                : 'bg-black/60 text-white border-white/10 hover:border-bit-accent hover:text-bit-accent'
+            }`}
+            aria-label={isSaved ? 'Remove bookmark' : 'Save bookmark'}
+          >
+            <Bookmark size={16} className={isSaved ? 'fill-black' : ''} />
           </button>
 
           {/* Cinematic Overlay & Action HUD Stack */}

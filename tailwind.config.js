@@ -14,17 +14,17 @@ export default {
       },
       colors: {
         bit: {
-          bg: '#050505',
-          panel: '#0a0a0a',
-          border: '#1f1f1f',
-          accent: '#ff4d00',
-          accentDim: 'rgba(255, 77, 0, 0.1)',
-          text: '#ededed',
-          muted: '#888888'
+          bg: 'rgb(var(--bit-bg) / <alpha-value>)',
+          panel: 'rgb(var(--bit-panel) / <alpha-value>)',
+          border: 'rgb(var(--bit-border) / <alpha-value>)',
+          accent: 'rgb(var(--bit-accent) / <alpha-value>)',
+          accentDim: 'rgb(var(--bit-accent-rgb) / 0.1)',
+          text: 'rgb(var(--bit-text) / <alpha-value>)',
+          muted: 'rgb(var(--bit-muted) / <alpha-value>)'
         }
       },
       backgroundImage: {
-        'grid-pattern': "linear-gradient(to right, #1f1f1f 1px, transparent 1px), linear-gradient(to bottom, #1f1f1f 1px, transparent 1px)",
+        'grid-pattern': "linear-gradient(to right, rgba(var(--bit-grid), 0.28) 1px, transparent 1px), linear-gradient(to bottom, rgba(var(--bit-grid), 0.28) 1px, transparent 1px)",
       }
     },
   },

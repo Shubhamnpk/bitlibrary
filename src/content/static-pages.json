@@ -1,0 +1,150 @@
+{
+  "about": {
+    "eyebrow": "About BitLibrary",
+    "title": "A calmer home for discovering and reading open books.",
+    "subtitle": "BitLibrary brings public-domain books, author browsing, category discovery, and modern reading tools into one focused interface.",
+    "updatedLabel": "Updated",
+    "updatedValue": "March 2026",
+    "intro": [
+      "BitLibrary is designed for readers who want a simpler path from curiosity to reading. Instead of making people jump across multiple archive interfaces, it pulls discovery, search, and reading into one consistent experience.",
+      "The goal is practical: help students, researchers, and everyday readers find useful books faster, understand what they are opening, and keep track of what they want to come back to."
+    ],
+    "highlights": [
+      {
+        "icon": "library",
+        "title": "Open discovery",
+        "body": "Browse by category, author, and search terms across open-book sources without needing to understand each source separately."
+      },
+      {
+        "icon": "search",
+        "title": "Faster search flow",
+        "body": "Search is built to feel immediate, with recent queries, quick suggestions, and result refinement when you need it."
+      },
+      {
+        "icon": "shield",
+        "title": "Local-first comfort",
+        "body": "Saved books, recent searches, viewing history, and profile preferences are kept close to the reading experience."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "What BitLibrary is for",
+        "paragraphs": [
+          "BitLibrary is meant to reduce friction. When someone wants a book, a topic, or an author, the interface should help them move forward quickly instead of overwhelming them with noisy controls and scattered metadata.",
+          "That is why the product emphasizes readable pages, direct navigation, and reusable discovery patterns across the home page, search page, category pages, and detail views."
+        ]
+      },
+      {
+        "heading": "What readers can do here",
+        "paragraphs": [
+          "Readers can explore collections, search for relevant titles, inspect author and category pages, save books for later, and launch the built-in reading flow with less context switching.",
+          "The experience is intentionally broad enough for casual exploration but structured enough for academic and repeat-use workflows."
+        ]
+      },
+      {
+        "heading": "How the product is evolving",
+        "paragraphs": [
+          "The platform is still growing. Over time, these pages can expand with clearer source labeling, stronger legal language, better accessibility notes, and more detailed product documentation.",
+          "The new content system is designed to support that growth by letting the site carry much longer and better-organized page content without rewriting the UI each time."
+        ]
+      }
+    ],
+    "faq": [
+      {
+        "question": "Is BitLibrary a publisher?",
+        "answer": "No. BitLibrary is an interface for discovery and reading, not a publisher of the underlying works."
+      },
+      {
+        "question": "Does BitLibrary store my library online?",
+        "answer": "The current experience is primarily local-first, which means saved items and preferences are centered on the device experience."
+      },
+      {
+        "question": "Can these pages grow over time?",
+        "answer": "Yes. The content now lives in a structured JSON file so longer documentation and policy sections can be added much more easily."
+      }
+    ],
+    "closingTitle": "Built to stay readable as it grows",
+    "closingBody": "BitLibrary should feel clear even as its content and feature set expand. These pages are meant to explain the product in that same spirit."
+  },
+  "terms": {
+    "eyebrow": "Terms and Policies",
+    "title": "Clear rules for using BitLibrary responsibly.",
+    "subtitle": "These terms describe the expected use of the product, the limits of the service, and the general responsibilities of readers using BitLibrary.",
+    "updatedLabel": "Last updated",
+    "updatedValue": "March 2026",
+    "intro": [
+      "BitLibrary is intended to help users discover and read open and publicly accessible book content through a cleaner interface. By using the site, you agree to use it lawfully, respectfully, and in ways that do not interfere with the experience for others.",
+      "These terms are written in a more readable style, but they still communicate the basic expectations around acceptable use, content handling, and service limitations."
+    ],
+    "highlights": [
+      {
+        "icon": "file",
+        "title": "Use the service fairly",
+        "body": "Do not abuse search, scraping, automation, or traffic patterns in ways that harm the service or connected data sources."
+      },
+      {
+        "icon": "shield",
+        "title": "Verify important information",
+        "body": "Metadata, descriptions, and AI-assisted summaries may be imperfect and should be independently verified when accuracy matters."
+      },
+      {
+        "icon": "globe",
+        "title": "Respect source materials",
+        "body": "Source availability, rights status, and access conditions may vary by book and by connected archive."
+      }
+    ],
+    "sections": [
+      {
+        "heading": "1. Acceptable use",
+        "paragraphs": [
+          "You may use BitLibrary for browsing, learning, reading, and general discovery. You may not use the service to disrupt availability, overload connected services, bypass restrictions, or attempt unauthorized access to systems or data.",
+          "If automated access is ever introduced or allowed, it should follow any clearly published limits or technical controls."
+        ]
+      },
+      {
+        "heading": "2. Content and metadata",
+        "paragraphs": [
+          "BitLibrary may display metadata, source links, descriptions, and AI-assisted search enhancements. Some of this information may come from third-party or external sources and may contain errors, omissions, or outdated details.",
+          "Users are responsible for reviewing the source context before relying on a book record for academic, legal, professional, or publishing-related decisions."
+        ]
+      },
+      {
+        "heading": "3. Availability and service changes",
+        "paragraphs": [
+          "Features, interfaces, source integrations, and page content may change over time. BitLibrary may update, pause, or remove parts of the service without prior notice, especially during active product development.",
+          "We aim for continuity, but uninterrupted availability is not guaranteed."
+        ]
+      },
+      {
+        "heading": "4. Reader data and local storage",
+        "paragraphs": [
+          "BitLibrary may store local preferences such as theme, display name, recent searches, recently viewed books, and saved books to support the product experience.",
+          "Users should understand that clearing browser or local storage data may remove those preferences and records."
+        ]
+      },
+      {
+        "heading": "5. No warranty for critical reliance",
+        "paragraphs": [
+          "BitLibrary is provided on an as-is basis. While we try to make the product useful and readable, we do not guarantee completeness, uninterrupted operation, or perfect accuracy of every result.",
+          "If the information affects research, publication, accessibility, legal use, or other important outcomes, it should be checked against the original source or another trusted primary reference."
+        ]
+      }
+    ],
+    "faq": [
+      {
+        "question": "Can I rely on AI-generated descriptions alone?",
+        "answer": "No. They can help with discovery, but they should not be treated as a final authority for high-stakes use."
+      },
+      {
+        "question": "Will these terms stay short forever?",
+        "answer": "Not necessarily. The page now supports much more content, so clearer and more complete policy language can be added over time."
+      },
+      {
+        "question": "Who should I trust when a source and summary disagree?",
+        "answer": "The original source material and primary archive context should take priority over generated summaries."
+      }
+    ],
+    "closingTitle": "Readable policy is still real policy",
+    "closingBody": "These terms are intentionally written to be easier to scan, but they are still meant to guide responsible use of the product."
+  }
+}

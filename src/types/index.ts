@@ -40,3 +40,21 @@ export interface SearchFilters {
   category?: string;
   minYear?: number;
 }
+
+export type ThemeMode = 'dark' | 'light';
+
+export interface UserProfile {
+  displayName: string;
+}
+
+export interface UserSettings {
+  theme: ThemeMode;
+}
+
+export interface LocalUserState {
+  profile: UserProfile;
+  settings: UserSettings;
+  savedBooks: Book[];
+  recentSearches: string[];
+  recentlyViewed: Book[];
+}

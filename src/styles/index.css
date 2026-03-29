@@ -2,15 +2,49 @@
 @tailwind components;
 @tailwind utilities;
 
+:root,
+.theme-dark {
+  --bit-bg: 5 5 5;
+  --bit-panel: 10 10 10;
+  --bit-border: 31 31 31;
+  --bit-accent: 255 77 0;
+  --bit-accent-rgb: 255 77 0;
+  --bit-text: 237 237 237;
+  --bit-muted: 136 136 136;
+  --bit-grid: 31 31 31;
+  color-scheme: dark;
+}
+
+.theme-light {
+  --bit-bg: 247 244 238;
+  --bit-panel: 255 251 245;
+  --bit-border: 220 212 199;
+  --bit-accent: 214 58 0;
+  --bit-accent-rgb: 214 58 0;
+  --bit-text: 29 24 20;
+  --bit-muted: 110 96 84;
+  --bit-grid: 201 190 178;
+  color-scheme: light;
+}
+
 @layer base {
+  html {
+    background-color: rgb(var(--bit-bg));
+  }
+
   body {
     @apply bg-bit-bg text-bit-text font-sans overflow-x-hidden;
+    transition: background-color 200ms ease, color 200ms ease;
   }
 }
 
 @layer components {
   .glass-panel {
     @apply bg-white/[0.02] backdrop-blur-xl border border-white/5;
+  }
+
+  .theme-light .glass-panel {
+    @apply bg-black/[0.02] border-black/10;
   }
   
   .scrollbar-hide::-webkit-scrollbar {
@@ -33,20 +67,20 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 77, 0, 0.2);
+  background: rgba(var(--bit-accent-rgb), 0.2);
   border-radius: 10px;
-  border: 1px solid rgba(255, 77, 0, 0.1);
+  border: 1px solid rgba(var(--bit-accent-rgb), 0.1);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 77, 0, 0.4);
-  border: 1px solid rgba(255, 77, 0, 0.3);
+  background: rgba(var(--bit-accent-rgb), 0.4);
+  border: 1px solid rgba(var(--bit-accent-rgb), 0.3);
 }
 
 /* Firefox Registry Synchronization */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 77, 0, 0.2) transparent;
+  scrollbar-color: rgba(var(--bit-accent-rgb), 0.2) transparent;
 }
 
 @keyframes scanline {
@@ -57,6 +91,6 @@
 .scanline::after {
   content: "";
   @apply absolute inset-0 pointer-events-none;
-  background: linear-gradient(to bottom, transparent, rgba(255, 77, 0, 0.05), transparent);
+  background: linear-gradient(to bottom, transparent, rgba(var(--bit-accent-rgb), 0.05), transparent);
   animation: scanline 4s linear infinite;
 }

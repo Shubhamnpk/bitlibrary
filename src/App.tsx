@@ -4,22 +4,24 @@ import { INITIAL_BOOKS, CATEGORIES } from '@/constants';
 import { fetchBooksFromGutendex, fetchBookById } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import Reader, { ReaderSkeleton } from '@/components/Reader';
-import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight } from 'lucide-react';
+import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight, ArrowUpRight, Clock3 } from 'lucide-react';
 import BookDetails from '@/pages/BookDetails';
 import { BookDetailsSkeleton } from '@/components/Skeletons';
 import LibraryPage from '@/pages/Library';
 import BrowseBooks from '@/pages/BrowseBooks';
+import AboutPage from '@/pages/AboutPage';
 import StaticPage from '@/pages/StaticPage';
 import AuthorDetails from '@/pages/AuthorDetails';
 import CategoryDetails from '@/pages/CategoryDetails';
-import SearchPage from '@/pages/Search';
+import SearchPage, { SEARCH_MIN_QUERY_LENGTH } from '@/pages/Search';
+import { recordRecentSearch, useLocalUserState } from '@/lib/local-user';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams } from 'react-router-dom';
 
 const SEARCH_DEBOUNCE_MS = 350;
-const MIN_SEARCH_LENGTH = 3;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
+const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
 
 interface ExploreCachePayload {
   featuredBooks: Book[];
@@ -81,13 +83,16 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [isSearching, setIsSearching] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const { state: localUserState } = useLocalUserState();
 
   // Persistent Global Reader State
   const [activeBook, setActiveBook] = useState<Book | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const [readerLoading, setReaderLoading] = useState(false);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
-  const navigateToSearch = useCallback((rawQuery: string) => {
+  const searchShellRef = React.useRef<HTMLDivElement>(null);
+  const navigateToSearch = useCallback((rawQuery: string, options?: { persistRecent?: boolean }) => {
     const trimmed = rawQuery.trim();
 
     if (!trimmed) {
@@ -98,6 +103,9 @@ const App: React.FC = () => {
     }
 
     const nextSearch = `?q=${encodeURIComponent(trimmed)}`;
+    if (options?.persistRecent) {
+      recordRecentSearch(trimmed);
+    }
     if (location.pathname === '/search') {
       setSearchParams({ q: trimmed });
       return;
@@ -105,6 +113,16 @@ const App: React.FC = () => {
 
     navigate(`/search${nextSearch}`);
   }, [location.pathname, navigate, setSearchParams]);
+
+  const closeSearchSurface = useCallback(() => {
+    setIsSearchFocused(false);
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('theme-dark', 'theme-light');
+    root.classList.add(localUserState.settings.theme === 'light' ? 'theme-light' : 'theme-dark');
+  }, [localUserState.settings.theme]);
 
   // Sync Global Reader with URL - DECOMMISSIONED (Moved to state-driven only)
   useEffect(() => {
@@ -142,9 +160,21 @@ const App: React.FC = () => {
     setSearchQuery(searchParams.get('q') || '');
   }, [searchParams]);
 
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!searchShellRef.current?.contains(event.target as Node)) {
+        closeSearchSurface();
+      }
+    };
+
+    window.addEventListener('mousedown', handlePointerDown);
+    return () => window.removeEventListener('mousedown', handlePointerDown);
+  }, [closeSearchSurface]);
+
   const handleSearchSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    navigateToSearch(searchQuery);
+    navigateToSearch(searchQuery, { persistRecent: true });
+    closeSearchSurface();
   };
 
   // Auto-Search Neural Synchronization (Debounced after 3 characters)
@@ -155,7 +185,7 @@ const App: React.FC = () => {
       location.pathname.startsWith('/author/');
 
     const isSearchableSector = location.pathname === '/' || location.pathname === '/search';
-    if (trimmed.length >= MIN_SEARCH_LENGTH && !isDeepSector && isSearchableSector) {
+    if (trimmed.length >= SEARCH_MIN_QUERY_LENGTH && !isDeepSector && isSearchableSector) {
       const timer = setTimeout(() => {
         if (searchParams.get('q') !== trimmed) {
           navigateToSearch(trimmed);
@@ -179,11 +209,27 @@ const App: React.FC = () => {
       if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
         e.preventDefault();
         searchInputRef.current?.focus();
+        setIsSearchFocused(true);
+      }
+
+      if (e.key === 'Escape') {
+        closeSearchSurface();
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, []);
+  }, [closeSearchSurface]);
+
+  const trimmedSearchQuery = searchQuery.trim();
+  const searchDropdownRecent = localUserState.recentSearches.slice(0, 4);
+  const searchDropdownSuggestions = SEARCH_SUGGESTIONS.filter((item) => item.toLowerCase() !== trimmedSearchQuery.toLowerCase()).slice(0, 4);
+  const showSearchSurface = isSearchFocused && !isReaderActive;
+
+  const applySearchSelection = (query: string) => {
+    setSearchQuery(query);
+    navigateToSearch(query, { persistRecent: true });
+    closeSearchSurface();
+  };
 
   return (
     <div className="min-h-screen bg-bit-bg text-bit-text font-sans selection:bg-bit-accent selection:text-black">
@@ -212,22 +258,118 @@ const App: React.FC = () => {
             </Link>
 
             {/* Desktop Search */}
-            <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center flex-1 max-w-lg mx-8 relative group">
-              <Search className="absolute left-3 text-gray-500 group-focus-within:text-bit-accent transition-colors" size={18} />
-              <input
-                ref={searchInputRef}
-                type="text"
-                placeholder="Synchronize with registry... (Press /)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white/[0.03] border border-white/10 rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-bit-accent/50 focus:bg-white/[0.05] transition-all placeholder:text-gray-600 font-mono"
-              />
-              {isSearching && (
-                <div className="absolute right-4 animate-spin text-bit-accent">
-                  <Disc size={16} />
+            <div ref={searchShellRef} className="hidden md:block flex-1 max-w-lg mx-8 relative">
+              <form onSubmit={handleSearchSubmit} className="relative group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-bit-accent transition-colors" size={18} />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder="Search books, authors, subjects... (Press /)"
+                  value={searchQuery}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white/[0.03] border border-white/10 rounded-full py-2 pl-10 pr-24 text-sm focus:outline-none focus:border-bit-accent/50 focus:bg-white/[0.05] transition-all placeholder:text-gray-600"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                  {trimmedSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        searchInputRef.current?.focus();
+                      }}
+                      className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500 hover:text-white transition-colors"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  {isSearching ? (
+                    <div className="animate-spin text-bit-accent">
+                      <Disc size={16} />
+                    </div>
+                  ) : (
+                    <button
+                      type="submit"
+                      className="px-3 py-1 rounded-full bg-bit-accent text-black text-[10px] font-mono uppercase tracking-[0.2em] hover:scale-[0.98] transition-transform"
+                    >
+                      Search
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              {showSearchSurface && (
+                <div className="absolute left-0 right-0 top-[calc(100%+0.75rem)] rounded-3xl border border-white/10 bg-bit-panel/95 backdrop-blur-2xl shadow-2xl shadow-black/40 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent">Search Control</p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        {trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
+                          ? `Press Enter to open results for "${trimmedSearchQuery}".`
+                          : `Type at least ${SEARCH_MIN_QUERY_LENGTH} characters to start searching.`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">
+                      <Command size={12} />
+                      /
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-0">
+                    <div className="p-5 border-r border-white/5">
+                      <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500 mb-4">
+                        <Clock3 size={12} />
+                        Recent Searches
+                      </div>
+                      <div className="space-y-2">
+                        {searchDropdownRecent.length > 0 ? searchDropdownRecent.map((query) => (
+                          <button
+                            key={query}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => applySearchSelection(query)}
+                            className="w-full flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-3 text-left hover:border-bit-accent/30 hover:bg-white/[0.04] transition-all group"
+                          >
+                            <span className="text-sm text-white">{query}</span>
+                            <ArrowUpRight size={14} className="text-gray-600 group-hover:text-bit-accent transition-colors" />
+                          </button>
+                        )) : (
+                          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-gray-500">
+                            Your recent searches will show up here after a few searches.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-5">
+                      <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500 mb-4">
+                        <Zap size={12} />
+                        Explore Topics
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {searchDropdownSuggestions.map((query) => (
+                          <button
+                            key={query}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => applySearchSelection(query)}
+                            className="px-3 py-2 rounded-full border border-white/10 bg-white/[0.02] text-[11px] text-gray-300 hover:text-white hover:border-bit-accent/40 hover:bg-bit-accent/10 transition-all"
+                          >
+                            {query}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-5 rounded-2xl border border-bit-accent/20 bg-bit-accent/5 p-4">
+                        <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent mb-2">Search Tips</p>
+                        <p className="text-sm text-gray-300 leading-relaxed">
+                          Try author names, broad subjects, or book themes to get richer results from every archive source.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
-            </form>
+            </div>
 
             <div className="hidden md:flex items-center gap-6 font-mono text-xs tracking-wider">
               <Link to="/" className={`hover:text-white transition-colors uppercase ${activeTab('/') ? 'text-bit-accent' : 'text-gray-400'}`}>Discover</Link>
@@ -260,8 +402,9 @@ const App: React.FC = () => {
                     BitLibrary Platform
                   </span>
                   <h1 className="text-6xl md:text-8xl font-display font-bold text-white mb-8 leading-none tracking-tighter">
-                    NEURAL DATA <br />
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-300 to-gray-700">STORM.</span>
+                    Open books,
+                    <br />
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-300 to-gray-700">open discovery.</span>
                   </h1>
                   <p className="text-lg text-gray-500 max-w-2xl mb-12 leading-relaxed font-sans">
                     The Open Digital Library for modern readers, students, and explorers of knowledge.
@@ -274,7 +417,7 @@ const App: React.FC = () => {
                     {CATEGORIES.slice(0, 6).map(cat => (
                       <button
                         key={cat}
-                        onClick={() => { setSearchQuery(cat); navigateToSearch(cat); }}
+                        onClick={() => { setSearchQuery(cat); navigateToSearch(cat, { persistRecent: true }); }}
                         className="px-4 py-2 rounded-lg bg-white/[0.02] border border-white/5 hover:border-bit-accent/40 hover:bg-white/[0.05] text-[10px] text-gray-400 hover:text-white transition-all font-mono uppercase tracking-widest"
                       >
                         {cat}
@@ -307,7 +450,7 @@ const App: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-display font-bold text-white mb-10">Neural Clusters</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[500px]">
-                  <div onClick={() => navigateToSearch('Quantum')} className="col-span-1 md:col-span-2 rounded-3xl border border-white/5 bg-white/[0.01] p-10 relative overflow-hidden group cursor-pointer hover:border-bit-accent/30 transition-all">
+                  <div onClick={() => navigateToSearch('Quantum', { persistRecent: true })} className="col-span-1 md:col-span-2 rounded-3xl border border-white/5 bg-white/[0.01] p-10 relative overflow-hidden group cursor-pointer hover:border-bit-accent/30 transition-all">
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 to-transparent" />
                     <h3 className="text-4xl font-display font-bold text-white relative z-10">Quantum Era</h3>
                     <p className="text-gray-500 mt-4 max-w-xs relative z-10 leading-relaxed text-sm">Synthetic analysis of particle logic and future computation streams.</p>
@@ -315,7 +458,7 @@ const App: React.FC = () => {
                       <Zap size={80} />
                     </div>
                   </div>
-                  <div onClick={() => navigateToSearch('Philosophy')} className="rounded-3xl border border-white/5 bg-white/[0.01] p-8 relative group overflow-hidden cursor-pointer hover:border-bit-accent/30 transition-all">
+                  <div onClick={() => navigateToSearch('Philosophy', { persistRecent: true })} className="rounded-3xl border border-white/5 bg-white/[0.01] p-8 relative group overflow-hidden cursor-pointer hover:border-bit-accent/30 transition-all">
                     <div className="absolute -top-10 -right-10 opacity-5 group-hover:opacity-20 transition-opacity">
                       <Library size={120} />
                     </div>
@@ -336,6 +479,11 @@ const App: React.FC = () => {
           <Route path="/mylibrary" element={
             <LibraryPage
               borrowedBooks={borrowedBooks}
+              savedBooks={localUserState.savedBooks}
+              recentSearches={localUserState.recentSearches}
+              recentlyViewed={localUserState.recentlyViewed}
+              profile={localUserState.profile}
+              settings={localUserState.settings}
               onBookClick={(b) => navigate(`/book/${b.id}`)}
               onRead={handleReadBook}
               onExplore={() => navigate('/')}
@@ -350,6 +498,8 @@ const App: React.FC = () => {
               onResultsChange={setSearchResults}
               onSearchingChange={setIsSearching}
               onQuerySync={setSearchQuery}
+              recentSearches={localUserState.recentSearches}
+              onQuickSearch={applySearchSelection}
             />
           } />
 
@@ -389,7 +539,7 @@ const App: React.FC = () => {
 
           {/* Static Pages */}
           <Route path="/terms" element={<StaticPage type="terms" onBack={() => navigate('/')} />} />
-          <Route path="/about" element={<StaticPage type="about" onBack={() => navigate('/')} />} />
+          <Route path="/about" element={<AboutPage onBack={() => navigate('/')} />} />
 
         </Routes>
 
