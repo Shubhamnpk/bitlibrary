@@ -13,6 +13,7 @@ import StaticPage from '@/pages/StaticPage';
 import AuthorDetails from '@/pages/AuthorDetails';
 import CategoryDetails from '@/pages/CategoryDetails';
 import SearchPage, { SEARCH_MIN_QUERY_LENGTH } from '@/pages/Search';
+import { recordRecentSearch, useLocalUserState } from '@/lib/local-user';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams } from 'react-router-dom';
 
@@ -80,13 +81,14 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [isSearching, setIsSearching] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { state: localUserState } = useLocalUserState();
 
   // Persistent Global Reader State
   const [activeBook, setActiveBook] = useState<Book | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const [readerLoading, setReaderLoading] = useState(false);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
-  const navigateToSearch = useCallback((rawQuery: string) => {
+  const navigateToSearch = useCallback((rawQuery: string, options?: { persistRecent?: boolean }) => {
     const trimmed = rawQuery.trim();
 
     if (!trimmed) {
@@ -97,6 +99,9 @@ const App: React.FC = () => {
     }
 
     const nextSearch = `?q=${encodeURIComponent(trimmed)}`;
+    if (options?.persistRecent) {
+      recordRecentSearch(trimmed);
+    }
     if (location.pathname === '/search') {
       setSearchParams({ q: trimmed });
       return;
@@ -104,6 +109,12 @@ const App: React.FC = () => {
 
     navigate(`/search${nextSearch}`);
   }, [location.pathname, navigate, setSearchParams]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('theme-dark', 'theme-light');
+    root.classList.add(localUserState.settings.theme === 'light' ? 'theme-light' : 'theme-dark');
+  }, [localUserState.settings.theme]);
 
   // Sync Global Reader with URL - DECOMMISSIONED (Moved to state-driven only)
   useEffect(() => {
@@ -143,7 +154,7 @@ const App: React.FC = () => {
 
   const handleSearchSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    navigateToSearch(searchQuery);
+    navigateToSearch(searchQuery, { persistRecent: true });
   };
 
   // Auto-Search Neural Synchronization (Debounced after 3 characters)
@@ -273,7 +284,7 @@ const App: React.FC = () => {
                     {CATEGORIES.slice(0, 6).map(cat => (
                       <button
                         key={cat}
-                        onClick={() => { setSearchQuery(cat); navigateToSearch(cat); }}
+                        onClick={() => { setSearchQuery(cat); navigateToSearch(cat, { persistRecent: true }); }}
                         className="px-4 py-2 rounded-lg bg-white/[0.02] border border-white/5 hover:border-bit-accent/40 hover:bg-white/[0.05] text-[10px] text-gray-400 hover:text-white transition-all font-mono uppercase tracking-widest"
                       >
                         {cat}
@@ -306,7 +317,7 @@ const App: React.FC = () => {
               <section>
                 <h2 className="text-2xl font-display font-bold text-white mb-10">Neural Clusters</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[500px]">
-                  <div onClick={() => navigateToSearch('Quantum')} className="col-span-1 md:col-span-2 rounded-3xl border border-white/5 bg-white/[0.01] p-10 relative overflow-hidden group cursor-pointer hover:border-bit-accent/30 transition-all">
+                  <div onClick={() => navigateToSearch('Quantum', { persistRecent: true })} className="col-span-1 md:col-span-2 rounded-3xl border border-white/5 bg-white/[0.01] p-10 relative overflow-hidden group cursor-pointer hover:border-bit-accent/30 transition-all">
                     <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 to-transparent" />
                     <h3 className="text-4xl font-display font-bold text-white relative z-10">Quantum Era</h3>
                     <p className="text-gray-500 mt-4 max-w-xs relative z-10 leading-relaxed text-sm">Synthetic analysis of particle logic and future computation streams.</p>
@@ -314,7 +325,7 @@ const App: React.FC = () => {
                       <Zap size={80} />
                     </div>
                   </div>
-                  <div onClick={() => navigateToSearch('Philosophy')} className="rounded-3xl border border-white/5 bg-white/[0.01] p-8 relative group overflow-hidden cursor-pointer hover:border-bit-accent/30 transition-all">
+                  <div onClick={() => navigateToSearch('Philosophy', { persistRecent: true })} className="rounded-3xl border border-white/5 bg-white/[0.01] p-8 relative group overflow-hidden cursor-pointer hover:border-bit-accent/30 transition-all">
                     <div className="absolute -top-10 -right-10 opacity-5 group-hover:opacity-20 transition-opacity">
                       <Library size={120} />
                     </div>
@@ -335,6 +346,11 @@ const App: React.FC = () => {
           <Route path="/mylibrary" element={
             <LibraryPage
               borrowedBooks={borrowedBooks}
+              savedBooks={localUserState.savedBooks}
+              recentSearches={localUserState.recentSearches}
+              recentlyViewed={localUserState.recentlyViewed}
+              profile={localUserState.profile}
+              settings={localUserState.settings}
               onBookClick={(b) => navigate(`/book/${b.id}`)}
               onRead={handleReadBook}
               onExplore={() => navigate('/')}

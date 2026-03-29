@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Book, ViewState } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
-import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronRight, Share, Info, Maximize2, Library, Download } from 'lucide-react';
+import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronRight, Share, Info, Maximize2, Library, Download, Bookmark } from 'lucide-react';
 import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
+import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 
 interface BookDetailsProps {
   book: Book;
@@ -27,6 +28,8 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const [isExpanded, setIsExpanded] = useState(false);
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const { state } = useLocalUserState();
+  const isSaved = state.savedBooks.some((entry) => entry.id === book.id);
 
   // Synchronize Neural History for generic volumes
   useEffect(() => {
@@ -53,6 +56,10 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
 
     loadNeuralDesc();
   }, [book.id]); // Reload on book change
+
+  useEffect(() => {
+    recordRecentlyViewedBook(book);
+  }, [book]);
 
   // Synchronize Similar Books
   useEffect(() => {
@@ -120,10 +127,16 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               {book.source}
             </div>
           )}
-          <div className="flex gap-4">
-            <button className="text-gray-400 hover:text-white transition-colors"><Share2 size={18} /></button>
-            <button className="text-gray-400 hover:text-white transition-colors"><Zap size={18} /></button>
-          </div>
+	          <div className="flex gap-4">
+	            <button
+                onClick={() => toggleSavedBook(book)}
+                className={`transition-colors ${isSaved ? 'text-bit-accent' : 'text-gray-400 hover:text-white'}`}
+              >
+                <Bookmark size={18} className={isSaved ? 'fill-current' : ''} />
+              </button>
+	            <button className="text-gray-400 hover:text-white transition-colors"><Share2 size={18} /></button>
+	            <button className="text-gray-400 hover:text-white transition-colors"><Zap size={18} /></button>
+	          </div>
         </div>
       </div>
 
