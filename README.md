@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/bitlibrary-logo-stacked.svg" alt="BitLibrary logo" width="220" />
+  <img src="./assets/bitlibrary-logo.svg" alt="BitLibrary logo" width="220" />
 </p>
 
 # BitLibrary

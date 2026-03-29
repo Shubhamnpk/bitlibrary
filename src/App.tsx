@@ -9,6 +9,7 @@ import BookDetails from '@/pages/BookDetails';
 import { BookDetailsSkeleton } from '@/components/Skeletons';
 import LibraryPage from '@/pages/Library';
 import BrowseBooks from '@/pages/BrowseBooks';
+import AboutPage from '@/pages/AboutPage';
 import StaticPage from '@/pages/StaticPage';
 import AuthorDetails from '@/pages/AuthorDetails';
 import CategoryDetails from '@/pages/CategoryDetails';
@@ -538,7 +539,7 @@ const App: React.FC = () => {
 
           {/* Static Pages */}
           <Route path="/terms" element={<StaticPage type="terms" onBack={() => navigate('/')} />} />
-          <Route path="/about" element={<StaticPage type="about" onBack={() => navigate('/')} />} />
+          <Route path="/about" element={<AboutPage onBack={() => navigate('/')} />} />
 
         </Routes>
 
