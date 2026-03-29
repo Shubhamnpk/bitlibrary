@@ -1,0 +1,11 @@
+<svg width="620" height="120" viewBox="0 0 620 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <text x="0" y="78" fill="#F8F7F4" font-family="'Space Grotesk', 'Segoe UI', sans-serif" font-size="74" font-weight="700" letter-spacing="-2">BitLibrary</text>
+  <path d="M2 106H228" stroke="url(#underlineGradient)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M250 106H520" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="8" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="underlineGradient" x1="2" y1="106" x2="228" y2="106" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF7A1F"/>
+      <stop offset="1" stop-color="#FF3D00"/>
+    </linearGradient>
+  </defs>
+</svg>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Book, ViewState } from '@/types/index';
 import { INITIAL_BOOKS, CATEGORIES } from '@/constants';
 import { fetchBooksFromGutendex, fetchBookById } from '@/services/bookService';
@@ -197,11 +197,18 @@ const App: React.FC = () => {
         <nav className="fixed top-0 left-0 right-0 z-40 border-b border-white/5 bg-bit-bg/80 backdrop-blur-xl">
           <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
 
-            <Link to="/" className="flex items-center gap-2 group">
-              <div className="w-8 h-8 bg-bit-accent rounded-sm flex items-center justify-center shadow-[0_0_15px_rgba(255,77,0,0.4)] group-hover:scale-110 transition-transform">
-                <Zap className="text-black fill-black" size={18} />
+            <Link to="/" className="flex items-center gap-3 group min-w-0">
+              <img
+                src="/assets/bitlibrary-icon-clean.svg"
+                alt="BitLibrary"
+                className="w-9 h-9 shrink-0 transition-transform group-hover:scale-105"
+              />
+              <div className="min-w-0">
+                <p className="font-display font-bold text-xl tracking-tight text-white leading-none">BitLibrary</p>
+                <p className="hidden lg:block text-[9px] font-mono uppercase tracking-[0.22em] text-bit-accent/80 mt-1">
+                  The Open Digital Library
+                </p>
               </div>
-              <span className="font-display font-bold text-xl tracking-tight text-white">BitLibrary</span>
             </Link>
 
             {/* Desktop Search */}
@@ -250,15 +257,17 @@ const App: React.FC = () => {
                 <div className="absolute -top-40 -left-40 w-[600px] h-[600px] bg-bit-accent/5 rounded-full blur-[120px] pointer-events-none" />
                 <div className="relative z-10">
                   <span className="inline-block py-1 px-3 rounded-full border border-bit-accent/20 bg-bit-accent/5 text-[10px] text-bit-accent font-mono mb-6 uppercase tracking-[0.2em]">
-                    Operating Kernel v2.0.4
+                    BitLibrary Platform
                   </span>
                   <h1 className="text-6xl md:text-8xl font-display font-bold text-white mb-8 leading-none tracking-tighter">
                     NEURAL DATA <br />
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-300 to-gray-700">STORM.</span>
                   </h1>
                   <p className="text-lg text-gray-500 max-w-2xl mb-12 leading-relaxed font-sans">
-                    Access the world's decentralized archive.
-                    Synthesize any volume from historical Gutenberg nodes or Gemini-3 Flash intelligence.
+                    The Open Digital Library for modern readers, students, and explorers of knowledge.
+                    <p className="text-sm text-gray-600 max-w-2xl mb-12 leading-relaxed font-mono uppercase tracking-[0.18em]">
+                      Search across open archives, discover authors, and explore books with a faster digital reading interface.
+                    </p>
                   </p>
 
                   <div className="flex flex-wrap gap-3">
@@ -337,6 +346,7 @@ const App: React.FC = () => {
             <SearchPage
               onBookClick={(book) => navigate(`/book/${book.id}`)}
               onRead={handleReadBook}
+              onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
               onResultsChange={setSearchResults}
               onSearchingChange={setIsSearching}
               onQuerySync={setSearchQuery}
@@ -393,15 +403,16 @@ const App: React.FC = () => {
           <div className="max-w-7xl mx-auto px-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 mb-20">
               <div className="lg:col-span-4">
-                <Link to="/" className="flex items-center gap-2 mb-6 group">
-                  <div className="w-8 h-8 bg-bit-accent rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(255,77,0,0.3)]">
-                    <Zap className="text-black fill-black" size={18} />
-                  </div>
-                  <span className="font-display font-bold text-2xl text-white">BitLibrary</span>
+                <Link to="/" className="inline-flex items-center mb-6 group">
+                  <img
+                    src="/assets/bitlibrary-logo.svg"
+                    alt="BitLibrary"
+                    className="h-14 w-auto"
+                  />
                 </Link>
                 <p className="text-gray-500 text-sm leading-relaxed mb-8 max-w-sm">
-                  Operating the world's most advanced synthetic knowledge archive.
-                  Powered by Gemini-3 Flash and decentralized edge nodes.
+                  The Open Digital Library for accessible discovery, open archives, and modern reading.
+                  Built to connect books, authors, and knowledge in one searchable interface.
                 </p>
                 <div className="flex gap-4">
                   <button className="p-2 rounded-full border border-white/5 hover:border-bit-accent/50 hover:text-bit-accent transition-all"><Github size={18} /></button>
@@ -460,7 +471,7 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-t border-white/5 pt-12 text-[10px] font-mono text-gray-600 uppercase tracking-widest">
-              <div>© 2026 BitNepal Lab • Spliced via Gemini Neural Core</div>
+              <div>© 2026 BitLibrary • The Open Digital Library</div>
               <div className="flex items-center gap-4">
                 <span>Infr Status:</span>
                 <div className="flex gap-1">
@@ -553,3 +564,6 @@ const ReaderRoute: React.FC<{ books: Book[] }> = ({ books }) => {
 };
 
 export default App;
+
+
+

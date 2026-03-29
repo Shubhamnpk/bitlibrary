@@ -1,0 +1,19 @@
+<svg width="820" height="220" viewBox="0 0 820 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="12" y="12" width="196" height="196" rx="44" fill="#0D0D11"/>
+  <rect x="30" y="30" width="160" height="160" rx="36" fill="#11131A"/>
+  <rect x="30" y="30" width="160" height="160" rx="36" stroke="#FFFFFF" stroke-opacity="0.09" stroke-width="2"/>
+  <path d="M68 64C68 58.4772 72.4772 54 78 54H108C138.928 54 164 79.0721 164 110V146C164 151.523 159.523 156 154 156H78C72.4772 156 68 151.523 68 146V64Z" fill="#171922"/>
+  <path d="M80 70C80 66.6863 82.6863 64 86 64H108C134.51 64 156 85.4903 156 112V140C156 143.314 153.314 146 150 146H86C82.6863 146 80 143.314 80 140V70Z" fill="#FAFAFA"/>
+  <path d="M80 70C80 66.6863 82.6863 64 86 64H98V146H86C82.6863 146 80 143.314 80 140V70Z" fill="#E7E7EA"/>
+  <path d="M98 64H108C134.51 64 156 85.4903 156 112V140C156 143.314 153.314 146 150 146H98V64Z" fill="#CFCFD6"/>
+  <rect x="104" y="64" width="3" height="82" rx="1.5" fill="#B4B4BC" fill-opacity="0.75"/>
+  <path d="M86 84H95" stroke="#BEBEC6" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M86 100H95" stroke="#BEBEC6" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M86 116H95" stroke="#BEBEC6" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M86 132H95" stroke="#BEBEC6" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="133" cy="105" r="23" fill="#FFFFFF" fill-opacity="0.08"/>
+  <path d="M134.84 79L119 109H134.081L125.1 149L149 114.65H135.637L134.84 79Z" fill="#11131A" stroke="#FFFFFF" stroke-opacity="0.88" stroke-width="3.5" stroke-linejoin="round"/>
+  <text x="252" y="122" fill="#F5F5F7" font-family="'Space Grotesk', 'Segoe UI', sans-serif" font-size="74" font-weight="700" letter-spacing="-2">BitLibrary</text>
+  <path d="M254 160H720" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="8" stroke-linecap="round"/>
+  <text x="255" y="191" fill="#A1A1AA" font-family="'JetBrains Mono', 'Consolas', monospace" font-size="18" font-weight="500" letter-spacing="3">THE OPEN DIGITAL LIBRARY</text>
+</svg>
