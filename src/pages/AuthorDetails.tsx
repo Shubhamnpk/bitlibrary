@@ -43,17 +43,17 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
       <nav className="mb-12 flex items-center justify-between">
         <button 
           onClick={() => navigate(-1)} 
-          className="flex items-center gap-2 text-white/40 hover:text-white transition-colors group"
+          className="flex items-center gap-2 text-bit-muted hover:text-bit-text transition-colors group"
         >
-          <div className="p-2 rounded-lg bg-white/5 group-hover:bg-bit-accent group-hover:text-black transition-all">
+          <div className="p-2 rounded-lg bg-bit-panel/50 border border-bit-border group-hover:bg-bit-accent group-hover:text-white transition-all shadow-sm">
             <ArrowLeft size={18} />
           </div>
-          <span className="font-mono text-[10px] uppercase tracking-widest">Return to Library</span>
+          <span className="font-mono text-[10px] uppercase tracking-widest font-bold">Return to Library</span>
         </button>
 
         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bit-accent/5 border border-bit-accent/10">
           <div className="w-2 h-2 rounded-full bg-bit-accent animate-pulse" />
-          <span className="font-mono text-[10px] text-bit-accent uppercase tracking-widest font-bold">Node: Author Registry</span>
+          <span className="font-mono text-[10px] text-bit-accent uppercase tracking-widest font-bold uppercase tracking-widest">Node: Author Registry</span>
         </div>
       </nav>
 
@@ -62,28 +62,28 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
         <div className="absolute -left-20 -top-20 w-64 h-64 bg-bit-accent/10 rounded-full blur-[100px] pointer-events-none" />
         
         <div className="flex flex-col md:flex-row items-end gap-10">
-          <div className="w-32 h-32 md:w-48 md:h-48 rounded-3xl bg-white/[0.03] border border-white/10 flex items-center justify-center text-bit-accent relative group overflow-hidden">
+          <div className="w-32 h-32 md:w-48 md:h-48 rounded-3xl bg-bit-panel/30 border border-bit-border flex items-center justify-center text-bit-accent relative group overflow-hidden shadow-sm">
             <User size={80} className="relative z-10 group-hover:scale-110 transition-transform duration-700" />
             <div className="absolute inset-0 bg-gradient-to-t from-bit-accent/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
 
           <div className="flex-1 space-y-4">
-            <h1 className="text-5xl md:text-7xl font-display font-bold text-white tracking-tight leading-none">
+            <h1 className="text-5xl md:text-7xl font-display font-bold text-bit-text tracking-tight leading-non tracking-tight leading-none uppercase">
               {name?.replace(/%20/g, ' ')}
             </h1>
             
             <div className="flex flex-wrap gap-6 items-center">
               {authorInfo?.birth_year && (
-                <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
+                <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-bit-panel/50 border border-bit-border shadow-sm">
                   <Calendar size={16} className="text-bit-accent" />
-                  <span className="font-mono text-xs text-white">
+                  <span className="font-mono text-xs text-bit-text font-bold">
                     {authorInfo.birth_year} — {authorInfo.death_year || 'Decelerated'}
                   </span>
                 </div>
               )}
-              <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/10">
+              <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-bit-panel/50 border border-bit-border shadow-sm">
                 <Zap size={16} className="text-bit-accent" />
-                <span className="font-mono text-xs text-white uppercase tracking-widest">
+                <span className="font-mono text-xs text-bit-text uppercase tracking-widest font-bold">
                   {books.length} Synchronized Volumes
                 </span>
               </div>
@@ -94,11 +94,11 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
 
       {/* Discovery Stream */}
       <section>
-        <div className="flex items-center justify-between mb-12 border-b border-white/5 pb-6">
-          <h3 className="text-xl font-display font-semibold text-white flex items-center gap-3">
+        <div className="flex items-center justify-between mb-12 border-b border-bit-border pb-6">
+          <h3 className="text-xl font-display font-semibold text-bit-text flex items-center gap-3">
             <Library size={20} className="text-bit-accent" /> Archived Volumes
           </h3>
-          <p className="font-mono text-[10px] text-white/20 uppercase tracking-[0.2em]">Showing decentralized results from Gutendex</p>
+          <p className="font-mono text-[10px] text-bit-muted uppercase tracking-[0.2em] font-bold">Decentralized Results from Gutendex</p>
         </div>
 
         {loading ? (
@@ -122,9 +122,9 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
         )}
 
         {!loading && books.length === 0 && (
-          <div className="py-40 text-center glass-panel rounded-3xl border-dashed border-white/10">
-            <Info size={40} className="mx-auto mb-6 text-white/10" />
-            <p className="font-mono text-sm text-white/30 uppercase tracking-[0.3em]">No associated volumes found in this sector.</p>
+          <div className="py-40 text-center bg-bit-panel/20 rounded-3xl border border-dashed border-bit-border shadow-inner">
+            <Info size={40} className="mx-auto mb-6 text-bit-muted/30" />
+            <p className="font-mono text-sm text-bit-muted/60 uppercase tracking-[0.3em] font-bold">No associated volumes found in this sector.</p>
           </div>
         )}
       </section>

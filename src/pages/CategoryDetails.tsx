@@ -58,42 +58,42 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
       <nav className="mb-12 flex items-center justify-between">
         <button 
           onClick={() => navigate(-1)} 
-          className="flex items-center gap-2 text-white/40 hover:text-white transition-colors group"
+          className="flex items-center gap-2 text-bit-muted hover:text-bit-text transition-colors group"
         >
-          <div className="p-2 rounded-lg bg-white/5 group-hover:bg-bit-accent group-hover:text-black transition-all">
+          <div className="p-2 rounded-lg bg-bit-panel/50 group-hover:bg-bit-accent group-hover:text-white transition-all border border-bit-border">
             <ArrowLeft size={18} />
           </div>
           <span className="font-mono text-[10px] uppercase tracking-widest">Return to Library</span>
         </button>
 
-        <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bit-accent/5 border border-bit-accent/10">
+        <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bit-accent/5 border border-bit-accent/20">
           <div className="w-2 h-2 rounded-full bg-bit-accent animate-pulse" />
           <span className="font-mono text-[10px] text-bit-accent uppercase tracking-widest font-bold">Node: Archival Sector</span>
         </div>
       </nav>
 
       {/* Hero Section: Category Identity */}
-      <section className="relative mb-24 border-b border-white/5 pb-16">
+      <section className="relative mb-24 border-b border-bit-border pb-16">
         <div className="absolute -left-20 -top-20 w-80 h-80 bg-bit-accent/5 rounded-full blur-[120px] pointer-events-none" />
         
         <div className="space-y-6">
-          <div className="flex items-center gap-3 text-bit-accent/50 font-mono text-[10px] uppercase tracking-[0.4em]">
-            <LayoutGrid size={14} /> Subject Cluster
+          <div className="flex items-center gap-3 text-bit-accent/50 font-mono text-[10px] uppercase tracking-[0.4em] font-bold">
+            <LayoutGrid size={14} /> Subject Cluster Active
           </div>
-          <h1 className="text-6xl md:text-8xl font-display font-bold text-white tracking-tight leading-none uppercase">
+          <h1 className="text-6xl md:text-8xl font-display font-bold text-bit-text tracking-tight leading-none uppercase">
             {decodedCategory}
           </h1>
           
           <div className="flex flex-wrap gap-6 items-center">
-            <div className="flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-white/5 border border-white/10 shadow-2xl">
+            <div className="flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-bit-panel/30 border border-bit-border shadow-sm">
               <Zap size={16} className="text-bit-accent" />
-              <span className="font-mono text-xs text-white uppercase tracking-widest">
+              <span className="font-mono text-xs text-bit-text uppercase tracking-widest font-bold">
                 {books.length}+ Archived Volumes
               </span>
             </div>
-            <div className="flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-white/5 border border-white/10 shadow-2xl">
+            <div className="flex items-center gap-3 px-5 py-2.5 rounded-2xl bg-bit-panel/30 border border-bit-border shadow-sm">
               <SlidersHorizontal size={16} className="text-bit-accent" />
-              <span className="font-mono text-xs text-white uppercase tracking-widest">
+              <span className="font-mono text-xs text-bit-text uppercase tracking-widest font-bold">
                 Optimized Sector Path
               </span>
             </div>
@@ -104,10 +104,10 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
       {/* Discovery Stream */}
       <section>
         <div className="flex items-center justify-between mb-12">
-          <h3 className="text-xl font-display font-semibold text-white flex items-center gap-3">
-            <Library size={20} className="text-bit-accent" /> Sector Volumes
+          <h3 className="text-xl font-display font-semibold text-bit-text flex items-center gap-3">
+            <Library size={20} className="text-bit-accent" /> Sector Volumes Registry
           </h3>
-          <p className="font-mono text-[10px] text-white/20 uppercase tracking-[0.2em]">Synchronizing decentralized Gutendex nodes</p>
+          <p className="font-mono text-[10px] text-bit-muted uppercase tracking-[0.2em]">Synchronizing decentralized Gutendex nodes</p>
         </div>
 
         {loading ? (
@@ -131,17 +131,17 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
         )}
 
         {!loading && books.length === 0 && (
-          <div className="py-40 text-center glass-panel rounded-3xl border-dashed border-white/10">
-            <Info size={40} className="mx-auto mb-6 text-white/10" />
-            <p className="font-mono text-sm text-white/30 uppercase tracking-[0.3em]">Sector Registry is currently empty.</p>
+          <div className="py-40 text-center bg-bit-panel/30 rounded-3xl border-dashed border-bit-border">
+            <Info size={40} className="mx-auto mb-6 text-bit-border" />
+            <p className="font-mono text-sm text-bit-muted uppercase tracking-[0.3em]">Sector Registry is currently empty.</p>
           </div>
         )}
 
         {!loading && books.length > 0 && hasMore && (
-          <div className="flex justify-center mt-12 bg-white/5 p-4 rounded-full border border-white/5 max-w-sm mx-auto group hover:border-bit-accent/30 transition-all cursor-pointer shadow-2xl" onClick={handleLoadMore}>
+          <div className="flex justify-center mt-12 bg-bit-panel/50 p-4 rounded-full border border-bit-border max-w-sm mx-auto group hover:border-bit-accent/30 shadow-md transition-all cursor-pointer" onClick={handleLoadMore}>
              <button
                 disabled={loadingMore}
-                className="text-[10px] font-mono font-bold tracking-[0.4em] uppercase text-white/60 group-hover:text-bit-accent transition-colors flex items-center gap-3"
+                className="text-[10px] font-mono font-bold tracking-[0.4em] uppercase text-bit-muted group-hover:text-bit-accent transition-colors flex items-center gap-3"
              >
                 {loadingMore ? (
                    <>

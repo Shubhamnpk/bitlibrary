@@ -16,15 +16,25 @@
 }
 
 .theme-light {
-  --bit-bg: 247 244 238;
-  --bit-panel: 255 251 245;
-  --bit-border: 220 212 199;
+  --bit-bg: 250 248 244;
+  --bit-panel: 255 255 255;
+  --bit-border: 225 218 205;
   --bit-accent: 214 58 0;
   --bit-accent-rgb: 214 58 0;
-  --bit-text: 29 24 20;
-  --bit-muted: 110 96 84;
-  --bit-grid: 201 190 178;
+  --bit-text: 15 12 10;
+  --bit-muted: 105 92 80;
+  --bit-grid: 180 170 160;
   color-scheme: light;
+}
+
+@layer utilities {
+  .text-inverse {
+    mix-blend-mode: difference;
+  }
+  
+  .glass-effect {
+    @apply backdrop-blur-xl bg-bit-panel/60 border border-bit-border/40;
+  }
 }
 
 @layer base {
@@ -93,4 +103,37 @@
   @apply absolute inset-0 pointer-events-none;
   background: linear-gradient(to bottom, transparent, rgba(var(--bit-accent-rgb), 0.05), transparent);
   animation: scanline 4s linear infinite;
+}
+
+/* Prose Bit: Unified Typography Protocol */
+.prose-bit {
+  @apply max-w-none text-bit-text transition-colors duration-300;
+}
+
+.prose-bit p {
+  @apply mb-6 leading-[1.8] text-bit-muted;
+}
+
+.prose-bit h1, .prose-bit h2, .prose-bit h3, .prose-bit h4 {
+  @apply font-display font-bold text-bit-text mb-6 mt-12 tracking-tight uppercase;
+}
+
+.prose-bit strong {
+  @apply text-bit-accent font-bold;
+}
+
+.prose-bit em {
+  @apply opacity-80 italic;
+}
+
+.prose-bit hr {
+  @apply border-bit-border my-12;
+}
+
+.prose-bit blockquote {
+  @apply border-l-4 border-bit-accent pl-6 italic text-bit-muted/80 my-8;
+}
+
+.prose-bit a {
+  @apply text-bit-accent hover:text-bit-text underline transition-colors;
 }

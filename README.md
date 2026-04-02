@@ -1,8 +1,6 @@
-<p align="center">
+<p>
   <img src="./assets/bitlibrary-logo.svg" alt="BitLibrary logo" width="220" />
 </p>
-
-# BitLibrary
 
 BitLibrary is a futuristic book discovery and reading app built with React, Vite, and TypeScript. It combines public book data sources, AI-assisted search enrichment, cached browsing, and a polished reading-focused UI.
 

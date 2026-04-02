@@ -3,6 +3,7 @@ import { Book } from "@/types/index";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "minimax/minimax-m2.5:free";
+let hasLoggedOpenRouter404 = false;
 
 const getApiKey = (): string => {
   return (import.meta as any).env?.VITE_OPENROUTER_API_KEY || "";
@@ -10,6 +11,25 @@ const getApiKey = (): string => {
 
 const getModel = (): string => {
   return (import.meta as any).env?.VITE_OPENROUTER_MODEL || DEFAULT_MODEL;
+};
+
+const parseOpenRouterError = (err: unknown): { status?: number; message: string } => {
+  if (axios.isAxiosError(err)) {
+    return {
+      status: err.response?.status,
+      message: err.response?.data?.error?.message || err.message,
+    };
+  }
+  return { message: String(err) };
+};
+const toText = (value: unknown, fallback: string): string => {
+  if (typeof value === "string") return value;
+  if (value == null) return fallback;
+  return String(value);
+};
+const toOptionalNumber = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
 
 const getOpenRouterHeaders = (apiKey: string) => {
@@ -49,11 +69,25 @@ export const searchBooksWithGemini = async (query: string): Promise<Book[]> => {
     return data.map((item: any, i: number) => ({
       ...item,
       id: `nv-${Date.now()}-${i}`,
+      title: toText(item?.title, `Neural Volume ${i + 1}`),
+      author: toText(item?.author, "Unknown Author"),
+      category: toText(item?.category, "General"),
+      description: toText(item?.description, "No neural description available."),
+      year: toOptionalNumber(item?.year),
+      pages: toOptionalNumber(item?.pages),
       popularity: 80 + i,
       coverGradient: `from-emerald-${900 - (i * 100)} to-black`
     }));
   } catch (err) {
-    console.error("OpenRouter search failed:", err);
+    const parsed = parseOpenRouterError(err);
+    if (parsed.status === 404) {
+      if (!hasLoggedOpenRouter404) {
+        console.warn("OpenRouter search disabled: endpoint/model returned 404. Check VITE_OPENROUTER_MODEL and API key.");
+        hasLoggedOpenRouter404 = true;
+      }
+      return [];
+    }
+    console.error("OpenRouter search failed:", parsed.message);
     return [];
   }
 };
@@ -81,7 +115,15 @@ export const generateSearchInsights = async (query: string): Promise<string> => 
     
     return response.data.choices[0].message.content;
   } catch (err) {
-    console.error("OpenRouter insight failed:", err);
+    const parsed = parseOpenRouterError(err);
+    if (parsed.status === 404) {
+      if (!hasLoggedOpenRouter404) {
+        console.warn("OpenRouter insights disabled: endpoint/model returned 404. Check VITE_OPENROUTER_MODEL and API key.");
+        hasLoggedOpenRouter404 = true;
+      }
+      return "";
+    }
+    console.error("OpenRouter insight failed:", parsed.message);
     return "";
   }
 };

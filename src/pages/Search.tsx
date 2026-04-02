@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Book } from '@/types/index';
-import { searchBooksWithGemini, generateSearchInsights } from '@/services/geminiService';
 import { searchBooksInGutendex, searchGoogleBooks, searchITBooks, searchOpenLibrary, searchInternetArchive } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
-import { BookGridSkeleton, SearchInsightSkeleton } from '@/components/Skeletons';
+import { BookGridSkeleton } from '@/components/Skeletons';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronDown, Search, SlidersHorizontal, Sparkles, Zap } from 'lucide-react';
+import { ChevronDown, ChevronRight, Search, SlidersHorizontal, Sparkles, Zap } from 'lucide-react';
 
 export const SEARCH_MIN_QUERY_LENGTH = 2;
 const SEARCH_CACHE_KEY = 'bitlibrary-search-cache-v1';
@@ -32,13 +31,24 @@ const mergeUniqueBooks = (...collections: Book[][]): Book[] => {
 
 const rankBooks = (books: Book[], query: string): Book[] => {
   const normalizedQuery = query.trim().toLowerCase();
+  const toSearchableText = (value: unknown): string => {
+    if (typeof value === 'string') return value;
+    if (value == null) return '';
+    if (Array.isArray(value)) return value.map((item) => toSearchableText(item)).join(' ');
+    if (typeof value === 'object') {
+      const maybeText = (value as { text?: unknown }).text;
+      if (typeof maybeText === 'string') return maybeText;
+      return '';
+    }
+    return String(value);
+  };
 
   const getWeight = (book: Book) => {
-    const title = book.title.toLowerCase();
-    const desc = (book.description || '').toLowerCase();
-    const author = (book.author || '').toLowerCase();
-    const category = (book.category || '').toLowerCase();
-    const subjects = (book.subjects || []).join(' ').toLowerCase();
+    const title = toSearchableText(book.title).toLowerCase();
+    const desc = toSearchableText(book.description).toLowerCase();
+    const author = toSearchableText(book.author).toLowerCase();
+    const category = toSearchableText(book.category).toLowerCase();
+    const subjects = (book.subjects || []).map((subject) => toSearchableText(subject)).join(' ').toLowerCase();
 
     let weight = 0;
 
@@ -133,7 +143,6 @@ const SearchPage: React.FC<SearchPageProps> = ({
   onQuickSearch,
 }) => {
   const [searchParams] = useSearchParams();
-  const [searchAIAnalysis, setSearchAIAnalysis] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Book[]>([]);
   const [activeSource, setActiveSource] = useState<'all' | Book['source']>('all');
@@ -148,7 +157,6 @@ const SearchPage: React.FC<SearchPageProps> = ({
     if (!query) {
       activeSearchRequestRef.current += 1;
       setSearchResults([]);
-      setSearchAIAnalysis(null);
       setIsSearching(false);
       onResultsChange([]);
       onSearchingChange(false);
@@ -157,7 +165,6 @@ const SearchPage: React.FC<SearchPageProps> = ({
 
     if (query.length < SEARCH_MIN_QUERY_LENGTH) {
       setSearchResults([]);
-      setSearchAIAnalysis(null);
       setIsSearching(false);
       onResultsChange([]);
       onSearchingChange(false);
@@ -177,82 +184,31 @@ const SearchPage: React.FC<SearchPageProps> = ({
 
       setIsSearching(true);
       onSearchingChange(true);
-      setSearchAIAnalysis(null);
 
-      try {
-        const fastResults = await Promise.allSettled([
-          searchBooksInGutendex(query, controller.signal),
-          searchGoogleBooks(query, controller.signal),
-          searchOpenLibrary(query, controller.signal),
-        ]);
-
-        if (activeSearchRequestRef.current !== requestId) return;
-
-        const rankedFastResults = rankBooks(
-          mergeUniqueBooks(
-            ...(fastResults.map((result) => result.status === 'fulfilled' ? result.value : []))
-          ),
-          query
-        );
-
-        setSearchResults(rankedFastResults);
-        onResultsChange(rankedFastResults);
-        writeSearchCache(query, rankedFastResults);
-        setIsSearching(false);
-        onSearchingChange(false);
-
-        const secondarySourcesPromise = Promise.allSettled([
-          searchITBooks(query, controller.signal),
-          searchInternetArchive(query, controller.signal),
-        ])
-          .then((secondaryResults) => {
-            if (activeSearchRequestRef.current !== requestId) return;
-
-            const mergedSecondary = mergeUniqueBooks(
-              rankedFastResults,
-              ...(secondaryResults.map((result) => result.status === 'fulfilled' ? result.value : []))
-            );
-            const rankedSecondary = rankBooks(mergedSecondary, query);
-            setSearchResults(rankedSecondary);
-            onResultsChange(rankedSecondary);
-            writeSearchCache(query, rankedSecondary);
-          })
-          .catch((error) => {
-            if ((error as Error)?.name !== 'AbortError') {
-              console.error('Secondary source sync failed:', error);
-            }
-          });
-
-        const geminiPromise = searchBooksWithGemini(query)
-          .then((geminiResults) => {
-            if (activeSearchRequestRef.current !== requestId || geminiResults.length === 0) return;
-            const taggedResults = geminiResults.map((book) => ({ ...book, source: 'neural' as const }));
-            setSearchResults((prev) => {
-              const next = rankBooks(mergeUniqueBooks(taggedResults, prev), query);
-              onResultsChange(next);
-              writeSearchCache(query, next);
-              return next;
-            });
-          })
-          .catch((error) => {
-            console.error('Neural result sync failed:', error);
-          });
-
-        const insightPromise = generateSearchInsights(query)
-          .then((result) => {
-            if (activeSearchRequestRef.current !== requestId) return;
-            setSearchAIAnalysis(result || null);
-          })
-          .catch((error) => {
-            console.error('Neural insight sync failed:', error);
-          });
-
-        void Promise.allSettled([secondarySourcesPromise, geminiPromise, insightPromise]);
-      } catch (err) {
-        if ((err as Error)?.name !== 'AbortError') {
-          console.error('Neural search failed:', err);
+      const updateResults = (newBooks: Book[]) => {
+        if (activeSearchRequestRef.current !== requestId || controller.signal.aborted) {
+          return;
         }
 
+        setSearchResults((prev) => {
+          const merged = mergeUniqueBooks(prev, newBooks);
+          return rankBooks(merged, query);
+        });
+      };
+
+      // 1. Concurrent Independent Streaming Fetches
+      const searchTasks = [
+        searchBooksInGutendex(query, controller.signal).then(updateResults),
+        searchGoogleBooks(query, controller.signal).then(updateResults),
+        searchOpenLibrary(query, controller.signal).then(updateResults),
+        // Secondary sources
+        searchITBooks(query, controller.signal).then(updateResults),
+        searchInternetArchive(query, controller.signal).then(updateResults),
+      ];
+
+      try {
+        await Promise.allSettled(searchTasks);
+      } finally {
         if (activeSearchRequestRef.current === requestId) {
           setIsSearching(false);
           onSearchingChange(false);
@@ -266,6 +222,14 @@ const SearchPage: React.FC<SearchPageProps> = ({
       controller.abort();
     };
   }, [onQuerySync, onResultsChange, onSearchingChange, searchParams]);
+
+  useEffect(() => {
+    onResultsChange(searchResults);
+    const query = searchParams.get('q')?.trim() || '';
+    if (query) {
+      writeSearchCache(query, searchResults);
+    }
+  }, [onResultsChange, searchParams, searchResults]);
 
   const currentQuery = searchParams.get('q')?.trim() || '';
   const isQueryReady = currentQuery.length >= SEARCH_MIN_QUERY_LENGTH;
@@ -294,172 +258,164 @@ const SearchPage: React.FC<SearchPageProps> = ({
   return (
     <div className="animate-fade-in">
       <div className="mb-12 space-y-8">
-        <section className="relative overflow-hidden rounded-[2rem] border border-white/5 bg-white/[0.02] p-8 md:p-10">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(var(--bit-accent-rgb),0.14),transparent_42%)] pointer-events-none" />
+        <section className="relative overflow-hidden rounded-[2rem] border border-bit-border bg-bit-panel/30 p-8 md:p-10 shadow-sm">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(var(--bit-accent-rgb),0.08),transparent_42%)] pointer-events-none" />
           <div className="absolute -right-16 top-0 h-48 w-48 rounded-full bg-bit-accent/10 blur-3xl pointer-events-none" />
           <div className="relative flex flex-col gap-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div>
-                <p className="text-[10px] font-mono uppercase tracking-[0.28em] text-bit-accent mb-4">Search Network</p>
-                <h2 className="text-4xl md:text-5xl font-display font-bold text-white tracking-tighter">
-                  {isSearching ? <span className="animate-pulse tracking-widest text-bit-accent text-3xl">SCANNING_GRID...</span> : (isQueryReady ? `Results for "${currentQuery}"` : 'Find your next read')}
+                <p className="text-[10px] font-mono uppercase tracking-[0.28em] text-bit-accent mb-4 font-bold">Search Network</p>
+                <h2 className="text-4xl md:text-5xl font-display font-bold text-bit-text tracking-tighter">
+                  {isQueryReady ? `Results for "${currentQuery}"` : 'Global Registry Search'}
                 </h2>
               </div>
-              {isQueryReady && searchResults.length > 0 ? (
+              {isQueryReady && searchResults.length > 0 && (
                 <div className="flex items-center md:self-center">
                   <button
                     onClick={() => setShowFilters((prev) => !prev)}
-                    className="inline-flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm text-gray-300 hover:text-white hover:border-bit-accent/40 hover:bg-bit-accent/10 transition-all"
+                    className="inline-flex items-center gap-3 rounded-full border border-bit-border bg-bit-panel/50 px-4 py-2 text-sm text-bit-muted hover:text-bit-text hover:border-bit-accent/40 hover:bg-bit-accent/10 transition-all font-mono uppercase tracking-widest"
                   >
-                    <SlidersHorizontal size={16} className="text-bit-accent" />
-                    <span>Refine Results</span>
+                    <SlidersHorizontal size={14} className="text-bit-accent" />
+                    <span>Refine Sector</span>
                     <ChevronDown
-                      size={16}
-                      className={`transition-transform ${shouldShowFilters ? 'rotate-180' : ''}`}
+                      size={14}
+                      className={`transition-transform duration-300 ${shouldShowFilters ? 'rotate-180' : ''}`}
                     />
                   </button>
                 </div>
-              ) : null}
+              )}
             </div>
-
+            {!isQueryReady && (
+               <div className="flex flex-wrap gap-2">
+                 {quickTopics.map(s => (
+                   <button
+                     key={s}
+                     onClick={() => onQuickSearch(s)}
+                     className="px-3 py-1.5 rounded-full border border-bit-border bg-bit-panel/30 text-[10px] font-mono uppercase tracking-widest text-bit-muted hover:text-bit-text hover:border-bit-accent/40 transition-all"
+                   >
+                     {s}
+                   </button>
+                 ))}
+               </div>
+            )}
           </div>
         </section>
 
+        {shouldShowFilters && searchResults.length > 0 && (
+          <section className="rounded-[2rem] border border-bit-border bg-bit-panel/30 p-6 shadow-sm animate-fade-in-up">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent mb-4 font-bold">Source Registry</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setActiveSource('all')}
+                    className={`px-3 py-1.5 rounded-full border text-[10px] font-mono uppercase tracking-widest transition-all ${activeSource === 'all' ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20' : 'border-bit-border bg-bit-panel/50 text-bit-muted hover:border-bit-accent/40'}`}
+                  >
+                    ALL_PROVIDERS
+                  </button>
+                  {sourceCounts.map(({ source, count }) => (
+                    <button
+                      key={source}
+                      onClick={() => setActiveSource(source)}
+                      className={`px-3 py-1.5 rounded-full border text-[10px] font-mono uppercase tracking-widest transition-all ${activeSource === source ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20' : 'border-bit-border bg-bit-panel/50 text-bit-muted hover:border-bit-accent/40'}`}
+                    >
+                      {source} ({count})
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent mb-4 font-bold">Subject Cluster</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setActiveCategory('all')}
+                    className={`px-3 py-1.5 rounded-full border text-[10px] font-mono uppercase tracking-widest transition-all ${activeCategory === 'all' ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20' : 'border-bit-border bg-bit-panel/50 text-bit-muted hover:border-bit-accent/40'}`}
+                  >
+                    ALL_CATEGORIES
+                  </button>
+                  {availableCategories.map((category) => (
+                    <button
+                      key={category}
+                      onClick={() => setActiveCategory(category)}
+                      className={`px-3 py-1.5 rounded-full border text-[10px] font-mono uppercase tracking-widest transition-all ${activeCategory === category ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20' : 'border-bit-border bg-bit-panel/50 text-bit-muted hover:border-bit-accent/40'}`}
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
         {!isQueryReady && (
-          <section className="grid grid-cols-1 lg:grid-cols-[1.3fr_0.7fr] gap-6">
-            <div className="rounded-[2rem] border border-white/5 bg-white/[0.02] p-8">
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="rounded-[2rem] border border-bit-border bg-bit-panel/30 p-8 shadow-sm">
               <div className="flex items-center gap-3 mb-4 text-bit-accent">
                 <Search size={18} />
-                <p className="text-[10px] font-mono uppercase tracking-[0.24em]">Start With A Better Query</p>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold">Search Protocol</p>
               </div>
-              <h3 className="text-2xl font-display font-bold text-white mb-3">Search by title, author, topic, or category.</h3>
-              <p className="text-gray-400 leading-relaxed mb-6">
-                BitLibrary works best when the query has at least {SEARCH_MIN_QUERY_LENGTH} characters. Try a broad topic first, then refine once you see the results mix.
+              <h3 className="text-2xl font-display font-bold text-bit-text mb-3 tracking-tight">Sync via title, author, or broad topic.</h3>
+              <p className="text-bit-muted leading-relaxed mb-6 text-sm">
+                BitLibrary works best when the query has at least {SEARCH_MIN_QUERY_LENGTH} characters. Try a broad sector first, then refine once the stream is active.
               </p>
               <div className="flex flex-wrap gap-3">
-                {quickTopics.map((topic) => (
-                  <button
-                    key={topic}
-                    onClick={() => onQuickSearch(topic)}
-                    className="px-4 py-2 rounded-full border border-white/10 bg-white/[0.02] text-sm text-gray-300 hover:text-white hover:border-bit-accent/40 hover:bg-bit-accent/10 transition-all"
-                  >
-                    {topic}
+                {recentSearches.slice(0, 4).map(q => (
+                  <button key={q} onClick={() => onQuickSearch(q)} className="px-3 py-1.5 rounded-lg border border-bit-border bg-bit-panel/50 text-[10px] font-mono uppercase tracking-widest text-bit-muted hover:text-bit-text hover:border-bit-accent/40 transition-all">
+                    {q}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-white/5 bg-white/[0.02] p-8">
+            <div className="rounded-[2rem] border border-bit-border bg-bit-panel/30 p-8 shadow-sm">
               <div className="flex items-center gap-3 mb-4 text-bit-accent">
                 <Sparkles size={18} />
-                <p className="text-[10px] font-mono uppercase tracking-[0.24em]">Good Search Ideas</p>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold">Suggested Nodes</p>
               </div>
-              <div className="space-y-3 text-sm text-gray-400">
-                <p>`Jane Austen` for author-first discovery.</p>
-                <p>`modern philosophy` for broad thematic browsing.</p>
-                <p>`data structures` when you want more technical sources.</p>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {!isSearching && searchAIAnalysis && (
-          <div className="p-8 rounded-2xl bg-gradient-to-br from-bit-accent/5 to-transparent border border-white/5 mb-16 relative overflow-hidden group animate-fade-in">
-            <div className="absolute top-0 left-0 w-[1px] h-full bg-gradient-to-b from-bit-accent/50 to-transparent" />
-            <div className="flex items-start gap-4">
-              <div className="p-2 bg-bit-accent/10 rounded-lg text-bit-accent mt-1 shrink-0">
-                <Zap size={16} />
-              </div>
-              <div>
-                <h3 className="text-[10px] font-mono text-bit-accent uppercase tracking-widest mb-3 font-bold">Neural Insight Syncing</h3>
-                <p className="text-gray-200 leading-relaxed text-lg font-serif italic font-medium">
-                  "{searchAIAnalysis}"
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isQueryReady && searchResults.length > 0 && shouldShowFilters && (
-          <section className="rounded-[2rem] border border-white/5 bg-white/[0.02] p-6">
-            <div className="flex items-center gap-3 mb-5">
-              <SlidersHorizontal size={16} className="text-bit-accent" />
-              <h3 className="text-lg font-display font-bold text-white">Refine Results</h3>
-            </div>
-
-            <div className="mb-6">
-              <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-gray-500 mb-3">Source</p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setActiveSource('all')}
-                  className={`px-3 py-2 rounded-full border text-[11px] transition-all ${activeSource === 'all' ? 'border-bit-accent bg-bit-accent/10 text-white' : 'border-white/10 text-gray-400 hover:text-white hover:border-bit-accent/40'}`}
-                >
-                  All Sources
-                </button>
-                {sourceCounts.map(({ source, count }) => (
-                  <button
-                    key={source}
-                    onClick={() => setActiveSource(source)}
-                    className={`px-3 py-2 rounded-full border text-[11px] transition-all ${activeSource === source ? 'border-bit-accent bg-bit-accent/10 text-white' : 'border-white/10 text-gray-400 hover:text-white hover:border-bit-accent/40'}`}
-                  >
-                    {source} ({count})
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-gray-500 mb-3">Category</p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setActiveCategory('all')}
-                  className={`px-3 py-2 rounded-full border text-[11px] transition-all ${activeCategory === 'all' ? 'border-bit-accent bg-bit-accent/10 text-white' : 'border-white/10 text-gray-400 hover:text-white hover:border-bit-accent/40'}`}
-                >
-                  All Categories
-                </button>
-                {availableCategories.map((category) => (
-                  <button
-                    key={category}
-                    onClick={() => setActiveCategory(category)}
-                    className={`px-3 py-2 rounded-full border text-[11px] transition-all ${activeCategory === category ? 'border-bit-accent bg-bit-accent/10 text-white' : 'border-white/10 text-gray-400 hover:text-white hover:border-bit-accent/40'}`}
-                  >
-                    {category}
-                  </button>
-                ))}
+              <div className="space-y-3 text-sm text-bit-muted font-mono uppercase tracking-widest text-[11px]">
+                <p className="flex items-center gap-2"><ChevronRight size={12} className="text-bit-accent" /> "Jane Austen"</p>
+                <p className="flex items-center gap-2"><ChevronRight size={12} className="text-bit-accent" /> "Modern Philosophy"</p>
+                <p className="flex items-center gap-2"><ChevronRight size={12} className="text-bit-accent" /> "Quantum Theory"</p>
               </div>
             </div>
           </section>
         )}
+
       </div>
 
-      {isSearching ? (
-        <div className="animate-fade-in">
-          <SearchInsightSkeleton />
-          <BookGridSkeleton count={8} />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12 mb-24">
-          {filteredResults.length > 0 ? (
-            filteredResults.map((book) => (
-              <div key={book.id} className="relative group">
-                {book.source === 'neural' && (
-                  <div className="absolute -top-3 -right-3 z-20 px-2 py-1 bg-bit-accent text-black text-[8px] font-bold font-mono rounded rounded-bl-none shadow-[0_0_15px_rgba(255,77,0,0.4)] transition-transform group-hover:scale-110">
-                    NEURAL
-                  </div>
-                )}
-                <BookCard book={book} onClick={onBookClick} onRead={onRead} onAuthorClick={onAuthorClick} />
-              </div>
-            ))
-          ) : (
-            <div className="col-span-full py-40 text-center">
-              <Zap className="mx-auto text-gray-800 mb-6" size={48} />
-              <p className="text-gray-600 font-mono text-xs uppercase tracking-[0.3em]">
-                {searchResults.length > 0 ? 'No books match the active filters.' : 'Neural link severed. No results found.'}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="mb-24">
+        {isSearching && searchResults.length === 0 ? (
+          <div className="animate-fade-in space-y-12">
+            <BookGridSkeleton count={8} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-10 animate-fade-in">
+            {filteredResults.length > 0 ? (
+              filteredResults.map((book) => (
+                <div key={book.id} className="relative group">
+                  {book.source === 'neural' && (
+                    <div className="absolute -top-3 -right-3 z-20 px-2 py-1 bg-bit-accent text-white text-[8px] font-bold font-mono rounded rounded-bl-none shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.4)] transition-transform group-hover:scale-110">
+                      NEURAL
+                    </div>
+                  )}
+                  <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} onAuthorClick={onAuthorClick} />
+                </div>
+              ))
+            ) : (
+              isQueryReady && !isSearching && (
+                <div className="col-span-full py-40 text-center rounded-[2rem] border border-dashed border-bit-border bg-bit-panel/30">
+                  <Zap className="mx-auto text-bit-border mb-6" size={48} />
+                  <p className="text-bit-muted font-mono text-xs uppercase tracking-[0.3em]">
+                    {searchResults.length > 0 ? 'No blocks match the active filters.' : 'Sector sync failed. No results found.'}
+                  </p>
+                </div>
+              )
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

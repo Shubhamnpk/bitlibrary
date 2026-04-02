@@ -50,22 +50,22 @@ const Library: React.FC<LibraryProps> = ({
     <div className="animate-fade-in">
       <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between mb-12 gap-8">
         <div>
-          <h1 className="text-4xl font-display font-bold text-white mb-2">Your Library</h1>
-          <p className="text-gray-500 font-mono text-sm leading-relaxed max-w-2xl">
-            Your local reading foundation for saved books, recent searches, profile preferences, and device-level settings.
+          <h1 className="text-4xl font-display font-bold text-bit-text mb-2 tracking-tight">Your Library Registry</h1>
+          <p className="text-bit-muted font-mono text-xs leading-relaxed max-w-2xl uppercase tracking-widest font-bold">
+            Personal node foundation for saved volumes, neural history, profile preferences, and device-level synchronization.
           </p>
         </div>
         <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex bg-white/[0.03] border border-white/5 rounded-lg p-1">
+          <div className="flex bg-bit-panel/50 border border-bit-border rounded-xl p-1 shadow-sm">
             {([
-              ['all', 'ALL'],
-              ['recent', 'RECENT'],
-              ['saved', 'SAVED'],
+              ['all', 'ALL_SYSTEMS'],
+              ['recent', 'RECENT_SINCE'],
+              ['saved', 'SAVED_ARCHIVE'],
             ] as const).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setActiveFilter(key)}
-                className={`px-4 py-1.5 rounded-md text-xs font-mono transition-all ${activeFilter === key ? 'bg-bit-accent text-black font-bold' : 'text-gray-500 hover:text-white'}`}
+                className={`px-4 py-2 rounded-lg text-[10px] font-mono transition-all font-bold tracking-[0.1em] ${activeFilter === key ? 'bg-bit-accent text-white shadow-lg shadow-bit-accent/20' : 'text-bit-muted hover:text-bit-text'}`}
               >
                 {label}
               </button>
@@ -83,17 +83,17 @@ const Library: React.FC<LibraryProps> = ({
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-24 border border-dashed border-white/10 rounded-3xl bg-white/[0.01]">
-              <div className="w-20 h-20 bg-white/[0.03] rounded-full flex items-center justify-center text-gray-600 mb-6">
-                <LibraryIcon size={40} />
+            <div className="flex flex-col items-center justify-center py-24 border border-dashed border-bit-border rounded-3xl bg-bit-panel/30 shadow-inner">
+              <div className="w-20 h-20 bg-bit-panel/50 border border-bit-border rounded-full flex items-center justify-center text-bit-muted mb-6 shadow-sm">
+                <LibraryIcon size={40} className="opacity-40" />
               </div>
-              <h3 className="text-xl font-display font-semibold text-white mb-2">Nothing saved yet</h3>
-              <p className="text-gray-500 font-mono text-sm mb-8 text-center max-w-md px-6">
-                Save books, open a few details pages, or search for something new and your local library foundation will start filling in here.
+              <h3 className="text-xl font-display font-bold text-bit-text mb-2">Registry Empty</h3>
+              <p className="text-bit-muted font-mono text-[10px] mb-8 text-center max-w-md px-6 uppercase tracking-[0.2em] font-bold">
+                Synchronize volumes, explore neural summaries, or search for historical data to populate this local foundation.
               </p>
               <button
                 onClick={onExplore}
-                className="px-8 py-3 rounded-xl bg-bit-accent text-black font-bold text-sm tracking-wide shadow-[0_0_20px_rgba(255,77,0,0.3)] hover:scale-105 transition-all flex items-center gap-2"
+                className="px-8 py-3 rounded-xl bg-bit-accent text-white font-bold text-xs tracking-widest shadow-lg shadow-bit-accent/20 hover:scale-105 transition-all flex items-center gap-3 uppercase"
               >
                 Start Exploration <ArrowRight size={18} />
               </button>
@@ -101,141 +101,148 @@ const Library: React.FC<LibraryProps> = ({
           )}
 
           <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+            <div className="glass-panel p-8 rounded-2xl relative overflow-hidden group shadow-sm">
               <div className="absolute -right-4 -top-4 text-bit-accent/10 group-hover:text-bit-accent/20 transition-colors">
-                <Clock size={100} />
+                <Clock size={120} />
               </div>
-              <p className="text-gray-500 text-[10px] font-mono uppercase mb-1 tracking-widest">Recently Viewed</p>
-              <h4 className="text-3xl font-display font-bold text-white leading-none">{recentlyViewed.length}</h4>
-              <div className="mt-4 flex items-center gap-2 text-[10px] font-mono text-bit-accent uppercase tracking-[0.2em]">
-                <History size={10} /> Device-synced locally
+              <p className="text-bit-muted text-[10px] font-mono uppercase mb-2 tracking-widest font-bold">Recently Viewed</p>
+              <h4 className="text-4xl font-display font-bold text-bit-text leading-none">{recentlyViewed.length}</h4>
+              <div className="mt-6 flex items-center gap-2 text-[10px] font-mono text-bit-accent uppercase tracking-[0.2em] font-bold">
+                <History size={12} /> Local_Buffer_Active
               </div>
             </div>
-            <div className="glass-panel p-6 rounded-2xl relative overflow-hidden group">
+            <div className="glass-panel p-8 rounded-2xl relative overflow-hidden group shadow-sm">
               <div className="absolute -right-4 -top-4 text-bit-accent/10 group-hover:text-bit-accent/20 transition-colors">
-                <Bookmark size={100} />
+                <Bookmark size={120} />
               </div>
-              <p className="text-gray-500 text-[10px] font-mono uppercase mb-1 tracking-widest">Saved Volumes</p>
-              <h4 className="text-3xl font-display font-bold text-white leading-none">{savedBooks.length}</h4>
-              <div className="mt-4 h-1 bg-white/5 rounded-full overflow-hidden">
-                <div className="h-full bg-bit-accent transition-all" style={{ width: `${Math.min(savedBooks.length * 12, 100)}%` }} />
+              <p className="text-bit-muted text-[10px] font-mono uppercase mb-2 tracking-widest font-bold">Saved Volumes</p>
+              <h4 className="text-4xl font-display font-bold text-bit-text leading-none">{savedBooks.length}</h4>
+              <div className="mt-6 h-1 w-full bg-bit-border rounded-full overflow-hidden">
+                <div className="h-full bg-bit-accent transition-all duration-1000" style={{ width: `${Math.min(savedBooks.length * 12, 100)}%` }} />
               </div>
             </div>
-            <div className="glass-panel p-6 rounded-2xl border-bit-accent/20 bg-bit-accent/5">
-              <h4 className="text-lg font-display font-bold text-bit-accent mb-2">Recent Searches</h4>
-              <p className="text-xs text-gray-400 mb-4 font-mono">
+            <div className="p-8 rounded-2xl bg-bit-accent/5 border border-bit-accent/20 shadow-sm relative overflow-hidden group">
+               <div className="absolute -right-4 -top-4 text-bit-accent/10 group-hover:text-bit-accent/20 transition-colors">
+                <Zap size={100} />
+              </div>
+              <h4 className="text-xl font-display font-bold text-bit-accent mb-3 tracking-tight">Search Cache</h4>
+              <p className="text-[10px] text-bit-muted mb-6 font-mono uppercase tracking-[0.1em] font-bold leading-relaxed line-clamp-2">
                 {recentSearches.length > 0 ? recentSearches.slice(0, 3).join(' • ') : 'No recent searches yet'}
               </p>
-              <button onClick={onExplore} className="w-full py-2 bg-bit-accent text-black rounded-lg text-xs font-bold font-mono">
-                EXPLORE MORE
+              <button onClick={onExplore} className="w-full py-2.5 bg-bit-accent text-white rounded-lg text-[10px] font-bold font-mono tracking-widest uppercase hover:scale-95 transition-all shadow-md">
+                SYNC_MORE
               </button>
             </div>
           </section>
         </div>
 
         <aside className="xl:col-span-4 space-y-6">
-          <section className="glass-panel rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-2xl bg-bit-accent/10 text-bit-accent flex items-center justify-center">
-                <User2 size={18} />
+          <section className="bg-bit-panel/30 border border-bit-border rounded-2xl p-8 shadow-sm">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="w-12 h-12 rounded-2xl bg-bit-accent/10 text-bit-accent flex items-center justify-center border border-bit-accent/20 shadow-sm">
+                <User2 size={24} />
               </div>
               <div>
-                <h3 className="text-xl font-display font-bold text-white">Local Profile</h3>
-                <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">Device-only for now</p>
+                <h3 className="text-xl font-display font-bold text-bit-text tracking-tight">Identity Node</h3>
+                <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted font-bold">Protocol_v1.0.4</p>
               </div>
             </div>
-            <label className="block text-[10px] font-mono uppercase tracking-[0.18em] text-gray-500 mb-2">
-              Display Name
-            </label>
-            <input
-              value={draftName}
-              onChange={(event) => setDraftName(event.target.value)}
-              placeholder="Reader"
-              className="w-full rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-sm text-white focus:outline-none focus:border-bit-accent/50"
-            />
-            <button
-              onClick={handleSaveProfile}
-              className="mt-4 w-full rounded-xl bg-bit-accent text-black py-3 text-xs font-bold font-mono tracking-[0.16em]"
-            >
-              SAVE PROFILE
-            </button>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted mb-3 font-bold">
+                  Display Alias
+                </label>
+                <input
+                  value={draftName}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  placeholder="Registry Anonymous"
+                  className="w-full rounded-2xl bg-bit-panel/50 border border-bit-border px-6 py-4 text-sm text-bit-text focus:outline-none focus:border-bit-accent/50 focus:ring-1 focus:ring-bit-accent/20 transition-all font-mono font-bold"
+                />
+              </div>
+              <button
+                onClick={handleSaveProfile}
+                className="w-full rounded-2xl bg-bit-accent text-white py-4 text-[10px] font-bold font-mono tracking-[0.2em] shadow-lg shadow-bit-accent/20 hover:scale-105 transition-all uppercase"
+              >
+                Update_Alias
+              </button>
+            </div>
           </section>
 
-          <section className="glass-panel rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-2xl bg-bit-accent/10 text-bit-accent flex items-center justify-center">
-                {settings.theme === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
+          <section className="bg-bit-panel/30 border border-bit-border rounded-2xl p-8 shadow-sm">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="w-12 h-12 rounded-2xl bg-bit-accent/10 text-bit-accent flex items-center justify-center border border-bit-accent/20 shadow-sm">
+                {settings.theme === 'dark' ? <Moon size={24} /> : <Sun size={24} />}
               </div>
               <div>
-                <h3 className="text-xl font-display font-bold text-white">Appearance</h3>
-                <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">Foundation theme switch</p>
+                <h3 className="text-xl font-display font-bold text-bit-text tracking-tight">System Visuals</h3>
+                <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted font-bold">Theme Synchronization</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={() => setThemeMode('dark')}
-                className={`rounded-xl border px-4 py-4 text-left transition-all ${settings.theme === 'dark' ? 'border-bit-accent bg-bit-accent text-black' : 'border-white/10 bg-white/[0.02] text-white'}`}
+                className={`rounded-2xl border p-5 text-left transition-all ${settings.theme === 'dark' ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20' : 'border-bit-border bg-bit-panel/50 text-bit-muted hover:border-bit-accent/30'}`}
               >
-                <Moon size={16} className="mb-3" />
-                <p className="font-display font-bold">Black</p>
-                <p className="text-[10px] font-mono uppercase mt-1 opacity-70">Current base</p>
+                <Moon size={20} className="mb-4" />
+                <p className="font-display font-bold text-sm tracking-tight">Dark Protocol</p>
+                <p className="text-[9px] font-mono uppercase mt-1 opacity-60 tracking-widest font-bold">Immersive</p>
               </button>
               <button
                 onClick={() => setThemeMode('light')}
-                className={`rounded-xl border px-4 py-4 text-left transition-all ${settings.theme === 'light' ? 'border-bit-accent bg-bit-accent text-black' : 'border-white/10 bg-white/[0.02] text-white'}`}
+                className={`rounded-2xl border p-5 text-left transition-all ${settings.theme === 'light' ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20' : 'border-bit-border bg-bit-panel/50 text-bit-muted hover:border-bit-accent/30'}`}
               >
-                <Sun size={16} className="mb-3" />
-                <p className="font-display font-bold">Light</p>
-                <p className="text-[10px] font-mono uppercase mt-1 opacity-70">Reading mode</p>
+                <Sun size={20} className="mb-4" />
+                <p className="font-display font-bold text-sm tracking-tight">Light Core</p>
+                <p className="text-[9px] font-mono uppercase mt-1 opacity-60 tracking-widest font-bold">High Precision</p>
               </button>
             </div>
           </section>
 
-          <section className="glass-panel rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-2xl bg-bit-accent/10 text-bit-accent flex items-center justify-center">
-                <Search size={18} />
+          <section className="bg-bit-panel/30 border border-bit-border rounded-2xl p-8 shadow-sm">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="w-12 h-12 rounded-2xl bg-bit-accent/10 text-bit-accent flex items-center justify-center border border-bit-accent/20 shadow-sm">
+                <Search size={22} />
               </div>
               <div>
-                <h3 className="text-xl font-display font-bold text-white">Recent Searches</h3>
-                <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">Stored locally</p>
+                <h3 className="text-xl font-display font-bold text-bit-text tracking-tight">Trace History</h3>
+                <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted font-bold">Node Search Map</p>
               </div>
             </div>
             {recentSearches.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {recentSearches.map((query) => (
-                  <span key={query} className="px-3 py-2 rounded-full bg-white/[0.03] border border-white/10 text-xs font-mono text-gray-300">
+                  <span key={query} className="px-4 py-2 rounded-xl bg-bit-panel/50 border border-bit-border text-[10px] font-mono text-bit-text font-bold shadow-sm hover:border-bit-accent/30 transition-colors cursor-default">
                     {query}
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-500">Search history will appear here after you start exploring.</p>
+              <p className="text-[10px] text-bit-muted font-mono uppercase tracking-[0.1em] font-bold">No historical traces detected in current registry buffer.</p>
             )}
           </section>
 
-          <section className="glass-panel rounded-2xl p-6 border border-red-500/20">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-2xl bg-red-500/10 text-red-400 flex items-center justify-center">
-                <Trash2 size={18} />
+          <section className="bg-red-500/5 border border-red-500/10 rounded-2xl p-8 shadow-sm group hover:bg-red-500/10 transition-colors">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-500 flex items-center justify-center border border-red-500/20 shadow-sm group-hover:bg-red-500 group-hover:text-white transition-all">
+                <Trash2 size={22} />
               </div>
               <div>
-                <h3 className="text-xl font-display font-bold text-white">Reset Local Data</h3>
-                <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">Bookmarks, profile, searches, cache</p>
+                <h3 className="text-xl font-display font-bold text-red-500 tracking-tight">Purge_Buffer</h3>
+                <p className="text-[10px] font-mono uppercase tracking-[0.1em] text-red-500/60 font-bold leading-relaxed">Destroy all local signatures, bookmarks, and node histories.</p>
               </div>
             </div>
             <div className="flex gap-3">
               <button
                 onClick={clearLocalUserData}
-                className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs font-bold font-mono tracking-[0.16em] text-red-300 transition-all hover:bg-red-500/20"
+                className="flex-1 rounded-2xl border border-red-500/30 bg-red-500/10 px-6 py-4 text-[10px] font-bold font-mono tracking-[0.2em] text-red-500 transition-all hover:bg-red-500 hover:text-white uppercase shadow-sm"
               >
-                CLEAR DATA
+                EXECUTE PURGE
               </button>
               <button
                 onClick={onExplore}
-                className="flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 text-bit-accent transition-all hover:border-bit-accent/40"
+                className="flex items-center justify-center rounded-2xl bg-bit-panel/50 border border-bit-border px-6 py-4 text-bit-accent transition-all hover:border-red-500/30 hover:text-red-500 hover:scale-95 shadow-sm"
               >
-                <RotateCcw size={16} />
+                <RotateCcw size={20} />
               </button>
             </div>
           </section>
