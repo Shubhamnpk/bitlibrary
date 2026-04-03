@@ -16,7 +16,7 @@ export const BookCardSkeleton: React.FC = () => (
 );
 
 export const BookGridSkeleton: React.FC<{ count?: number }> = ({ count = 8 }) => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
+  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
     {Array.from({ length: count }).map((_, i) => (
       <BookCardSkeleton key={i} />
     ))}

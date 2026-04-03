@@ -108,10 +108,10 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
          {loading ? (
             <BookGridSkeleton count={8} />
          ) : viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
                {books.map((book, idx) => (
                   <div key={`${book.id}-${idx}`} className="animate-fade-in-up" style={{ animationDelay: `${(idx % 8) * 50}ms` }}>
-                     <BookCard book={book} onClick={onBookClick} onRead={onRead} />
+                     <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} />
                   </div>
                ))}
             </div>

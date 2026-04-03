@@ -89,6 +89,12 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   }, [book.id, book.category, allBooks]);
 
   useEffect(() => {
+    setContent('');
+    setLoading(false);
+    setActiveTab('overview');
+  }, [book.id]);
+
+  useEffect(() => {
     if (activeTab === 'read' && !content) {
       const loadPreview = async () => {
         setLoading(true);
@@ -283,8 +289,8 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                       <div className="flex flex-wrap items-center gap-4 mt-6">
                         {fullDescription.length > 400 && (
                           <button onClick={() => setIsExpanded(!isExpanded)} className="text-[10px] font-mono text-bit-accent hover:text-bit-text transition-colors uppercase tracking-widest flex items-center gap-2 group/more font-bold">
-                             <div className={`w-1 h-1 rounded-full bg-bit-accent transition-all group-hover/more:scale-150 ${isExpanded ? 'bg-bit-text' : 'animate-pulse'}`} />
-                             {isExpanded ? 'Show Less' : 'Show More'}
+                            <div className={`w-1 h-1 rounded-full bg-bit-accent transition-all group-hover/more:scale-150 ${isExpanded ? 'bg-bit-text' : 'animate-pulse'}`} />
+                            {isExpanded ? 'Show Less' : 'Show More'}
                           </button>
                         )}
                         {fullDescription === book.description && (
@@ -387,7 +393,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               <h3 className="text-2xl font-display font-semibold text-bit-text tracking-tight">Similar Works</h3>
               <ChevronRight className="text-bit-accent" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-6 md:gap-8">
               {similarLoading ? [1, 2, 3].map(i => <BookCardSkeleton key={i} />) : similarBooks.map(b => (
                 <BookCard key={b.id} book={b} onClick={onBookClick} onRead={(sb) => onRead(sb.id)} variant="compact" />
               ))}

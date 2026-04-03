@@ -6,7 +6,7 @@ import BookCard from '@/components/BookCard';
 import Reader, { ReaderSkeleton } from '@/components/Reader';
 import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight, ArrowUpRight, Clock3, House, BookOpenText, Info } from 'lucide-react';
 import BookDetails from '@/pages/BookDetails';
-import { BookDetailsSkeleton } from '@/components/Skeletons';
+import { BookDetailsSkeleton, BookCardSkeleton } from '@/components/Skeletons';
 import LibraryPage from '@/pages/Library';
 import BrowseBooks from '@/pages/BrowseBooks';
 import AboutPage from '@/pages/AboutPage';
@@ -18,6 +18,9 @@ import { recordRecentSearch, useLocalUserState } from '@/lib/local-user';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams } from 'react-router-dom';
+
+import Footer from '@/components/Footer';
+import Navbar from '@/components/Navbar';
 
 const SEARCH_DEBOUNCE_MS = 350;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
@@ -83,6 +86,7 @@ const App: React.FC = () => {
   const [borrowedBooks, setBorrowedBooks] = useState<Book[]>([]);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [isSearching, setIsSearching] = useState(false);
+  const [isFeaturedLoading, setIsFeaturedLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const { state: localUserState } = useLocalUserState();
@@ -140,17 +144,24 @@ const App: React.FC = () => {
     }
 
     const syncData = async () => {
-      const { books: apiBooks } = await fetchBooksFromGutendex(1);
-      if (apiBooks.length > 0) {
-        const nextFeaturedBooks = apiBooks.slice(0, 8);
-        const nextBorrowedBooks = apiBooks.slice(0, 2);
+      if (!cached) {
+        setIsFeaturedLoading(true);
+      }
+      try {
+        const { books: apiBooks } = await fetchBooksFromGutendex(1);
+        if (apiBooks.length > 0) {
+          const nextFeaturedBooks = apiBooks.slice(0, 8);
+          const nextBorrowedBooks = apiBooks.slice(0, 2);
 
-        setFeaturedBooks(nextFeaturedBooks);
-        setBorrowedBooks(nextBorrowedBooks);
-        writeExploreCache({
-          featuredBooks: nextFeaturedBooks,
-          borrowedBooks: nextBorrowedBooks,
-        });
+          setFeaturedBooks(nextFeaturedBooks);
+          setBorrowedBooks(nextBorrowedBooks);
+          writeExploreCache({
+            featuredBooks: nextFeaturedBooks,
+            borrowedBooks: nextBorrowedBooks,
+          });
+        }
+      } finally {
+        setIsFeaturedLoading(false);
       }
     };
 
@@ -261,181 +272,80 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-bit-bg text-bit-text font-sans selection:bg-bit-accent selection:text-white transition-colors duration-500">
       <ScrollToTop />
       {/* Background Grid & Effects */}
-      <div className="fixed inset-0 bg-grid-pattern bg-[length:40px_40px] opacity-[0.03] pointer-events-none" />
+      <div className="fixed inset-0 bg-grid-pattern bg-[length:40px_40px] opacity-[0.12] pointer-events-none" />
       <div className="fixed inset-0 bg-gradient-to-b from-transparent via-bit-bg/50 to-bit-bg pointer-events-none" />
 
-      {/* Navigation - Hidden in Full Reader mode */}
-      {!isReaderActive && (
-        <nav className="fixed top-0 left-0 right-0 z-40 border-b border-bit-border/50 bg-bit-bg/80 backdrop-blur-xl">
-          <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      {/* Navigation & Mobile Menu */}
+      <Navbar 
+        isReaderActive={isReaderActive}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        handleSearchSubmit={handleSearchSubmit}
+        isSearching={isSearching}
+        showSearchSurface={showSearchSurface}
+        trimmedSearchQuery={trimmedSearchQuery}
+        SEARCH_MIN_QUERY_LENGTH={SEARCH_MIN_QUERY_LENGTH}
+        searchDropdownRecent={searchDropdownRecent}
+        searchDropdownSuggestions={searchDropdownSuggestions}
+        applySearchSelection={applySearchSelection}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        localUserState={localUserState}
+        handleMobileMenuSearchSubmit={handleMobileMenuSearchSubmit}
+        activeTab={activeTab}
+        searchInputRef={searchInputRef}
+        searchShellRef={searchShellRef}
+        setIsSearchFocused={setIsSearchFocused}
+        mobileQuickTopics={mobileQuickTopics}
+        navigateToSearch={navigateToSearch}
+      />
 
-            <Link to="/" className="flex items-center gap-3 group min-w-0">
-              <img
-                src="/assets/bitlibrary-icon-clean.svg"
-                alt="BitLibrary"
-                className="w-9 h-9 shrink-0 transition-transform group-hover:scale-105"
-              />
-              <div className="min-w-0">
-                <p className="font-display font-bold text-xl tracking-tight text-bit-text leading-none">BitLibrary</p>
-                <p className="hidden lg:block text-[9px] font-mono uppercase tracking-[0.22em] text-bit-accent/80 mt-1">
-                  The Open Digital Library
-                </p>
-              </div>
-            </Link>
-
-            {/* Desktop Search */}
-            <div ref={searchShellRef} className="hidden md:block flex-1 max-w-lg mx-8 relative">
-              <form onSubmit={handleSearchSubmit} className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-bit-muted group-focus-within:text-bit-accent transition-colors" size={18} />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="Search books, authors... (Press /)"
-                  value={searchQuery}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-bit-panel/30 border border-bit-border rounded-full py-2 pl-10 pr-24 text-sm focus:outline-none focus:border-bit-accent/50 focus:bg-bit-panel/50 transition-all placeholder:text-bit-muted/50"
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  {trimmedSearchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchQuery('');
-                        searchInputRef.current?.focus();
-                      }}
-                      className="text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted hover:text-bit-text transition-colors"
-                    >
-                      Clear
-                    </button>
-                  )}
-                  {isSearching ? (
-                    <div className="animate-spin text-bit-accent">
-                      <Disc size={16} />
-                    </div>
-                  ) : (
-                    <button
-                      type="submit"
-                      className="px-3 py-1 rounded-full bg-bit-accent text-white text-[10px] font-mono uppercase tracking-[0.2em] hover:scale-[0.98] transition-all shadow-sm"
-                    >
-                      Search
-                    </button>
-                  )}
-                </div>
-              </form>
-
-              {showSearchSurface && (
-                <div className="absolute left-0 right-0 top-[calc(100%+0.75rem)] rounded-3xl border border-bit-border bg-bit-panel/95 backdrop-blur-2xl shadow-2xl shadow-bit-bg/40 overflow-hidden">
-                  <div className="px-5 py-4 border-b border-bit-border/40 flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent">Search Control</p>
-                      <p className="text-sm text-bit-muted mt-1">
-                        {trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
-                          ? `Press Enter to open results for "${trimmedSearchQuery}".`
-                          : `Type at least ${SEARCH_MIN_QUERY_LENGTH} characters to start searching.`}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/50 px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted">
-                      <Command size={12} />
-                      /
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-0">
-                    <div className="p-5 border-r border-bit-border/40">
-                      <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted mb-4">
-                        <Clock3 size={12} />
-                        Recent Searches
-                      </div>
-                      <div className="space-y-2">
-                        {searchDropdownRecent.length > 0 ? searchDropdownRecent.map((query) => (
-                          <button
-                            key={query}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => applySearchSelection(query)}
-                            className="w-full flex items-center justify-between rounded-2xl border border-bit-border bg-bit-panel/30 px-4 py-3 text-left hover:border-bit-accent/30 hover:bg-bit-panel/50 transition-all group"
-                          >
-                            <span className="text-sm text-bit-text">{query}</span>
-                            <ArrowUpRight size={14} className="text-bit-muted group-hover:text-bit-accent transition-colors" />
-                          </button>
-                        )) : (
-                          <div className="rounded-2xl border border-dashed border-bit-border px-4 py-6 text-sm text-bit-muted">
-                            Your recent searches will show up here.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="p-5">
-                      <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted mb-4">
-                        <Zap size={12} />
-                        Explore Topics
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {searchDropdownSuggestions.map((query) => (
-                          <button
-                            key={query}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => applySearchSelection(query)}
-                            className="px-3 py-2 rounded-full border border-bit-border bg-bit-panel/30 text-[11px] text-bit-muted hover:text-bit-text hover:border-bit-accent/40 hover:bg-bit-accent/10 transition-all"
-                          >
-                            {query}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="mt-5 rounded-2xl border border-bit-accent/20 bg-bit-accent/5 p-4">
-                        <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent mb-2">Search Tips</p>
-                        <p className="text-sm text-bit-muted leading-relaxed">
-                          Try author names, subjects, or themes for richer results from every archive source.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="hidden md:flex items-center gap-6 font-mono text-xs tracking-wider">
-              <Link to="/" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Discover</Link>
-              <Link to="/library" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/library') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Library</Link>
-              <Link to="/mylibrary" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/mylibrary') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>My Library</Link>
-              <ThemeToggle />
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-bit-panel to-bit-border border border-bit-border flex items-center justify-center cursor-pointer hover:border-bit-accent/50 transition-all">
-                <span className="text-[10px] font-bold text-bit-text">US</span>
-              </div>
-            </div>
-
-            <button className="md:hidden text-bit-text" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-              {mobileMenuOpen ? <X /> : <Menu />}
-            </button>
-          </div>
-        </nav>
-      )}
 
       {/* Main Layout */}
-      <main className={`pb-20 px-6 max-w-7xl mx-auto min-h-screen flex flex-col relative z-0 ${isReaderActive ? '' : 'pt-24'}`}>
+      <main className={`pb-20 min-h-screen relative z-0 ${isReaderActive ? '' : 'pt-16 md:pt-20'}`}>
 
         <Routes>
           {/* Home / Discovery */}
           <Route path="/" element={
             <div className="animate-fade-in-up">
               {/* Hero */}
-              <section className="mb-24 relative">
-                <div className="absolute -top-40 -left-40 w-[600px] h-[600px] bg-bit-accent/10 rounded-full blur-[120px] pointer-events-none opacity-50" />
-                <div className="relative z-10">
+              <section className="mb-12 md:mb-16 relative overflow-hidden py-8 md:py-14">
+                {/* Decorative Geometric Elements */}
+                <div className="absolute top-0 right-0 w-full md:w-3/4 h-full pointer-events-none overflow-hidden select-none">
+                  {/* Rotating Rings - Enhanced visibility */}
+                  <div className="absolute -top-40 -right-40 w-[600px] h-[600px] md:w-[800px] md:h-[800px] rounded-full border-[2px] border-bit-accent/15 animate-slow-rotate" />
+                  <div className="absolute -top-20 -right-20 w-[500px] h-[500px] md:w-[700px] md:h-[700px] rounded-full border-[1px] border-bit-accent/10 animate-slow-rotate [animation-direction:reverse]" />
+                  <div className="absolute -top-60 -right-60 w-[700px] h-[700px] md:w-[900px] md:h-[900px] rounded-full border-[0.5px] border-bit-accent/5 animate-slow-rotate [animation-duration:40s]" />
+                  
+                  {/* Floating Geometric "Stones/Nodes" - More visible and polished */}
+                  <div className="absolute top-1/4 right-1/4 w-16 h-16 bg-gradient-to-br from-bit-accent/20 to-bit-accent/5 backdrop-blur-md border border-bit-accent/30 rounded-2xl rotate-12 animate-float-up shadow-[0_0_20px_rgba(var(--bit-accent-rgb),0.1)]" />
+                  <div className="absolute top-1/2 right-1/3 w-10 h-10 bg-bit-panel/60 backdrop-blur-lg border border-bit-border rounded-lg -rotate-12 animate-float-down shadow-xl" />
+                  <div className="absolute bottom-1/4 right-1/2 w-20 h-20 border-2 border-bit-accent/20 border-dashed rounded-full animate-pulse" />
+                  
+                  {/* Small Shards / CONCEPT_NODES */}
+                  <div className="absolute top-[15%] right-1/2 w-5 h-5 bg-bit-accent/40 backdrop-blur-sm rotate-45 animate-float-up shadow-sm border border-bit-accent/20" />
+                  <div className="absolute bottom-1/3 right-[15%] w-4 h-4 bg-bit-text opacity-20 rotate-12 animate-float-down" />
+                  <div className="absolute top-1/2 right-[45%] w-3 h-3 bg-bit-accent rounded-full animate-pulse blur-[1px]" />
+                  
+                  {/* Light Orbs */}
+                  <div className="absolute top-[10%] right-[10%] w-[400px] h-[400px] bg-bit-accent/15 rounded-full blur-[120px] opacity-60 mix-blend-plus-lighter" />
+                  <div className="absolute bottom-[20%] right-[30%] w-[300px] h-[300px] bg-bit-accent/5 rounded-full blur-[100px] opacity-40 mix-blend-plus-lighter" />
+                </div>
+
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
                   <span className="inline-block py-1 px-3 rounded-full border border-bit-accent/20 bg-bit-accent/5 text-[10px] text-bit-accent font-mono mb-6 uppercase tracking-[0.2em]">
                     BitLibrary Platform
                   </span>
-                  <h1 className="text-6xl md:text-8xl font-display font-bold text-bit-text mb-8 leading-none tracking-tighter">
+                  <h1 className="text-4xl sm:text-6xl md:text-8xl font-display font-bold text-bit-text mb-6 md:mb-8 leading-[0.95] tracking-tighter">
                     Open books,
                     <br />
-                    <span className="text-bit-text/40 dark:text-transparent dark:bg-clip-text dark:bg-gradient-to-r dark:from-gray-300 dark:to-gray-700">open discovery.</span>
+                    <span className="bg-gradient-to-r from-bit-text via-bit-text to-bit-accent bg-clip-text text-transparent drop-shadow-sm">
+                      open discovery.
+                    </span>
                   </h1>
-                  <div className="text-lg text-bit-muted max-w-2xl mb-12 leading-relaxed font-sans">
+                  <div className="text-base md:text-lg text-bit-muted max-w-2xl mb-10 md:mb-12 leading-relaxed font-sans">
                     The Open Digital Library for modern readers, students, and explorers of knowledge.
-                    <p className="text-sm text-bit-muted/60 max-w-2xl mt-4 leading-relaxed font-mono uppercase tracking-[0.18em]">
+                    <p className="text-xs sm:text-sm text-bit-muted/60 max-w-2xl mt-4 leading-relaxed font-mono uppercase tracking-[0.14em] sm:tracking-[0.18em]">
                       Search across open archives, discover authors, and explore books with a faster digital reading interface.
                     </p>
                   </div>
@@ -455,10 +365,10 @@ const App: React.FC = () => {
               </section>
 
               {/* Featured Swiper / Grid */}
-              <section className="mb-32">
-                <div className="flex items-center justify-between mb-12">
+              <section className="mb-24 md:mb-32 max-w-7xl mx-auto px-4 sm:px-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 md:mb-12">
                   <div>
-                    <h2 className="text-3xl font-display font-bold text-bit-text">Registry Spotlight</h2>
+                    <h2 className="text-2xl md:text-3xl font-display font-bold text-bit-text">Registry Spotlight</h2>
                     <p className="text-xs text-bit-muted font-mono mt-1 uppercase tracking-widest">Active nodes in the current stream</p>
                   </div>
                   <Link to="/library" className="group flex items-center gap-2 text-[10px] text-bit-accent hover:text-bit-text font-mono uppercase tracking-[0.2em] transition-colors">
@@ -466,30 +376,40 @@ const App: React.FC = () => {
                   </Link>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
-                  {featuredBooks.map(book => (
-                    <BookCard key={book.id} book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
-                  ))}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
+                  {isFeaturedLoading && featuredBooks.length === 0 ? (
+                    // Logic for "One Row" using CSS grid visibility
+                    // We render 4 to ensure a full row on all screens
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <div key={`skeleton-${i}`} className={i === 2 ? 'hidden md:block' : i === 3 ? 'hidden lg:block' : ''}>
+                        <BookCardSkeleton />
+                      </div>
+                    ))
+                  ) : (
+                    featuredBooks.map(book => (
+                      <BookCard key={book.id} variant="compact" book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
+                    ))
+                  )}
                 </div>
               </section>
 
               {/* Collections Bento */}
-              <section>
-                <h2 className="text-2xl font-display font-bold text-bit-text mb-10">Neural Clusters</h2>
+              <section className="max-w-7xl mx-auto px-4 sm:px-6">
+                <h2 className="text-xl md:text-2xl font-display font-bold text-bit-text mb-8 md:mb-10">Neural Clusters</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-[500px]">
-                  <div onClick={() => navigateToSearch('Quantum', { persistRecent: true })} className="col-span-1 md:col-span-2 rounded-3xl border border-bit-border bg-bit-panel/30 p-10 relative overflow-hidden group cursor-pointer hover:border-bit-accent/30 transition-all shadow-sm">
+                  <div onClick={() => navigateToSearch('Quantum', { persistRecent: true })} className="col-span-1 md:col-span-2 rounded-3xl border border-bit-border bg-bit-panel/30 p-6 md:p-10 relative overflow-hidden group cursor-pointer hover:border-bit-accent/30 transition-all shadow-sm">
                     <div className="absolute inset-0 bg-gradient-to-br from-bit-accent/5 to-transparent" />
-                    <h3 className="text-4xl font-display font-bold text-bit-text relative z-10">Quantum Era</h3>
+                    <h3 className="text-3xl md:text-4xl font-display font-bold text-bit-text relative z-10">Quantum Era</h3>
                     <p className="text-bit-muted mt-4 max-w-xs relative z-10 leading-relaxed text-sm">Synthetic analysis of particle logic and future computation streams.</p>
-                    <div className="absolute bottom-10 right-10 text-bit-accent/10 group-hover:scale-125 group-hover:text-bit-accent/30 transition-all duration-700">
-                      <Zap size={80} />
+                    <div className="absolute bottom-6 right-6 md:bottom-10 md:right-10 text-bit-accent/10 group-hover:scale-125 group-hover:text-bit-accent/30 transition-all duration-700">
+                      <Zap size={56} className="md:w-20 md:h-20" />
                     </div>
                   </div>
-                  <div onClick={() => navigateToSearch('Philosophy', { persistRecent: true })} className="rounded-3xl border border-bit-border bg-bit-panel/30 p-8 relative group overflow-hidden cursor-pointer hover:border-bit-accent/30 transition-all shadow-sm">
-                    <div className="absolute -top-10 -right-10 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
-                      <Library size={120} />
+                  <div onClick={() => navigateToSearch('Philosophy', { persistRecent: true })} className="rounded-3xl border border-bit-border bg-bit-panel/30 p-6 md:p-8 relative group overflow-hidden cursor-pointer hover:border-bit-accent/30 transition-all shadow-sm">
+                    <div className="absolute -top-8 -right-8 md:-top-10 md:-right-10 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
+                      <Library size={88} className="md:w-[120px] md:h-[120px]" />
                     </div>
-                    <h3 className="text-2xl font-display font-bold text-bit-text uppercase tracking-tight">Ancient <br />Nodes</h3>
+                    <h3 className="text-xl md:text-2xl font-display font-bold text-bit-text uppercase tracking-tight">Ancient <br />Nodes</h3>
                     <p className="text-xs text-bit-accent font-mono mt-2">128 COLLECTIONS</p>
                   </div>
                 </div>
@@ -498,70 +418,80 @@ const App: React.FC = () => {
           } />
 
           {/* Discovery / Library Registry */}
-          <Route path="/library/:categoryId?" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
-          <Route path="/books/:categoryId?" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
-          <Route path="/browse/:categoryId?" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
+          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} /></div>} />
 
           {/* Personal Bookshelf */}
           <Route path="/mylibrary" element={
-            <LibraryPage
-              borrowedBooks={borrowedBooks}
-              savedBooks={localUserState.savedBooks}
-              recentSearches={localUserState.recentSearches}
-              recentlyViewed={localUserState.recentlyViewed}
-              profile={localUserState.profile}
-              settings={localUserState.settings}
-              onBookClick={(b) => navigate(`/book/${b.id}`)}
-              onRead={handleReadBook}
-              onExplore={() => navigate('/')}
-            />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <LibraryPage
+                borrowedBooks={borrowedBooks}
+                savedBooks={localUserState.savedBooks}
+                recentSearches={localUserState.recentSearches}
+                recentlyViewed={localUserState.recentlyViewed}
+                profile={localUserState.profile}
+                settings={localUserState.settings}
+                onBookClick={(b) => navigate(`/book/${b.id}`)}
+                onRead={handleReadBook}
+                onExplore={() => navigate('/')}
+              />
+            </div>
           } />
 
           <Route path="/search" element={
-            <SearchPage
-              onBookClick={(book) => navigate(`/book/${book.id}`)}
-              onRead={handleReadBook}
-              onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
-              onResultsChange={setSearchResults}
-              onSearchingChange={setIsSearching}
-              onQuerySync={setSearchQuery}
-              recentSearches={localUserState.recentSearches}
-              onQuickSearch={applySearchSelection}
-            />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <SearchPage
+                onBookClick={(book) => navigate(`/book/${book.id}`)}
+                onRead={handleReadBook}
+                onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
+                onResultsChange={setSearchResults}
+                onSearchingChange={setIsSearching}
+                onQuerySync={setSearchQuery}
+                recentSearches={localUserState.recentSearches}
+                onQuickSearch={applySearchSelection}
+              />
+            </div>
           } />
 
           {/* Deep Routes (Wrappers for details/reader) */}
           <Route path="/book/:id" element={
-            <BookDetailsRoute
-              books={[...featuredBooks, ...searchResults]}
-              onRead={(id) => {
-                const b = [...featuredBooks, ...searchResults].find(node => node.id === id);
-                if (b) {
-                  setActiveBook(b);
-                  setIsMinimized(false);
-                } else {
-                  setReaderLoading(true);
-                  fetchBookById(id).then(res => {
-                    if (res) {
-                      setActiveBook(res);
-                      setIsMinimized(false);
-                    }
-                    setReaderLoading(false);
-                  });
-                }
-              }}
-              onBookClick={(id) => navigate(`/book/${id}`)}
-              onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
-              onCategoryClick={(cat) => navigate(`/category/${encodeURIComponent(cat)}`)}
-            />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <BookDetailsRoute
+                books={[...featuredBooks, ...searchResults]}
+                onRead={(id) => {
+                  const b = [...featuredBooks, ...searchResults].find(node => node.id === id);
+                  if (b) {
+                    setActiveBook(b);
+                    setIsMinimized(false);
+                  } else {
+                    setReaderLoading(true);
+                    fetchBookById(id).then(res => {
+                      if (res) {
+                        setActiveBook(res);
+                        setIsMinimized(false);
+                      }
+                      setReaderLoading(false);
+                    });
+                  }
+                }}
+                onBookClick={(id) => navigate(`/book/${id}`)}
+                onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
+                onCategoryClick={(cat) => navigate(`/category/${encodeURIComponent(cat)}`)}
+              />
+            </div>
           } />
 
           <Route path="/author/:name" element={
-            <AuthorDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <AuthorDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+            </div>
           } />
 
           <Route path="/category/:categoryId" element={
-            <CategoryDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <CategoryDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+            </div>
           } />
 
           {/* Static Pages */}
@@ -572,203 +502,9 @@ const App: React.FC = () => {
 
       </main>
 
-      {/* Enhanced Footer */}
-      {!isReaderActive && (
-        <footer className="border-t border-bit-border/50 pt-20 pb-12 bg-bit-panel/30 relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-bit-accent/50 to-transparent opacity-20" />
+      {/* Global Footer */}
+      <Footer isReaderActive={isReaderActive} />
 
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 mb-20">
-              <div className="lg:col-span-4">
-                <Link to="/" className="inline-flex items-center mb-6 group">
-                  <img
-                    src="/assets/bitlibrary-icon-clean.svg"
-                    alt="BitLibrary"
-                    className="h-10 w-auto"
-                  />
-                  <span className="ml-3 font-display font-bold text-2xl text-bit-text tracking-tighter">BitLibrary</span>
-                </Link>
-                <p className="text-bit-muted text-sm leading-relaxed mb-8 max-w-sm">
-                  The Open Digital Library for accessible discovery, open archives, and modern reading.
-                  Built to connect books, authors, and knowledge in one searchable interface.
-                </p>
-                <div className="flex gap-4">
-                  <button className="p-2 rounded-full border border-bit-border hover:border-bit-accent/50 text-bit-muted hover:text-bit-accent transition-all"><Github size={18} /></button>
-                  <button className="p-2 rounded-full border border-bit-border hover:border-bit-accent/50 text-bit-muted hover:text-bit-accent transition-all"><Disc size={18} /></button>
-                </div>
-              </div>
-
-              <div className="lg:col-span-5 grid grid-cols-2 md:grid-cols-3 gap-8 text-[10px] font-mono">
-                <div>
-                  <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Library Hub</h4>
-                  <ul className="space-y-4 text-bit-muted">
-                    <li><Link to="/library" className="hover:text-bit-accent transition-all">CENTRAL REGISTRY</Link></li>
-                    <li><Link to="/" className="hover:text-bit-accent transition-all">COLLECTIONS</Link></li>
-                    <li><Link to="/mylibrary" className="hover:text-bit-accent transition-all">MY ARCHIVE</Link></li>
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Protocol</h4>
-                  <ul className="space-y-4 text-bit-muted">
-                    <li><Link to="/about" className="hover:text-bit-accent transition-all">ABOUT ENGINE</Link></li>
-                    <li><Link to="/terms" className="hover:text-bit-accent transition-all">TERMS OF USE</Link></li>
-                    <li><button className="hover:text-bit-accent transition-all uppercase">NEURAL AUDIT</button></li>
-                  </ul>
-                </div>
-                <div className="hidden md:block">
-                  <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Lab Status</h4>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                      <span className="text-[9px] text-bit-muted">STABLE</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-1 h-1 rounded-full bg-bit-accent shadow-[0_0_8px_rgba(255,77,0,0.6)]" />
-                      <span className="text-[9px] text-bit-muted">SYNC ACTIVE</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="lg:col-span-3">
-                <div className="p-6 rounded-2xl bg-bit-panel/30 border border-bit-border relative group hover:border-bit-accent/40 transition-all shadow-sm">
-                  <h4 className="text-bit-text font-display font-bold mb-2">Join the Lab</h4>
-                  <p className="text-[10px] text-bit-muted mb-6 font-mono leading-relaxed uppercase">
-                    Enroll in the neural notification stream.
-                  </p>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      placeholder="ARCHIVE_ID@EMAIL.NET"
-                      className="w-full bg-bit-bg/50 border border-bit-border rounded py-2 px-3 text-[10px] font-mono focus:outline-none focus:border-bit-accent/50 transition-all text-bit-text"
-                    />
-                    <button className="absolute right-1 top-1 bottom-1 px-2 bg-bit-accent text-white text-[9px] font-bold rounded hover:scale-95 transition-all">ENROLL</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-t border-bit-border/50 pt-12 text-[10px] font-mono text-bit-muted uppercase tracking-widest">
-              <div>© 2026 BitLibrary • The Open Digital Library Platform</div>
-              <div className="flex items-center gap-4">
-                <span>Infrastructure:</span>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5, 6].map(i => (
-                    <div key={i} className={`h-1 w-3 rounded-full ${i < 5 ? 'bg-bit-accent/40' : 'bg-bit-border'}`} />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </footer>
-      )}
-
-      {/* Mobile Menu Drawer */}
-      <div
-        className={`fixed inset-0 z-50 md:hidden transition-all duration-300 ${mobileMenuOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
-        aria-hidden={!mobileMenuOpen}
-      >
-        <button
-          type="button"
-          aria-label="Close mobile menu backdrop"
-          onClick={() => setMobileMenuOpen(false)}
-          className={`absolute inset-0 bg-bit-bg/65 backdrop-blur-sm transition-opacity duration-300 ${mobileMenuOpen ? 'opacity-100' : 'opacity-0'}`}
-        />
-
-        <aside
-          className={`absolute right-0 top-0 h-full w-[90vw] max-w-sm border-l border-bit-border bg-bit-bg shadow-2xl transition-transform duration-300 ${mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}
-          role="dialog"
-          aria-label="Mobile navigation"
-        >
-          <div className="flex items-center justify-between border-b border-bit-border px-5 h-16">
-            <div className="min-w-0">
-              <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent">Navigation Hub</p>
-              <p className="text-xs text-bit-muted truncate">Hi {localUserState.profile.displayName || 'Reader'}</p>
-            </div>
-            <button
-              type="button"
-              className="h-9 w-9 rounded-full border border-bit-border bg-bit-panel/40 text-bit-muted hover:text-bit-text hover:border-bit-accent/40 transition-all"
-              onClick={() => setMobileMenuOpen(false)}
-              aria-label="Close mobile menu"
-            >
-              <X size={18} className="mx-auto" />
-            </button>
-          </div>
-
-          <div className="h-[calc(100%-4rem)] overflow-y-auto px-5 py-5 space-y-6">
-            <form onSubmit={handleMobileMenuSearchSubmit} className="rounded-2xl border border-bit-border bg-bit-panel/35 p-3">
-              <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-bit-accent mb-2">Quick Search</p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search books or authors..."
-                  className="flex-1 rounded-xl border border-bit-border bg-bit-bg/60 px-3 py-2 text-sm text-bit-text placeholder:text-bit-muted/60 focus:outline-none focus:border-bit-accent/40"
-                />
-                <button
-                  type="submit"
-                  className="rounded-xl bg-bit-accent text-white px-3 py-2 text-[10px] font-mono uppercase tracking-widest"
-                >
-                  Go
-                </button>
-              </div>
-            </form>
-
-            <section className="rounded-2xl border border-bit-border bg-bit-panel/25 p-3">
-              <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-bit-accent mb-3">Main Routes</p>
-              <div className="space-y-2">
-                <Link to="/" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
-                  <House size={16} />
-                  Discover
-                </Link>
-                <Link to="/library" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/library') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
-                  <Library size={16} />
-                  Library
-                </Link>
-                <Link to="/mylibrary" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/mylibrary') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
-                  <BookOpenText size={16} />
-                  My Library
-                </Link>
-                <Link to="/about" className="flex items-center gap-3 rounded-xl border border-bit-border bg-bit-panel/30 px-3 py-2 text-sm text-bit-muted hover:text-bit-text hover:border-bit-accent/30 transition-all">
-                  <Info size={16} />
-                  About
-                </Link>
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-bit-border bg-bit-panel/25 p-3">
-              <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-bit-accent mb-3">Quick Topics</p>
-              <div className="flex flex-wrap gap-2">
-                {mobileQuickTopics.map((topic) => (
-                  <button
-                    key={topic}
-                    type="button"
-                    onClick={() => {
-                      setSearchQuery(topic);
-                      navigateToSearch(topic, { persistRecent: true });
-                      setMobileMenuOpen(false);
-                    }}
-                    className="rounded-full border border-bit-border bg-bit-panel/35 px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-bit-muted hover:text-bit-text hover:border-bit-accent/30 transition-all"
-                  >
-                    {topic}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-2xl border border-bit-border bg-bit-panel/25 p-3">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-bit-accent">Theme</p>
-                  <p className="text-xs text-bit-muted mt-1">Switch light or dark mode.</p>
-                </div>
-                <ThemeToggle />
-              </div>
-            </section>
-          </div>
-        </aside>
-      </div>
       {/* Global PiP Overlay */}
       {readerLoading && !activeBook && <ReaderSkeleton />}
       {activeBook && (

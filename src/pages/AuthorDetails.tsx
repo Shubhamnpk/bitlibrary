@@ -104,7 +104,7 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
         {loading ? (
           <BookGridSkeleton count={8} />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
             {books.map((book, idx) => (
               <div 
                 key={book.id} 
@@ -112,6 +112,7 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
                 style={{ animationDelay: `${idx * 50}ms` }}
               >
                 <BookCard 
+                  variant="compact"
                   book={book} 
                   onClick={() => onBookClick(book)} 
                   onRead={() => navigate(`/book/${book.id}`)} 
