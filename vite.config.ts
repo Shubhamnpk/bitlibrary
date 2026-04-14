@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        proxy: {
+          '/api/gutendex': {
+            target: 'https://gutendex.com',
+            changeOrigin: true,
+            secure: true,
+            rewrite: (path) => path.replace(/^\/api\/gutendex/, ''),
+          },
+        },
       },
       plugins: [react()],
       define: {

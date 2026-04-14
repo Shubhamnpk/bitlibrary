@@ -3,13 +3,37 @@ import { Book } from "@/types/index";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "minimax/minimax-m2.5:free";
+let hasLoggedOpenRouter404 = false;
 
 const getApiKey = (): string => {
   return (import.meta as any).env?.VITE_OPENROUTER_API_KEY || "";
 };
+const hasUsableApiKey = (): boolean => {
+  const apiKey = getApiKey();
+  return !!apiKey && !apiKey.includes("PLACEHOLDER");
+};
 
 const getModel = (): string => {
   return (import.meta as any).env?.VITE_OPENROUTER_MODEL || DEFAULT_MODEL;
+};
+
+const parseOpenRouterError = (err: unknown): { status?: number; message: string } => {
+  if (axios.isAxiosError(err)) {
+    return {
+      status: err.response?.status,
+      message: err.response?.data?.error?.message || err.message,
+    };
+  }
+  return { message: String(err) };
+};
+const toText = (value: unknown, fallback: string): string => {
+  if (typeof value === "string") return value;
+  if (value == null) return fallback;
+  return String(value);
+};
+const toOptionalNumber = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
 
 const getOpenRouterHeaders = (apiKey: string) => {
@@ -20,6 +44,45 @@ const getOpenRouterHeaders = (apiKey: string) => {
     "HTTP-Referer": env.VITE_OPENROUTER_SITE_URL || "http://localhost:5173",
     "X-Title": env.VITE_OPENROUTER_APP_NAME || "BitLibrary",
   };
+};
+const buildLocalChapterExtract = (book: Book, chapter: number): string => {
+  const title = toText(book.title, "Untitled Volume");
+  const author = toText(book.author, "Unknown Author");
+  const category = toText(book.category, "General");
+  const description = toText(book.description, "No description is available for this title.");
+  const subjects = (book.subjects || []).slice(0, 5);
+  const subjectLine = subjects.length > 0 ? subjects.join(", ") : "Core themes unavailable";
+  const year = book.year ?? "Unknown";
+  const pages = book.pages ?? "Unknown";
+
+  return `# Chapter ${chapter}: ${title}
+
+_Source: Local chapter extractor (offline-safe fallback)_
+
+## Overview
+**Title:** ${title}  
+**Author:** ${author}  
+**Category:** ${category}  
+**Publication Year:** ${year}  
+**Pages:** ${pages}
+
+## Core Context
+${description}
+
+## Themes To Focus On
+- ${subjectLine}
+- Historical and literary context inferred from catalog metadata
+- Reader-guided interpretation and note-taking
+
+## Guided Reading Notes
+This extracted chapter mode keeps reading functional even when AI streaming is unavailable.  
+Use this section as a structured briefing before opening the full source text.
+
+## Suggested Next Steps
+1. Open the source volume for full text.
+2. Compare this summary against the original chapter.
+3. Save the book if the topic matches your research or study goals.
+`;
 };
 
 export const searchBooksWithGemini = async (query: string): Promise<Book[]> => {
@@ -49,11 +112,25 @@ export const searchBooksWithGemini = async (query: string): Promise<Book[]> => {
     return data.map((item: any, i: number) => ({
       ...item,
       id: `nv-${Date.now()}-${i}`,
+      title: toText(item?.title, `Neural Volume ${i + 1}`),
+      author: toText(item?.author, "Unknown Author"),
+      category: toText(item?.category, "General"),
+      description: toText(item?.description, "No neural description available."),
+      year: toOptionalNumber(item?.year),
+      pages: toOptionalNumber(item?.pages),
       popularity: 80 + i,
       coverGradient: `from-emerald-${900 - (i * 100)} to-black`
     }));
   } catch (err) {
-    console.error("OpenRouter search failed:", err);
+    const parsed = parseOpenRouterError(err);
+    if (parsed.status === 404) {
+      if (!hasLoggedOpenRouter404) {
+        console.warn("OpenRouter search disabled: endpoint/model returned 404. Check VITE_OPENROUTER_MODEL and API key.");
+        hasLoggedOpenRouter404 = true;
+      }
+      return [];
+    }
+    console.error("OpenRouter search failed:", parsed.message);
     return [];
   }
 };
@@ -81,7 +158,15 @@ export const generateSearchInsights = async (query: string): Promise<string> => 
     
     return response.data.choices[0].message.content;
   } catch (err) {
-    console.error("OpenRouter insight failed:", err);
+    const parsed = parseOpenRouterError(err);
+    if (parsed.status === 404) {
+      if (!hasLoggedOpenRouter404) {
+        console.warn("OpenRouter insights disabled: endpoint/model returned 404. Check VITE_OPENROUTER_MODEL and API key.");
+        hasLoggedOpenRouter404 = true;
+      }
+      return "";
+    }
+    console.error("OpenRouter insight failed:", parsed.message);
     return "";
   }
 };
@@ -120,8 +205,10 @@ export const generateNeuralSummary = async (book: Book): Promise<string> => {
  */
 export const streamBookChapter = async (book: Book, chapter: number, onChunk?: (chunk: string) => void): Promise<string> => {
   const apiKey = getApiKey();
-  if (!apiKey || apiKey.includes("PLACEHOLDER")) {
-     return `## OpenRouter ERROR\n\nAPI key missing. Please check \`.env.local\` to enable AI streaming for "${book.title}".`;
+  if (!hasUsableApiKey()) {
+    const fallback = buildLocalChapterExtract(book, chapter);
+    if (onChunk) onChunk(fallback);
+    return fallback;
   }
 
   try {
@@ -172,9 +259,16 @@ export const streamBookChapter = async (book: Book, chapter: number, onChunk?: (
       }
     }
 
+    if (!fullText.trim()) {
+      const fallback = buildLocalChapterExtract(book, chapter);
+      if (onChunk) onChunk(fallback);
+      return fallback;
+    }
     return fullText;
   } catch (err) {
     console.error("OpenRouter stream failed:", err);
-    return "Neural uplink severed while communicating with OpenRouter.";
+    const fallback = buildLocalChapterExtract(book, chapter);
+    if (onChunk) onChunk(fallback);
+    return fallback;
   }
 };

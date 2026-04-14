@@ -1,12 +1,12 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Book, ViewState } from '@/types/index';
 import { INITIAL_BOOKS, CATEGORIES } from '@/constants';
 import { fetchBooksFromGutendex, fetchBookById } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import Reader, { ReaderSkeleton } from '@/components/Reader';
-import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight, ArrowUpRight, Clock3 } from 'lucide-react';
+import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight, ArrowUpRight, Clock3, House, BookOpenText, Info } from 'lucide-react';
 import BookDetails from '@/pages/BookDetails';
-import { BookDetailsSkeleton } from '@/components/Skeletons';
+import { BookDetailsSkeleton, BookCardSkeleton } from '@/components/Skeletons';
 import LibraryPage from '@/pages/Library';
 import BrowseBooks from '@/pages/BrowseBooks';
 import AboutPage from '@/pages/AboutPage';
@@ -15,8 +15,12 @@ import AuthorDetails from '@/pages/AuthorDetails';
 import CategoryDetails from '@/pages/CategoryDetails';
 import SearchPage, { SEARCH_MIN_QUERY_LENGTH } from '@/pages/Search';
 import { recordRecentSearch, useLocalUserState } from '@/lib/local-user';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams } from 'react-router-dom';
+
+import Footer from '@/components/Footer';
+import Navbar from '@/components/Navbar';
 
 const SEARCH_DEBOUNCE_MS = 350;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
@@ -82,6 +86,7 @@ const App: React.FC = () => {
   const [borrowedBooks, setBorrowedBooks] = useState<Book[]>([]);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [isSearching, setIsSearching] = useState(false);
+  const [isFeaturedLoading, setIsFeaturedLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const { state: localUserState } = useLocalUserState();
@@ -139,17 +144,24 @@ const App: React.FC = () => {
     }
 
     const syncData = async () => {
-      const { books: apiBooks } = await fetchBooksFromGutendex(1);
-      if (apiBooks.length > 0) {
-        const nextFeaturedBooks = apiBooks.slice(0, 8);
-        const nextBorrowedBooks = apiBooks.slice(0, 2);
+      if (!cached) {
+        setIsFeaturedLoading(true);
+      }
+      try {
+        const { books: apiBooks } = await fetchBooksFromGutendex(1);
+        if (apiBooks.length > 0) {
+          const nextFeaturedBooks = apiBooks.slice(0, 8);
+          const nextBorrowedBooks = apiBooks.slice(0, 2);
 
-        setFeaturedBooks(nextFeaturedBooks);
-        setBorrowedBooks(nextBorrowedBooks);
-        writeExploreCache({
-          featuredBooks: nextFeaturedBooks,
-          borrowedBooks: nextBorrowedBooks,
-        });
+          setFeaturedBooks(nextFeaturedBooks);
+          setBorrowedBooks(nextBorrowedBooks);
+          writeExploreCache({
+            featuredBooks: nextFeaturedBooks,
+            borrowedBooks: nextBorrowedBooks,
+          });
+        }
+      } finally {
+        setIsFeaturedLoading(false);
       }
     };
 
@@ -214,211 +226,136 @@ const App: React.FC = () => {
 
       if (e.key === 'Escape') {
         closeSearchSurface();
+        setMobileMenuOpen(false);
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [closeSearchSurface]);
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = previousOverflow || '';
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileMenuOpen]);
+
   const trimmedSearchQuery = searchQuery.trim();
   const searchDropdownRecent = localUserState.recentSearches.slice(0, 4);
   const searchDropdownSuggestions = SEARCH_SUGGESTIONS.filter((item) => item.toLowerCase() !== trimmedSearchQuery.toLowerCase()).slice(0, 4);
   const showSearchSurface = isSearchFocused && !isReaderActive;
+  const mobileQuickTopics = Array.from(new Set([...searchDropdownRecent, ...SEARCH_SUGGESTIONS])).slice(0, 8);
 
   const applySearchSelection = (query: string) => {
     setSearchQuery(query);
     navigateToSearch(query, { persistRecent: true });
     closeSearchSurface();
   };
+  const handleMobileMenuSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    navigateToSearch(searchQuery, { persistRecent: true });
+    setMobileMenuOpen(false);
+  };
 
   return (
-    <div className="min-h-screen bg-bit-bg text-bit-text font-sans selection:bg-bit-accent selection:text-black">
+    <div className="min-h-screen bg-bit-bg text-bit-text font-sans selection:bg-bit-accent selection:text-white transition-colors duration-500">
       <ScrollToTop />
       {/* Background Grid & Effects */}
-      <div className="fixed inset-0 bg-grid-pattern bg-[length:40px_40px] opacity-[0.03] pointer-events-none" />
+      <div className="fixed inset-0 bg-grid-pattern bg-[length:40px_40px] opacity-[0.12] pointer-events-none" />
       <div className="fixed inset-0 bg-gradient-to-b from-transparent via-bit-bg/50 to-bit-bg pointer-events-none" />
 
-      {/* Navigation - Hidden in Full Reader mode */}
-      {!isReaderActive && (
-        <nav className="fixed top-0 left-0 right-0 z-40 border-b border-white/5 bg-bit-bg/80 backdrop-blur-xl">
-          <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      {/* Navigation & Mobile Menu */}
+      <Navbar 
+        isReaderActive={isReaderActive}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        handleSearchSubmit={handleSearchSubmit}
+        isSearching={isSearching}
+        showSearchSurface={showSearchSurface}
+        trimmedSearchQuery={trimmedSearchQuery}
+        SEARCH_MIN_QUERY_LENGTH={SEARCH_MIN_QUERY_LENGTH}
+        searchDropdownRecent={searchDropdownRecent}
+        searchDropdownSuggestions={searchDropdownSuggestions}
+        applySearchSelection={applySearchSelection}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+        localUserState={localUserState}
+        handleMobileMenuSearchSubmit={handleMobileMenuSearchSubmit}
+        activeTab={activeTab}
+        searchInputRef={searchInputRef}
+        searchShellRef={searchShellRef}
+        setIsSearchFocused={setIsSearchFocused}
+        mobileQuickTopics={mobileQuickTopics}
+        navigateToSearch={navigateToSearch}
+      />
 
-            <Link to="/" className="flex items-center gap-3 group min-w-0">
-              <img
-                src="/assets/bitlibrary-icon-clean.svg"
-                alt="BitLibrary"
-                className="w-9 h-9 shrink-0 transition-transform group-hover:scale-105"
-              />
-              <div className="min-w-0">
-                <p className="font-display font-bold text-xl tracking-tight text-white leading-none">BitLibrary</p>
-                <p className="hidden lg:block text-[9px] font-mono uppercase tracking-[0.22em] text-bit-accent/80 mt-1">
-                  The Open Digital Library
-                </p>
-              </div>
-            </Link>
-
-            {/* Desktop Search */}
-            <div ref={searchShellRef} className="hidden md:block flex-1 max-w-lg mx-8 relative">
-              <form onSubmit={handleSearchSubmit} className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-bit-accent transition-colors" size={18} />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="Search books, authors, subjects... (Press /)"
-                  value={searchQuery}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white/[0.03] border border-white/10 rounded-full py-2 pl-10 pr-24 text-sm focus:outline-none focus:border-bit-accent/50 focus:bg-white/[0.05] transition-all placeholder:text-gray-600"
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  {trimmedSearchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchQuery('');
-                        searchInputRef.current?.focus();
-                      }}
-                      className="text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500 hover:text-white transition-colors"
-                    >
-                      Clear
-                    </button>
-                  )}
-                  {isSearching ? (
-                    <div className="animate-spin text-bit-accent">
-                      <Disc size={16} />
-                    </div>
-                  ) : (
-                    <button
-                      type="submit"
-                      className="px-3 py-1 rounded-full bg-bit-accent text-black text-[10px] font-mono uppercase tracking-[0.2em] hover:scale-[0.98] transition-transform"
-                    >
-                      Search
-                    </button>
-                  )}
-                </div>
-              </form>
-
-              {showSearchSurface && (
-                <div className="absolute left-0 right-0 top-[calc(100%+0.75rem)] rounded-3xl border border-white/10 bg-bit-panel/95 backdrop-blur-2xl shadow-2xl shadow-black/40 overflow-hidden">
-                  <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent">Search Control</p>
-                      <p className="text-sm text-gray-400 mt-1">
-                        {trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
-                          ? `Press Enter to open results for "${trimmedSearchQuery}".`
-                          : `Type at least ${SEARCH_MIN_QUERY_LENGTH} characters to start searching.`}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500">
-                      <Command size={12} />
-                      /
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-0">
-                    <div className="p-5 border-r border-white/5">
-                      <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500 mb-4">
-                        <Clock3 size={12} />
-                        Recent Searches
-                      </div>
-                      <div className="space-y-2">
-                        {searchDropdownRecent.length > 0 ? searchDropdownRecent.map((query) => (
-                          <button
-                            key={query}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => applySearchSelection(query)}
-                            className="w-full flex items-center justify-between rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-3 text-left hover:border-bit-accent/30 hover:bg-white/[0.04] transition-all group"
-                          >
-                            <span className="text-sm text-white">{query}</span>
-                            <ArrowUpRight size={14} className="text-gray-600 group-hover:text-bit-accent transition-colors" />
-                          </button>
-                        )) : (
-                          <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-gray-500">
-                            Your recent searches will show up here after a few searches.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="p-5">
-                      <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-gray-500 mb-4">
-                        <Zap size={12} />
-                        Explore Topics
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {searchDropdownSuggestions.map((query) => (
-                          <button
-                            key={query}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => applySearchSelection(query)}
-                            className="px-3 py-2 rounded-full border border-white/10 bg-white/[0.02] text-[11px] text-gray-300 hover:text-white hover:border-bit-accent/40 hover:bg-bit-accent/10 transition-all"
-                          >
-                            {query}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="mt-5 rounded-2xl border border-bit-accent/20 bg-bit-accent/5 p-4">
-                        <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent mb-2">Search Tips</p>
-                        <p className="text-sm text-gray-300 leading-relaxed">
-                          Try author names, broad subjects, or book themes to get richer results from every archive source.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="hidden md:flex items-center gap-6 font-mono text-xs tracking-wider">
-              <Link to="/" className={`hover:text-white transition-colors uppercase ${activeTab('/') ? 'text-bit-accent' : 'text-gray-400'}`}>Discover</Link>
-              <Link to="/library" className={`hover:text-white transition-colors uppercase ${activeTab('/library') ? 'text-bit-accent' : 'text-gray-400'}`}>Library</Link>
-              <Link to="/mylibrary" className={`hover:text-white transition-colors uppercase ${activeTab('/mylibrary') ? 'text-bit-accent' : 'text-gray-400'}`}>My Library</Link>
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-900 border border-white/10 flex items-center justify-center cursor-pointer">
-                <span className="text-[10px] font-bold text-white">US</span>
-              </div>
-            </div>
-
-            <button className="md:hidden text-white" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-              {mobileMenuOpen ? <X /> : <Menu />}
-            </button>
-          </div>
-        </nav>
-      )}
 
       {/* Main Layout */}
-      <main className={`pb-20 px-6 max-w-7xl mx-auto min-h-screen flex flex-col relative z-0 ${isReaderActive ? '' : 'pt-24'}`}>
+      <main className={`pb-20 min-h-screen relative z-0 ${isReaderActive ? '' : 'pt-16 md:pt-20'}`}>
 
         <Routes>
           {/* Home / Discovery */}
           <Route path="/" element={
             <div className="animate-fade-in-up">
               {/* Hero */}
-              <section className="mb-24 relative">
-                <div className="absolute -top-40 -left-40 w-[600px] h-[600px] bg-bit-accent/5 rounded-full blur-[120px] pointer-events-none" />
-                <div className="relative z-10">
+              <section className="mb-12 md:mb-16 relative overflow-hidden py-8 md:py-14">
+                {/* Decorative Geometric Elements */}
+                <div className="absolute top-0 right-0 w-full md:w-3/4 h-full pointer-events-none overflow-hidden select-none">
+                  {/* Rotating Rings - Enhanced visibility */}
+                  <div className="absolute -top-40 -right-40 w-[600px] h-[600px] md:w-[800px] md:h-[800px] rounded-full border-[2px] border-bit-accent/15 animate-slow-rotate" />
+                  <div className="absolute -top-20 -right-20 w-[500px] h-[500px] md:w-[700px] md:h-[700px] rounded-full border-[1px] border-bit-accent/10 animate-slow-rotate [animation-direction:reverse]" />
+                  <div className="absolute -top-60 -right-60 w-[700px] h-[700px] md:w-[900px] md:h-[900px] rounded-full border-[0.5px] border-bit-accent/5 animate-slow-rotate [animation-duration:40s]" />
+                  
+                  {/* Floating Geometric "Stones/Nodes" - More visible and polished */}
+                  <div className="absolute top-1/4 right-1/4 w-16 h-16 bg-gradient-to-br from-bit-accent/20 to-bit-accent/5 backdrop-blur-md border border-bit-accent/30 rounded-2xl rotate-12 animate-float-up shadow-[0_0_20px_rgba(var(--bit-accent-rgb),0.1)]" />
+                  <div className="absolute top-1/2 right-1/3 w-10 h-10 bg-bit-panel/60 backdrop-blur-lg border border-bit-border rounded-lg -rotate-12 animate-float-down shadow-xl" />
+                  <div className="absolute bottom-1/4 right-1/2 w-20 h-20 border-2 border-bit-accent/20 border-dashed rounded-full animate-pulse" />
+                  
+                  {/* Small Shards / CONCEPT_NODES */}
+                  <div className="absolute top-[15%] right-1/2 w-5 h-5 bg-bit-accent/40 backdrop-blur-sm rotate-45 animate-float-up shadow-sm border border-bit-accent/20" />
+                  <div className="absolute bottom-1/3 right-[15%] w-4 h-4 bg-bit-text opacity-20 rotate-12 animate-float-down" />
+                  <div className="absolute top-1/2 right-[45%] w-3 h-3 bg-bit-accent rounded-full animate-pulse blur-[1px]" />
+                  
+                  {/* Light Orbs */}
+                  <div className="absolute top-[10%] right-[10%] w-[400px] h-[400px] bg-bit-accent/15 rounded-full blur-[120px] opacity-60 mix-blend-plus-lighter" />
+                  <div className="absolute bottom-[20%] right-[30%] w-[300px] h-[300px] bg-bit-accent/5 rounded-full blur-[100px] opacity-40 mix-blend-plus-lighter" />
+                </div>
+
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
                   <span className="inline-block py-1 px-3 rounded-full border border-bit-accent/20 bg-bit-accent/5 text-[10px] text-bit-accent font-mono mb-6 uppercase tracking-[0.2em]">
                     BitLibrary Platform
                   </span>
-                  <h1 className="text-6xl md:text-8xl font-display font-bold text-white mb-8 leading-none tracking-tighter">
+                  <h1 className="text-4xl sm:text-6xl md:text-8xl font-display font-bold text-bit-text mb-6 md:mb-8 leading-[0.95] tracking-tighter">
                     Open books,
                     <br />
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-gray-300 to-gray-700">open discovery.</span>
+                    <span className="bg-gradient-to-r from-bit-text via-bit-text to-bit-accent bg-clip-text text-transparent drop-shadow-sm">
+                      open discovery.
+                    </span>
                   </h1>
-                  <p className="text-lg text-gray-500 max-w-2xl mb-12 leading-relaxed font-sans">
+                  <div className="text-base md:text-lg text-bit-muted max-w-2xl mb-10 md:mb-12 leading-relaxed font-sans">
                     The Open Digital Library for modern readers, students, and explorers of knowledge.
-                    <p className="text-sm text-gray-600 max-w-2xl mb-12 leading-relaxed font-mono uppercase tracking-[0.18em]">
+                    <p className="text-xs sm:text-sm text-bit-muted/60 max-w-2xl mt-4 leading-relaxed font-mono uppercase tracking-[0.14em] sm:tracking-[0.18em]">
                       Search across open archives, discover authors, and explore books with a faster digital reading interface.
                     </p>
-                  </p>
+                  </div>
 
                   <div className="flex flex-wrap gap-3">
                     {CATEGORIES.slice(0, 6).map(cat => (
                       <button
                         key={cat}
                         onClick={() => { setSearchQuery(cat); navigateToSearch(cat, { persistRecent: true }); }}
-                        className="px-4 py-2 rounded-lg bg-white/[0.02] border border-white/5 hover:border-bit-accent/40 hover:bg-white/[0.05] text-[10px] text-gray-400 hover:text-white transition-all font-mono uppercase tracking-widest"
+                        className="px-4 py-2 rounded-lg bg-bit-panel/30 border border-bit-border hover:border-bit-accent/40 hover:bg-bit-panel/50 text-[10px] text-bit-muted hover:text-bit-text transition-all font-mono uppercase tracking-widest"
                       >
                         {cat}
                       </button>
@@ -428,41 +365,51 @@ const App: React.FC = () => {
               </section>
 
               {/* Featured Swiper / Grid */}
-              <section className="mb-32">
-                <div className="flex items-center justify-between mb-12">
+              <section className="mb-24 md:mb-32 max-w-7xl mx-auto px-4 sm:px-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 md:mb-12">
                   <div>
-                    <h2 className="text-3xl font-display font-bold text-white">Registry Spotlight</h2>
-                    <p className="text-xs text-gray-600 font-mono mt-1 uppercase tracking-widest">Active nodes in the current stream</p>
+                    <h2 className="text-2xl md:text-3xl font-display font-bold text-bit-text">Registry Spotlight</h2>
+                    <p className="text-xs text-bit-muted font-mono mt-1 uppercase tracking-widest">Active nodes in the current stream</p>
                   </div>
-                  <Link to="/books" className="group flex items-center gap-2 text-[10px] text-bit-accent hover:text-white font-mono uppercase tracking-[0.2em] transition-colors">
+                  <Link to="/library" className="group flex items-center gap-2 text-[10px] text-bit-accent hover:text-bit-text font-mono uppercase tracking-[0.2em] transition-colors">
                     View Full Registry <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                   </Link>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-12">
-                  {featuredBooks.map(book => (
-                    <BookCard key={book.id} book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
-                  ))}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
+                  {isFeaturedLoading && featuredBooks.length === 0 ? (
+                    // Logic for "One Row" using CSS grid visibility
+                    // We render 4 to ensure a full row on all screens
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <div key={`skeleton-${i}`} className={i === 2 ? 'hidden md:block' : i === 3 ? 'hidden lg:block' : ''}>
+                        <BookCardSkeleton />
+                      </div>
+                    ))
+                  ) : (
+                    featuredBooks.map(book => (
+                      <BookCard key={book.id} variant="compact" book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
+                    ))
+                  )}
                 </div>
               </section>
 
               {/* Collections Bento */}
-              <section>
-                <h2 className="text-2xl font-display font-bold text-white mb-10">Neural Clusters</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[500px]">
-                  <div onClick={() => navigateToSearch('Quantum', { persistRecent: true })} className="col-span-1 md:col-span-2 rounded-3xl border border-white/5 bg-white/[0.01] p-10 relative overflow-hidden group cursor-pointer hover:border-bit-accent/30 transition-all">
-                    <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 to-transparent" />
-                    <h3 className="text-4xl font-display font-bold text-white relative z-10">Quantum Era</h3>
-                    <p className="text-gray-500 mt-4 max-w-xs relative z-10 leading-relaxed text-sm">Synthetic analysis of particle logic and future computation streams.</p>
-                    <div className="absolute bottom-10 right-10 text-bit-accent/20 group-hover:scale-125 group-hover:text-bit-accent/50 transition-all duration-700">
-                      <Zap size={80} />
+              <section className="max-w-7xl mx-auto px-4 sm:px-6">
+                <h2 className="text-xl md:text-2xl font-display font-bold text-bit-text mb-8 md:mb-10">Neural Clusters</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-auto md:h-[500px]">
+                  <div onClick={() => navigateToSearch('Quantum', { persistRecent: true })} className="col-span-1 md:col-span-2 rounded-3xl border border-bit-border bg-bit-panel/30 p-6 md:p-10 relative overflow-hidden group cursor-pointer hover:border-bit-accent/30 transition-all shadow-sm">
+                    <div className="absolute inset-0 bg-gradient-to-br from-bit-accent/5 to-transparent" />
+                    <h3 className="text-3xl md:text-4xl font-display font-bold text-bit-text relative z-10">Quantum Era</h3>
+                    <p className="text-bit-muted mt-4 max-w-xs relative z-10 leading-relaxed text-sm">Synthetic analysis of particle logic and future computation streams.</p>
+                    <div className="absolute bottom-6 right-6 md:bottom-10 md:right-10 text-bit-accent/10 group-hover:scale-125 group-hover:text-bit-accent/30 transition-all duration-700">
+                      <Zap size={56} className="md:w-20 md:h-20" />
                     </div>
                   </div>
-                  <div onClick={() => navigateToSearch('Philosophy', { persistRecent: true })} className="rounded-3xl border border-white/5 bg-white/[0.01] p-8 relative group overflow-hidden cursor-pointer hover:border-bit-accent/30 transition-all">
-                    <div className="absolute -top-10 -right-10 opacity-5 group-hover:opacity-20 transition-opacity">
-                      <Library size={120} />
+                  <div onClick={() => navigateToSearch('Philosophy', { persistRecent: true })} className="rounded-3xl border border-bit-border bg-bit-panel/30 p-6 md:p-8 relative group overflow-hidden cursor-pointer hover:border-bit-accent/30 transition-all shadow-sm">
+                    <div className="absolute -top-8 -right-8 md:-top-10 md:-right-10 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
+                      <Library size={88} className="md:w-[120px] md:h-[120px]" />
                     </div>
-                    <h3 className="text-2xl font-display font-bold text-white uppercase tracking-tight">Ancient <br />Nodes</h3>
+                    <h3 className="text-xl md:text-2xl font-display font-bold text-bit-text uppercase tracking-tight">Ancient <br />Nodes</h3>
                     <p className="text-xs text-bit-accent font-mono mt-2">128 COLLECTIONS</p>
                   </div>
                 </div>
@@ -471,70 +418,80 @@ const App: React.FC = () => {
           } />
 
           {/* Discovery / Library Registry */}
-          <Route path="/library/:categoryId?" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
-          <Route path="/books/:categoryId?" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
-          <Route path="/browse/:categoryId?" element={<BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />} />
+          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} /></div>} />
 
           {/* Personal Bookshelf */}
           <Route path="/mylibrary" element={
-            <LibraryPage
-              borrowedBooks={borrowedBooks}
-              savedBooks={localUserState.savedBooks}
-              recentSearches={localUserState.recentSearches}
-              recentlyViewed={localUserState.recentlyViewed}
-              profile={localUserState.profile}
-              settings={localUserState.settings}
-              onBookClick={(b) => navigate(`/book/${b.id}`)}
-              onRead={handleReadBook}
-              onExplore={() => navigate('/')}
-            />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <LibraryPage
+                borrowedBooks={borrowedBooks}
+                savedBooks={localUserState.savedBooks}
+                recentSearches={localUserState.recentSearches}
+                recentlyViewed={localUserState.recentlyViewed}
+                profile={localUserState.profile}
+                settings={localUserState.settings}
+                onBookClick={(b) => navigate(`/book/${b.id}`)}
+                onRead={handleReadBook}
+                onExplore={() => navigate('/')}
+              />
+            </div>
           } />
 
           <Route path="/search" element={
-            <SearchPage
-              onBookClick={(book) => navigate(`/book/${book.id}`)}
-              onRead={handleReadBook}
-              onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
-              onResultsChange={setSearchResults}
-              onSearchingChange={setIsSearching}
-              onQuerySync={setSearchQuery}
-              recentSearches={localUserState.recentSearches}
-              onQuickSearch={applySearchSelection}
-            />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <SearchPage
+                onBookClick={(book) => navigate(`/book/${book.id}`)}
+                onRead={handleReadBook}
+                onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
+                onResultsChange={setSearchResults}
+                onSearchingChange={setIsSearching}
+                onQuerySync={setSearchQuery}
+                recentSearches={localUserState.recentSearches}
+                onQuickSearch={applySearchSelection}
+              />
+            </div>
           } />
 
           {/* Deep Routes (Wrappers for details/reader) */}
           <Route path="/book/:id" element={
-            <BookDetailsRoute
-              books={[...featuredBooks, ...searchResults]}
-              onRead={(id) => {
-                const b = [...featuredBooks, ...searchResults].find(node => node.id === id);
-                if (b) {
-                  setActiveBook(b);
-                  setIsMinimized(false);
-                } else {
-                  setReaderLoading(true);
-                  fetchBookById(id).then(res => {
-                    if (res) {
-                      setActiveBook(res);
-                      setIsMinimized(false);
-                    }
-                    setReaderLoading(false);
-                  });
-                }
-              }}
-              onBookClick={(id) => navigate(`/book/${id}`)}
-              onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
-              onCategoryClick={(cat) => navigate(`/category/${encodeURIComponent(cat)}`)}
-            />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <BookDetailsRoute
+                books={[...featuredBooks, ...searchResults]}
+                onRead={(id) => {
+                  const b = [...featuredBooks, ...searchResults].find(node => node.id === id);
+                  if (b) {
+                    setActiveBook(b);
+                    setIsMinimized(false);
+                  } else {
+                    setReaderLoading(true);
+                    fetchBookById(id).then(res => {
+                      if (res) {
+                        setActiveBook(res);
+                        setIsMinimized(false);
+                      }
+                      setReaderLoading(false);
+                    });
+                  }
+                }}
+                onBookClick={(id) => navigate(`/book/${id}`)}
+                onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
+                onCategoryClick={(cat) => navigate(`/category/${encodeURIComponent(cat)}`)}
+              />
+            </div>
           } />
 
           <Route path="/author/:name" element={
-            <AuthorDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <AuthorDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+            </div>
           } />
 
           <Route path="/category/:categoryId" element={
-            <CategoryDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <CategoryDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+            </div>
           } />
 
           {/* Static Pages */}
@@ -545,110 +502,9 @@ const App: React.FC = () => {
 
       </main>
 
-      {/* Enhanced Footer */}
-      {!isReaderActive && (
-        <footer className="border-t border-white/5 pt-20 pb-12 bg-black relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-bit-accent/50 to-transparent opacity-20" />
+      {/* Global Footer */}
+      <Footer isReaderActive={isReaderActive} />
 
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 mb-20">
-              <div className="lg:col-span-4">
-                <Link to="/" className="inline-flex items-center mb-6 group">
-                  <img
-                    src="/assets/bitlibrary-logo.svg"
-                    alt="BitLibrary"
-                    className="h-14 w-auto"
-                  />
-                </Link>
-                <p className="text-gray-500 text-sm leading-relaxed mb-8 max-w-sm">
-                  The Open Digital Library for accessible discovery, open archives, and modern reading.
-                  Built to connect books, authors, and knowledge in one searchable interface.
-                </p>
-                <div className="flex gap-4">
-                  <button className="p-2 rounded-full border border-white/5 hover:border-bit-accent/50 hover:text-bit-accent transition-all"><Github size={18} /></button>
-                  <button className="p-2 rounded-full border border-white/5 hover:border-bit-accent/50 hover:text-bit-accent transition-all"><Disc size={18} /></button>
-                </div>
-              </div>
-
-              <div className="lg:col-span-5 grid grid-cols-2 md:grid-cols-3 gap-8 text-[10px] font-mono">
-                <div>
-                  <h4 className="text-white font-medium mb-6 uppercase tracking-widest opacity-40">Library Hub</h4>
-                  <ul className="space-y-4 text-gray-500">
-                    <li><Link to="/library" className="hover:text-bit-accent transition-all">CENTRAL REGISTRY</Link></li>
-                    <li><Link to="/" className="hover:text-bit-accent transition-all">COLLECTIONS</Link></li>
-                    <li><Link to="/mylibrary" className="hover:text-bit-accent transition-all">MY ARCHIVE</Link></li>
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="text-white font-medium mb-6 uppercase tracking-widest opacity-40">Protocol</h4>
-                  <ul className="space-y-4 text-gray-500">
-                    <li><Link to="/about" className="hover:text-bit-accent transition-all">ABOUT ENGINE</Link></li>
-                    <li><Link to="/terms" className="hover:text-bit-accent transition-all">TERMS OF USE</Link></li>
-                    <li><button className="hover:text-bit-accent transition-all uppercase">NEURAL AUDIT</button></li>
-                  </ul>
-                </div>
-                <div className="hidden md:block">
-                  <h4 className="text-white font-medium mb-6 uppercase tracking-widest opacity-40">Lab Status</h4>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                      <span className="text-[9px] text-gray-500">STABLE</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-1 h-1 rounded-full bg-bit-accent shadow-[0_0_8px_rgba(255,77,0,0.6)]" />
-                      <span className="text-[9px] text-gray-500">SYNC ACTIVE</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="lg:col-span-3">
-                <div className="p-6 rounded-2xl bg-white/[0.01] border border-white/5 relative group hover:border-bit-accent/20 transition-all">
-                  <h4 className="text-white font-display font-bold mb-2">Join the Lab</h4>
-                  <p className="text-[10px] text-gray-500 mb-6 font-mono leading-relaxed uppercase">
-                    Enroll in the neural notification stream.
-                  </p>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      placeholder="ARCHIVE_ID@EMAIL.NET"
-                      className="w-full bg-black/50 border border-white/10 rounded py-2 px-3 text-[10px] font-mono focus:outline-none focus:border-bit-accent/50 transition-all"
-                    />
-                    <button className="absolute right-1 top-1 bottom-1 px-2 bg-bit-accent text-black text-[9px] font-bold rounded hover:scale-95 transition-all">ENROLL</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-t border-white/5 pt-12 text-[10px] font-mono text-gray-600 uppercase tracking-widest">
-              <div>© 2026 BitLibrary • The Open Digital Library</div>
-              <div className="flex items-center gap-4">
-                <span>Infr Status:</span>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5, 6].map(i => (
-                    <div key={i} className={`h-1 w-3 rounded-full ${i < 5 ? 'bg-bit-accent/20' : 'bg-gray-900'}`} />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </footer>
-      )}
-
-      {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 bg-bit-bg md:hidden animate-fade-in flex flex-col items-center justify-center gap-10 p-8 text-center scroll-lock">
-          <button className="absolute top-6 right-6 text-white" onClick={() => setMobileMenuOpen(false)}>
-            <X size={28} />
-          </button>
-          <nav className="flex flex-col items-center gap-8">
-            <Link to="/" onClick={() => setMobileMenuOpen(false)} className={`text-4xl font-display font-bold ${activeTab('/') ? 'text-bit-accent' : 'text-white'}`}>Discover</Link>
-            <Link to="/books" onClick={() => setMobileMenuOpen(false)} className={`text-4xl font-display font-bold ${activeTab('/books') ? 'text-bit-accent' : 'text-white'}`}>Registry</Link>
-            <Link to="/library" onClick={() => setMobileMenuOpen(false)} className={`text-4xl font-display font-bold ${activeTab('/library') ? 'text-bit-accent' : 'text-white'}`}>Archive</Link>
-            <Link to="/about" onClick={() => setMobileMenuOpen(false)} className="text-xl font-mono text-gray-500 uppercase">About</Link>
-          </nav>
-        </div>
-      )}
       {/* Global PiP Overlay */}
       {readerLoading && !activeBook && <ReaderSkeleton />}
       {activeBook && (
@@ -714,6 +570,3 @@ const ReaderRoute: React.FC<{ books: Book[] }> = ({ books }) => {
 };
 
 export default App;
-
-
-

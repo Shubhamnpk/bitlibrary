@@ -16,15 +16,25 @@
 }
 
 .theme-light {
-  --bit-bg: 247 244 238;
-  --bit-panel: 255 251 245;
-  --bit-border: 220 212 199;
+  --bit-bg: 250 248 244;
+  --bit-panel: 255 255 255;
+  --bit-border: 225 218 205;
   --bit-accent: 214 58 0;
   --bit-accent-rgb: 214 58 0;
-  --bit-text: 29 24 20;
-  --bit-muted: 110 96 84;
-  --bit-grid: 201 190 178;
+  --bit-text: 15 12 10;
+  --bit-muted: 105 92 80;
+  --bit-grid: 180 170 160;
   color-scheme: light;
+}
+
+@layer utilities {
+  .text-inverse {
+    mix-blend-mode: difference;
+  }
+  
+  .glass-effect {
+    @apply backdrop-blur-xl bg-bit-panel/60 border border-bit-border/40;
+  }
 }
 
 @layer base {
@@ -94,3 +104,102 @@
   background: linear-gradient(to bottom, transparent, rgba(var(--bit-accent-rgb), 0.05), transparent);
   animation: scanline 4s linear infinite;
 }
+
+@keyframes float-up {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-20px) rotate(5deg); }
+}
+
+@keyframes float-down {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(20px) rotate(-5deg); }
+}
+
+@keyframes slow-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-float-up {
+  animation: float-up 8s ease-in-out infinite;
+}
+
+.animate-float-down {
+  animation: float-down 10s ease-in-out infinite;
+}
+
+.animate-slow-rotate {
+  animation: slow-rotate 20s linear infinite;
+}
+
+/* Prose Bit: Unified Typography Protocol */
+.prose-bit {
+  @apply max-w-none text-bit-text transition-colors duration-300;
+}
+
+.prose-bit p {
+  @apply mb-6 leading-[1.8] text-bit-muted;
+}
+
+.prose-bit h1, .prose-bit h2, .prose-bit h3, .prose-bit h4 {
+  @apply font-display font-bold text-bit-text mb-6 mt-12 tracking-tight uppercase;
+}
+
+.prose-bit strong {
+  @apply text-bit-accent font-bold;
+}
+
+.prose-bit em {
+  @apply opacity-80 italic;
+}
+
+.prose-bit hr {
+  @apply border-bit-border my-12;
+}
+
+.prose-bit blockquote {
+  @apply border-l-4 border-bit-accent pl-6 italic text-bit-muted/80 my-8;
+}
+
+.prose-bit a {
+  @apply text-bit-accent hover:text-bit-text underline transition-colors;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(var(--bit-text), 0) 0,
+    rgba(var(--bit-text), 0.03) 20%,
+    rgba(var(--bit-text), 0.05) 60%,
+    rgba(var(--bit-text), 0)
+  );
+  animation: shimmer 2s infinite;
+}
+
+.theme-light .animate-shimmer::after {
+  background-image: linear-gradient(
+    90deg,
+    rgba(var(--bit-text), 0) 0,
+    rgba(var(--bit-text), 0.05) 20%,
+    rgba(var(--bit-text), 0.1) 60%,
+    rgba(var(--bit-text), 0)
+  );
+}
+
