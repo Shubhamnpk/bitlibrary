@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Book } from '@/types/index';
 import { CATEGORIES, INITIAL_BOOKS } from '@/constants';
 import BookCard from '@/components/BookCard';
 import { fetchBooksFromGutendex } from '@/services/bookService';
 import { BookGridSkeleton } from '@/components/Skeletons';
-import { BookOpen, ChevronDown, Disc, LayoutGrid, List } from 'lucide-react';
+import { BookOpen, Disc, LayoutGrid, List } from 'lucide-react';
 
 interface BrowseBooksProps {
    onBookClick: (book: Book) => void;
@@ -19,40 +19,112 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
    const [loading, setLoading] = useState(true);
    const [loadingMore, setLoadingMore] = useState(false);
    const [page, setPage] = useState(1);
+   const [hasMore, setHasMore] = useState(true);
    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-
+   
+   const observerRef = useRef<HTMLDivElement>(null);
+   const allFetchedBooks = useRef<Book[]>([]); // Global Session Cache for Instant Filtering
    const selectedCategory = categoryId || 'All';
 
-   useEffect(() => {
-      const loadBooks = async () => {
+   const loadInitialBooks = useCallback(async (isInstant = false) => {
+      // If NOT instant, we show skeleton
+      if (!isInstant) {
          setLoading(true);
-         try {
-            const { books: apiBooks } = await fetchBooksFromGutendex(1, selectedCategory);
-            setBooks(apiBooks.length > 0 ? apiBooks : INITIAL_BOOKS);
-         } catch (err) {
-            console.error("Browse Error:", err);
-            setBooks(INITIAL_BOOKS);
-         }
-         setLoading(false);
-         setPage(1);
-      };
-      loadBooks();
+      }
+      
+      try {
+         const { books: apiBooks, next } = await fetchBooksFromGutendex(1, selectedCategory);
+         
+         const results = apiBooks.length > 0 ? apiBooks : INITIAL_BOOKS;
+         setBooks(results);
+         setHasMore(!!next);
+         
+         // Update session cache
+         const uniqueNewBooks = apiBooks.filter(nb => !allFetchedBooks.current.some(ob => ob.id === nb.id));
+         allFetchedBooks.current = [...allFetchedBooks.current, ...uniqueNewBooks];
+         
+      } catch (err) {
+         console.error("Browse Error:", err);
+         if (!isInstant) setBooks(INITIAL_BOOKS);
+         setHasMore(false);
+      }
+      setLoading(false);
+      setPage(1);
    }, [selectedCategory]);
 
-   const handleLoadMore = async () => {
+   // Instant Filter Logic: Adaptive Neural Sector Switching
+   useEffect(() => {
+      // 1. Identify local clusters from current session registry
+      const localMatches = allFetchedBooks.current.filter(book => {
+         if (selectedCategory === 'All') return true;
+         const catStr = selectedCategory.toLowerCase();
+         return book.category.toLowerCase().includes(catStr) || 
+                (book.subjects && book.subjects.some(s => s.toLowerCase().includes(catStr)));
+      });
+
+      if (localMatches.length > 0) {
+         // Instant Promotion: Show existing nodes immediately
+         setBooks(localMatches);
+         // Background Sync: Refresh registry silently
+         void loadInitialBooks(true);
+      } else {
+         // Full Re-Synchronization: Show skeletons while syncing new sector
+         setBooks([]);
+         void loadInitialBooks(false);
+      }
+   }, [selectedCategory, loadInitialBooks]);
+
+   const handleLoadMore = useCallback(async () => {
+      if (loadingMore || !hasMore) return;
+      
       setLoadingMore(true);
       const nextPage = page + 1;
       try {
-         const { books: moreBooks } = await fetchBooksFromGutendex(nextPage, selectedCategory);
+         const { books: moreBooks, next } = await fetchBooksFromGutendex(nextPage, selectedCategory);
          if (moreBooks.length > 0) {
-            setBooks(prev => [...prev, ...moreBooks]);
+            setBooks(prev => {
+               const filtered = prev.filter(b => !moreBooks.some(m => m.id === b.id));
+               return [...filtered, ...moreBooks];
+            });
             setPage(nextPage);
+            setHasMore(!!next);
+            
+            // Update session cache
+            const uniqueNewBooks = moreBooks.filter(nb => !allFetchedBooks.current.some(ob => ob.id === nb.id));
+            allFetchedBooks.current = [...allFetchedBooks.current, ...uniqueNewBooks];
+         } else {
+            setHasMore(false);
          }
       } catch (err) {
          console.error("Load More Error:", err);
+         setHasMore(false);
       }
       setLoadingMore(false);
-   };
+   }, [loadingMore, hasMore, page, selectedCategory]);
+
+   // Smart Intersection Observer: On-Demand Loading
+   useEffect(() => {
+      const observer = new IntersectionObserver(
+         (entries) => {
+            // Trigger 200px before reaching the end for a "seamless" feel
+            if (entries[0].isIntersecting && !loadingMore && hasMore && !loading) {
+               void handleLoadMore();
+            }
+         },
+         { threshold: 0, rootMargin: '400px' } 
+      );
+
+      const currentTarget = observerRef.current;
+      if (currentTarget) {
+         observer.observe(currentTarget);
+      }
+
+      return () => {
+         if (currentTarget) {
+            observer.unobserve(currentTarget);
+         }
+      };
+   }, [handleLoadMore, loadingMore, hasMore, loading]);
 
    return (
       <div className="animate-fade-in pb-20">
@@ -105,12 +177,12 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
          </div>
 
          {/* Results */}
-         {loading ? (
+         {loading && books.length === 0 ? (
             <BookGridSkeleton count={8} />
          ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
                {books.map((book, idx) => (
-                  <div key={`${book.id}-${idx}`} className="animate-fade-in-up" style={{ animationDelay: `${(idx % 8) * 50}ms` }}>
+                  <div key={`${book.id}-${idx}`} className="animate-fade-in-up" style={{ animationDelay: `${(idx % 8) * 40}ms` }}>
                      <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} />
                   </div>
                ))}
@@ -122,15 +194,16 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
                      key={`${book.id}-${idx}`}
                      onClick={() => onBookClick(book)}
                      className="animate-fade-in-up group cursor-pointer rounded-3xl border border-bit-border bg-bit-panel/30 p-5 transition-all hover:border-bit-accent/30 hover:bg-bit-panel/50 shadow-sm"
-                     style={{ animationDelay: `${(idx % 8) * 40}ms` }}
+                     style={{ animationDelay: `${(idx % 8) * 30}ms` }}
                   >
                      <div className="flex flex-col gap-5 md:flex-row md:items-center">
                         <div className="flex items-start gap-4 flex-1 min-w-0">
-                           <div className="h-28 w-20 shrink-0 overflow-hidden rounded-2xl border border-bit-border bg-bit-panel/50">
+                           <div className="h-28 w-20 shrink-0 overflow-hidden rounded-2xl border border-bit-border bg-bit-panel/50 overflow-hidden">
                               {book.coverUrl ? (
                                  <img
-                                    src={book.coverUrl}
+                                    src={`https://images.weserv.nl/?url=${encodeURIComponent(book.coverUrl)}&w=200&h=300&fit=cover&output=webp`}
                                     alt={book.title}
+                                    loading="lazy"
                                     className="h-full w-full object-cover"
                                     onError={(e) => {
                                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1543005127-d0d080007886?q=80&w=300&auto=format&fit=crop';
@@ -201,23 +274,16 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
             </div>
          )}
 
-         {/* Pagination */}
-         <div className="mt-24 flex flex-col items-center gap-6">
-            <div className="h-[1px] w-32 bg-gradient-to-r from-transparent via-bit-border to-transparent" />
-            <button
-               onClick={handleLoadMore}
-               disabled={loadingMore}
-               className="group flex flex-col items-center gap-2 disabled:opacity-50"
-            >
-               {loadingMore ? (
+         {/* Infinite Scroll Sentinel */}
+         <div ref={observerRef} className="mt-12 flex flex-col items-center gap-6 py-10">
+            {hasMore ? (
+               <div className="flex flex-col items-center gap-3">
                   <Disc className="text-bit-accent animate-spin" size={24} />
-               ) : (
-                  <>
-                     <span className="text-[10px] font-mono text-bit-muted group-hover:text-bit-accent transition-colors font-bold uppercase tracking-[0.3em]">PULL_NEXT_NODE_STREAM</span>
-                     <ChevronDown className="text-bit-muted group-hover:text-bit-accent animate-bounce" />
-                  </>
-               )}
-            </button>
+                  <span className="text-[10px] font-mono text-bit-muted font-bold uppercase tracking-[0.3em] animate-pulse">Syncing_Sector_Registry...</span>
+               </div>
+            ) : books.length > 0 && (
+               <div className="h-[1px] w-32 bg-gradient-to-r from-transparent via-bit-border to-transparent" />
+            )}
          </div>
       </div>
    );

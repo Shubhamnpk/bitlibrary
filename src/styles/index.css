@@ -164,3 +164,42 @@
 .prose-bit a {
   @apply text-bit-accent hover:text-bit-text underline transition-colors;
 }
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(var(--bit-text), 0) 0,
+    rgba(var(--bit-text), 0.03) 20%,
+    rgba(var(--bit-text), 0.05) 60%,
+    rgba(var(--bit-text), 0)
+  );
+  animation: shimmer 2s infinite;
+}
+
+.theme-light .animate-shimmer::after {
+  background-image: linear-gradient(
+    90deg,
+    rgba(var(--bit-text), 0) 0,
+    rgba(var(--bit-text), 0.05) 20%,
+    rgba(var(--bit-text), 0.1) 60%,
+    rgba(var(--bit-text), 0)
+  );
+}
+

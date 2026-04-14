@@ -1,8 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Book } from '@/types/index';
-import { BookOpen, Bookmark, Calendar, BarChart } from 'lucide-react';
+import { BookOpen, Bookmark, BarChart } from 'lucide-react';
 import { toggleSavedBook, useLocalUserState } from '@/lib/local-user';
+import { HighlightedText } from './HighlightedText';
 
 interface BookCardProps {
   book: Book;
@@ -10,12 +11,21 @@ interface BookCardProps {
   onRead?: (book: Book) => void;
   onAuthorClick?: (name: string) => void;
   variant?: 'compact' | 'full';
+  searchQuery?: string;
 }
 
-const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, onAuthorClick, variant = 'full' }) => {
+const BookCard: React.FC<BookCardProps> = ({ 
+  book, 
+  onClick, 
+  onRead, 
+  onAuthorClick, 
+  variant = 'full',
+  searchQuery 
+}) => {
   const navigate = useNavigate();
   const { state } = useLocalUserState();
   const isSaved = state.savedBooks.some((entry) => entry.id === book.id);
+
   // Generate a deterministic aesthetic gradient based on ID
   const gradients = [
     "from-orange-500/20 to-purple-900/40",
@@ -25,6 +35,11 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, onAuthorClic
     "from-amber-500/20 to-orange-900/40",
   ];
   const bgGradient = gradients[book.title.length % gradients.length];
+
+  // Optimization: Image Proxy for better performance & WebP compression
+  const proxiedCoverUrl = book.coverUrl 
+    ? `https://images.weserv.nl/?url=${encodeURIComponent(book.coverUrl)}&w=300&h=450&fit=cover&output=webp`
+    : null;
 
   return (
     <div
@@ -40,15 +55,17 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, onAuthorClic
       </div>
 
       <div className="relative z-10 flex flex-col h-full">
-        {/* Cover Aspect Ratio container - Flush top with no margin */}
+        {/* Cover Aspect Ratio container */}
         <div className={`aspect-[4/5] w-full bg-gradient-to-b from-bit-panel/40 to-transparent flex items-center justify-center border-b border-bit-border shadow-md overflow-hidden group-hover:scale-[1.01] transition-transform duration-500 relative`}>
 
-          {book.coverUrl ? (
+          {proxiedCoverUrl ? (
             <img
-              src={book.coverUrl}
+              src={proxiedCoverUrl}
+              loading="lazy"
               className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[3s] ease-out opacity-80 group-hover:opacity-100"
               alt={book.title}
               onError={(e) => {
+                // Fallback to unsplash if both fail
                 (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1543005127-d0d080007886?q=80&w=300&auto=format&fit=crop';
                 (e.target as HTMLImageElement).classList.add('opacity-40');
               }}
@@ -58,8 +75,12 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, onAuthorClic
             <div className="w-full h-full relative bg-bit-panel/50">
               <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
               <div className="absolute bottom-4 left-4 right-4">
-                <h3 className="font-display font-bold text-lg leading-tight text-bit-text mb-1 line-clamp-3">{book.title}</h3>
-                <p className="text-[10px] text-bit-muted/40 font-mono tracking-widest uppercase">{book.author}</p>
+                <h3 className="font-display font-bold text-lg leading-tight text-bit-text mb-1 line-clamp-3">
+                   <HighlightedText text={book.title} query={searchQuery} />
+                </h3>
+                <p className="text-[10px] text-bit-muted/40 font-mono tracking-widest uppercase">
+                   <HighlightedText text={book.author} query={searchQuery} />
+                </p>
               </div>
             </div>
           )}
@@ -71,6 +92,7 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, onAuthorClic
           >
             {book.category}
           </button>
+          
           <button
             onClick={(e) => { e.stopPropagation(); toggleSavedBook(book); }}
             className={`absolute top-3 right-3 z-30 h-9 w-9 rounded-full border backdrop-blur-md flex items-center justify-center transition-all active:scale-95 ${
@@ -106,16 +128,18 @@ const BookCard: React.FC<BookCardProps> = ({ book, onClick, onRead, onAuthorClic
           <div className="absolute inset-0 bg-gradient-to-t from-bit-panel/60 via-transparent to-transparent opacity-60 pointer-events-none" />
         </div>
 
-        {/* Content Sector with breathing room */}
+        {/* Content Sector */}
         <div className="p-5 flex flex-col flex-1">
           <div className="flex flex-col h-full">
             <div className={variant === 'full' ? 'mb-4' : ''}>
-              <h3 className={`font-display font-bold text-bit-text leading-tight line-clamp-2 group-hover:text-bit-accent transition-colors mb-1 ${variant === 'full' ? 'text-base' : 'text-sm'}`}>{book.title}</h3>
+              <h3 className={`font-display font-bold text-bit-text leading-tight line-clamp-2 group-hover:text-bit-accent transition-colors mb-1 ${variant === 'full' ? 'text-base' : 'text-sm'}`}>
+                <HighlightedText text={book.title} query={searchQuery} />
+              </h3>
               <button 
                 onClick={(e) => { e.stopPropagation(); onAuthorClick?.(book.author); }}
                 className="text-[9px] text-bit-muted/70 hover:text-bit-accent font-mono tracking-widest uppercase transition-colors text-left"
               >
-                By {book.author}
+                By <HighlightedText text={book.author} query={searchQuery} />
               </button>
             </div>
 

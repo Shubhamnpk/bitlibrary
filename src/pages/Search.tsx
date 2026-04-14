@@ -400,7 +400,14 @@ const SearchPage: React.FC<SearchPageProps> = ({
                       NEURAL
                     </div>
                   )}
-                  <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} onAuthorClick={onAuthorClick} />
+                  <BookCard 
+                    variant="compact" 
+                    book={book} 
+                    onClick={onBookClick} 
+                    onRead={onRead} 
+                    onAuthorClick={onAuthorClick} 
+                    searchQuery={currentQuery}
+                  />
                 </div>
               ))
             ) : (

@@ -234,12 +234,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           <div className="w-full max-w-[1000px] h-full bg-white relative shadow-2xl border-x border-bit-border overflow-hidden">
             {iframeLoading && (
               <div className="absolute inset-0 bg-bit-bg z-20 p-12 md:p-24 animate-fade-in flex flex-col gap-10">
-                <div className="h-12 w-3/4 bg-bit-panel/30 rounded-lg animate-pulse" />
+                <div className="h-12 w-3/4 animate-shimmer bg-bit-panel/30 rounded-lg border border-bit-border/30" />
                 <div className="flex-1 flex flex-col gap-6">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => (
-                    <div key={i} className="h-4 w-full bg-bit-panel/20 rounded animate-pulse" style={{ animationDelay: `${i * 100}ms` }} />
+                    <div key={i} className="h-4 w-full animate-shimmer bg-bit-panel/20 rounded border border-bit-border/20" style={{ animationDelay: `${i * 100}ms` }} />
                   ))}
-                  <div className="h-4 w-1/2 bg-bit-panel/20 rounded animate-pulse" style={{ animationDelay: '1100ms' }} />
+                  <div className="h-4 w-1/2 animate-shimmer bg-bit-panel/20 rounded border border-bit-border/20" style={{ animationDelay: '1100ms' }} />
                 </div>
               </div>
             )}
@@ -334,18 +334,19 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
 export const ReaderSkeleton: React.FC = () => {
   return (
-    <div className="fixed inset-0 bg-bit-bg flex flex-col items-center animate-fade-in">
+    <div className="fixed inset-0 bg-bit-bg flex flex-col items-center animate-fade-in z-[2000]">
       <div className="h-16 w-full border-b border-bit-border bg-bit-panel/50 p-6 flex justify-between">
-        <div className="h-4 w-32 bg-bit-panel/20 rounded-full animate-pulse" />
-        <div className="h-4 w-20 bg-bit-panel/20 rounded-full animate-pulse" />
+        <div className="h-4 w-32 animate-shimmer bg-bit-panel/20 rounded-full border border-bit-border/30" />
+        <div className="h-4 w-20 animate-shimmer bg-bit-panel/20 rounded-full border border-bit-border/30" />
       </div>
-      <div className="w-full max-w-[560px] h-full p-20 space-y-8 bg-bit-panel/5 border-x border-bit-border shadow-2xl overflow-hidden">
-        <div className="h-10 w-3/4 bg-bit-panel/20 rounded animate-pulse" />
-        <div className="h-4 w-full bg-bit-panel/10 rounded animate-pulse" />
-        <div className="h-4 w-5/6 bg-bit-panel/10 rounded animate-pulse" />
-        <div className="h-4 w-3/4 bg-bit-panel/10 rounded animate-pulse" />
-        <div className="h-4 w-full bg-bit-panel/10 rounded animate-pulse" />
-        <div className="h-96 w-full bg-bit-panel/10 rounded animate-pulse" />
+      <div className="w-full max-w-[560px] h-full p-20 space-y-8 bg-bit-panel/5 border-x border-bit-border shadow-2xl overflow-hidden relative">
+        <div className="h-10 w-3/4 animate-shimmer bg-bit-panel/20 rounded border border-bit-border/30" />
+        <div className="space-y-4">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="h-4 w-full animate-shimmer bg-bit-panel/10 rounded border border-bit-border/10" style={{ animationDelay: `${i * 100}ms` }} />
+          ))}
+        </div>
+        <div className="h-96 w-full animate-shimmer bg-bit-panel/10 rounded border border-bit-border/20" />
       </div>
     </div>
   );
