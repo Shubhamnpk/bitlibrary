@@ -120,6 +120,26 @@
   to { transform: rotate(360deg); }
 }
 
+@keyframes hero-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes hero-orbit-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes hero-planet-path {
+  from { offset-distance: 0%; }
+  to { offset-distance: 100%; }
+}
+
+@keyframes hero-planet-path-reverse {
+  from { offset-distance: 100%; }
+  to { offset-distance: 0%; }
+}
+
 .animate-float-up {
   animation: float-up 8s ease-in-out infinite;
 }
@@ -130,6 +150,33 @@
 
 .animate-slow-rotate {
   animation: slow-rotate 20s linear infinite;
+}
+
+.hero-planet {
+  position: absolute;
+  left: 0;
+  top: 0;
+  offset-rotate: 0deg;
+}
+
+.hero-planet-discovery {
+  animation: hero-planet-path 24s linear infinite;
+  offset-path: ellipse(32% 18% at 50% 50%);
+}
+
+.hero-planet-archive {
+  animation: hero-planet-path 38s linear infinite;
+  offset-path: ellipse(44% 26% at 50% 50%);
+}
+
+.hero-planet-reader {
+  animation: hero-planet-path-reverse 31s linear infinite;
+  offset-path: ellipse(50% 34% at 50% 50%);
+}
+
+.hero-planet:hover,
+.hero-planet:focus-visible {
+  animation-play-state: paused;
 }
 
 /* Prose Bit: Unified Typography Protocol */
