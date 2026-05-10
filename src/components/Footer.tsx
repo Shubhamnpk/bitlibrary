@@ -7,6 +7,8 @@ interface FooterProps {
   isReaderActive: boolean;
 }
 
+const FOOTER_BUILD_LABEL = 'v0.0.1 . Build 2026.05.10 . oss';
+
 const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
   if (isReaderActive) return null;
 
@@ -96,9 +98,15 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-t border-bit-border/50 pt-12 text-[10px] font-mono text-bit-muted uppercase tracking-widest">
+        <div className="grid gap-6 border-t border-bit-border/50 pt-12 text-[10px] font-mono text-bit-muted uppercase tracking-widest md:grid-cols-3 md:items-center">
           <div>© 2026 BitLibrary • The Open Digital Library Platform</div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-2 text-center">
+            <Link to="/releases" className="text-bit-muted transition-colors hover:text-bit-accent">
+              {FOOTER_BUILD_LABEL}
+            </Link>
+          </div>
+
+          <div className="flex items-center justify-center gap-4 md:justify-end">
             <span>Infrastructure:</span>
             <div className="flex gap-1">
               {[1, 2, 3, 4, 5, 6].map(i => (
