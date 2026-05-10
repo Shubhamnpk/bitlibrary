@@ -8,20 +8,51 @@ const OPEN_LIBRARY_BASE = 'https://openlibrary.org';
 const INTERNET_ARCHIVE_BASE = 'https://archive.org/advancedsearch.php';
 const GUTENDEX_DEV_PROXY_BASE = '/api/gutendex/books';
 
-// --- Neural Cache Configuration (10 Minute TTL) ---
-const CACHE_TTL = 10 * 60 * 1000;
+// --- Browser Cache Configuration ---
+const CACHE_TTL = 6 * 60 * 60 * 1000;
+const CACHE_STORAGE_PREFIX = 'bitlibrary-book-cache-v2';
 const cache: Record<string, { data: any, timestamp: number }> = {};
+
+const getStorageKey = (key: string) => `${CACHE_STORAGE_PREFIX}:${key}`;
 
 const getFromCache = <T>(key: string): T | null => {
   const item = cache[key];
   if (item && Date.now() - item.timestamp < CACHE_TTL) {
     return item.data as T;
   }
+
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(getStorageKey(key));
+    if (!raw) return null;
+
+    const stored = JSON.parse(raw) as { data: T; timestamp: number };
+    if (!stored?.timestamp || Date.now() - stored.timestamp > CACHE_TTL) {
+      window.localStorage.removeItem(getStorageKey(key));
+      return null;
+    }
+
+    cache[key] = stored;
+    return stored.data;
+  } catch {
+    return null;
+  }
+
   return null;
 };
 
 const setInCache = (key: string, data: any) => {
-  cache[key] = { data, timestamp: Date.now() };
+  const item = { data, timestamp: Date.now() };
+  cache[key] = item;
+
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(getStorageKey(key), JSON.stringify(item));
+  } catch {
+    // Keep the in-memory cache when persistent storage is full or blocked.
+  }
 };
 
 const normalizeCacheKey = (value: string) => value.trim().toLowerCase();

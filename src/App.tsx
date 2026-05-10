@@ -17,6 +17,8 @@ import SearchPage, { SEARCH_MIN_QUERY_LENGTH } from '@/pages/Search';
 import NotFound from '@/pages/NotFound';
 import ReleasesPage from '@/pages/ReleasesPage';
 import RoadmapPage from '@/pages/RoadmapPage';
+import AudiobooksPage from '@/pages/AudiobooksPage';
+import AudiobookDetails from '@/pages/AudiobookDetails';
 import { recordRecentSearch, useLocalUserState } from '@/lib/local-user';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -30,7 +32,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
-const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/mylibrary','/search','/book/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap',];
+const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/mylibrary','/search','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap',];
 const HERO_ORBIT_NODES = {
   star: {
     title: 'Archive Star',
@@ -550,7 +552,25 @@ const App: React.FC = () => {
             </div>
           } />
 
+          <Route path="/audiobooks" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <AudiobooksPage onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} />
+            </div>
+          } />
+
+          <Route path="/audiobooks/category/:categoryId" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <AudiobooksPage onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} />
+            </div>
+          } />
+
           {/* Deep Routes (Wrappers for details/reader) */}
+          <Route path="/audiobook/:id" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <AudiobookDetails />
+            </div>
+          } />
+
           <Route path="/book/:id" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <BookDetailsRoute

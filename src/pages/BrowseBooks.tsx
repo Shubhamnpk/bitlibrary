@@ -18,6 +18,8 @@ const CATEGORY_ROW_LOAD_MARGIN = '240px';
 const CATEGORY_ROW_SCROLL_STEP = 140;
 const SHELF_PRIMARY_TIMEOUT_MS = 3500;
 const SHELF_FALLBACK_TIMEOUT_MS = 3500;
+const BROWSE_CACHE_TTL = 6 * 60 * 60 * 1000;
+const BROWSE_CACHE_PREFIX = 'bitlibrary-browse-cache-v1';
 const SHELF_FALLBACK_BOOKS: Book[] = [
    { id: 'shelf-shakespeare', title: 'The Complete Works of William Shakespeare', author: 'William Shakespeare', category: 'Poetry', description: 'A public-domain collection of plays and poems.', coverUrl: 'https://www.gutenberg.org/cache/epub/100/pg100.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/100.html.images', subjects: ['Poetry', 'Drama', 'Fiction'] },
    { id: 'shelf-frankenstein', title: 'Frankenstein; or, The Modern Prometheus', author: 'Mary Wollstonecraft Shelley', category: 'Fiction', description: 'A gothic novel about creation, responsibility, and fear.', coverUrl: 'https://www.gutenberg.org/cache/epub/84/pg84.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/84.html.images', subjects: ['Fiction', 'Science', 'Drama'] },
@@ -46,7 +48,57 @@ interface BookCategoryShelfProps {
    onViewAll: (category: string) => void;
 }
 
+interface BrowseCategoryCachePayload {
+   books: Book[];
+   hasMore: boolean;
+   timestamp: number;
+}
+
+interface ShelfCachePayload {
+   books: Book[];
+   timestamp: number;
+}
+
+const getBrowseCacheKey = (category: string) => `${BROWSE_CACHE_PREFIX}:category:${category}`;
+const getShelfCacheKey = (category: string) => `${BROWSE_CACHE_PREFIX}:shelf:${category}`;
+
+const readCachePayload = <T extends { timestamp: number }>(key: string): T | null => {
+   if (typeof window === 'undefined') return null;
+
+   try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw) as T;
+      if (!parsed?.timestamp || Date.now() - parsed.timestamp > BROWSE_CACHE_TTL) {
+         window.localStorage.removeItem(key);
+         return null;
+      }
+
+      return parsed;
+   } catch {
+      return null;
+   }
+};
+
+const writeCachePayload = (key: string, payload: object) => {
+   if (typeof window === 'undefined') return;
+
+   try {
+      window.localStorage.setItem(key, JSON.stringify({ ...payload, timestamp: Date.now() }));
+   } catch {
+      // Ignore storage failures; page-level state still works.
+   }
+};
+
+const dedupeBooks = (books: Book[]) => books.filter((book, index, list) => (
+   Boolean(book?.id) && list.findIndex((entry) => entry.id === book.id) === index
+));
+
 const loadBooksForShelf = async (category: string): Promise<Book[]> => {
+   const cached = readCachePayload<ShelfCachePayload>(getShelfCacheKey(category));
+   if (cached?.books?.length) return cached.books;
+
    const controller = new AbortController();
    const timeoutId = window.setTimeout(() => controller.abort(), SHELF_PRIMARY_TIMEOUT_MS);
    const result = await fetchBooksFromGutendex(1, category, controller.signal).finally(() => {
@@ -72,7 +124,10 @@ const loadBooksForShelf = async (category: string): Promise<Book[]> => {
       .filter((book, index, list) => list.findIndex((entry) => entry.id === book.id) === index)
       .slice(0, SHELF_ITEM_LIMIT);
 
-   if (dedupedBooks.length > 0) return dedupedBooks;
+   if (dedupedBooks.length > 0) {
+      writeCachePayload(getShelfCacheKey(category), { books: dedupedBooks });
+      return dedupedBooks;
+   }
 
    const categoryFallbacks = SHELF_FALLBACK_BOOKS.filter((book) =>
       book.category === category || book.subjects?.includes(category)
@@ -82,11 +137,14 @@ const loadBooksForShelf = async (category: string): Promise<Book[]> => {
       ...SHELF_FALLBACK_BOOKS.filter((book) => !categoryFallbacks.some((entry) => entry.id === book.id)),
    ];
 
-   return fallbackPool.slice(0, SHELF_ITEM_LIMIT).map((book) => ({
+   const fallbackBooks = fallbackPool.slice(0, SHELF_ITEM_LIMIT).map((book) => ({
       ...book,
       id: `${book.id}-${category.toLowerCase().replace(/\s+/g, '-')}`,
       category,
    }));
+
+   writeCachePayload(getShelfCacheKey(category), { books: fallbackBooks });
+   return fallbackBooks;
 };
 
 const BookCategoryShelf: React.FC<BookCategoryShelfProps> = ({ category, onBookClick, onRead, onViewAll }) => {
@@ -175,17 +233,33 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
    }, [selectedCategory, shouldShowShelves]);
 
    const loadInitialBooks = useCallback(async (isInstant = false) => {
+      const cached = readCachePayload<BrowseCategoryCachePayload>(getBrowseCacheKey(selectedCategory));
+      if (cached?.books?.length) {
+         setBooks(cached.books);
+         setHasMore(cached.hasMore);
+         setPage(1);
+         const uniqueCachedBooks = cached.books.filter((book) => !allFetchedBooks.current.some((entry) => entry.id === book.id));
+         allFetchedBooks.current = [...allFetchedBooks.current, ...uniqueCachedBooks];
+         setLoading(false);
+         return;
+      }
+
       // If NOT instant, we show skeleton
       if (!isInstant) {
          setLoading(true);
       }
       
       try {
-         const { books: apiBooks, next } = await fetchBooksFromGutendex(1, selectedCategory);
+         const controller = new AbortController();
+         const timeoutId = window.setTimeout(() => controller.abort(), SHELF_PRIMARY_TIMEOUT_MS);
+         const { books: apiBooks, next } = await fetchBooksFromGutendex(1, selectedCategory, controller.signal).finally(() => {
+            window.clearTimeout(timeoutId);
+         });
          
-         const results = apiBooks.length > 0 ? apiBooks : INITIAL_BOOKS;
+         const results = dedupeBooks(apiBooks.length > 0 ? apiBooks : INITIAL_BOOKS);
          setBooks(results);
          setHasMore(!!next);
+         writeCachePayload(getBrowseCacheKey(selectedCategory), { books: results, hasMore: !!next });
          
          // Update session cache
          const uniqueNewBooks = apiBooks.filter(nb => !allFetchedBooks.current.some(ob => ob.id === nb.id));
@@ -193,7 +267,10 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
          
       } catch (err) {
          console.error("Browse Error:", err);
-         if (!isInstant) setBooks(INITIAL_BOOKS);
+         if (!isInstant) {
+            setBooks(INITIAL_BOOKS);
+            writeCachePayload(getBrowseCacheKey(selectedCategory), { books: INITIAL_BOOKS, hasMore: false });
+         }
          setHasMore(false);
       }
       setLoading(false);
@@ -258,7 +335,9 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
          if (moreBooks.length > 0) {
             setBooks(prev => {
                const filtered = prev.filter(b => !moreBooks.some(m => m.id === b.id));
-               return [...filtered, ...moreBooks];
+               const nextBooks = [...filtered, ...moreBooks];
+               writeCachePayload(getBrowseCacheKey(selectedCategory), { books: nextBooks, hasMore: !!next });
+               return nextBooks;
             });
             setPage(nextPage);
             setHasMore(!!next);
