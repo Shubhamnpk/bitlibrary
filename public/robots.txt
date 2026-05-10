@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /mylibrary
+Disallow: /search
+Disallow: /terms
+
+Sitemap: https://bitlibrary.bitnepal.net/sitemap.xml

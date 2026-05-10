@@ -5,6 +5,8 @@ import { searchBooksInGutendex } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { ArrowLeft, User, Calendar, MapPin, Zap, Info, ChevronRight, Library } from 'lucide-react';
+import Seo from '@/components/Seo';
+import { createItemListSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 
 const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookClick }) => {
   const { name } = useParams();
@@ -12,6 +14,7 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [authorInfo, setAuthorInfo] = useState<Author | null>(null);
+  const authorName = name ? decodeURIComponent(name) : 'Unknown Author';
 
   useEffect(() => {
     if (!name) return;
@@ -39,6 +42,40 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
 
   return (
     <div className="animate-fade-in pb-20 max-w-7xl mx-auto px-6 pt-10">
+      <Seo
+        title={`${authorName} Books and Works | BitLibrary Author Archive`}
+        description={truncate(
+          `Browse books, open archive records, public-domain editions, and related works by ${authorName} on BitLibrary.`,
+          155
+        )}
+        canonicalPath={`/author/${encodeURIComponent(authorName)}`}
+        type="profile"
+        keywords={[authorName, `${authorName} books`, `${authorName} bibliography`, `${authorName} works`].filter(Boolean)}
+        structuredData={[
+          {
+            '@context': 'https://schema.org',
+            '@type': 'ProfilePage',
+            name: `${authorName} on BitLibrary`,
+            url: toAbsoluteUrl(`/author/${encodeURIComponent(authorName)}`),
+            mainEntity: {
+              '@type': 'Person',
+              name: authorName,
+              ...(authorInfo?.birth_year ? { birthDate: String(authorInfo.birth_year) } : {}),
+              ...(authorInfo?.death_year ? { deathDate: String(authorInfo.death_year) } : {}),
+            },
+          },
+          ...(books.length > 0 ? [
+            createItemListSchema(
+              books.map((book) => ({
+                name: book.title,
+                path: `/book/${book.id}`,
+                image: book.coverUrl,
+              })),
+              `${authorName} books on BitLibrary`
+            ),
+          ] : []),
+        ]}
+      />
       {/* Navigation Header */}
       <nav className="mb-12 flex items-center justify-between">
         <button 
@@ -69,7 +106,7 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
 
           <div className="flex-1 space-y-4">
             <h1 className="text-5xl md:text-7xl font-display font-bold text-bit-text tracking-tight leading-non tracking-tight leading-none uppercase">
-              {name?.replace(/%20/g, ' ')}
+              {authorName}
             </h1>
             
             <div className="flex flex-wrap gap-6 items-center">

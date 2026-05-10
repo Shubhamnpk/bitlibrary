@@ -22,6 +22,7 @@ import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, usePara
 
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
+import Seo from '@/components/Seo';
 
 const SEARCH_DEBOUNCE_MS = 350;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
@@ -304,6 +305,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-bit-bg text-bit-text font-sans selection:bg-bit-accent selection:text-white transition-colors duration-500">
       <ScrollToTop />
+      <Seo />
       {/* Background Grid & Effects */}
       <div className="fixed inset-0 bg-grid-pattern bg-[length:40px_40px] opacity-[0.12] pointer-events-none" />
       <div className="fixed inset-0 bg-gradient-to-b from-transparent via-bit-bg/50 to-bit-bg pointer-events-none" />

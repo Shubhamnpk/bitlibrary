@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Github, Disc } from 'lucide-react';
+import { CATEGORIES } from '@/constants';
 
 interface FooterProps {
   isReaderActive: boolean;
@@ -47,30 +48,30 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
               <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Library Hub</h4>
               <ul className="space-y-4 text-bit-muted">
                 <li><Link to="/library" className="hover:text-bit-accent transition-all">CENTRAL REGISTRY</Link></li>
-                <li><Link to="/" className="hover:text-bit-accent transition-all">COLLECTIONS</Link></li>
+                <li><Link to="/browse" className="hover:text-bit-accent transition-all">COLLECTIONS</Link></li>
                 <li><Link to="/mylibrary" className="hover:text-bit-accent transition-all">MY ARCHIVE</Link></li>
+                <li><Link to="/search?q=public%20domain%20classics" className="hover:text-bit-accent transition-all">PUBLIC DOMAIN CLASSICS</Link></li>
               </ul>
             </div>
             <div>
-              <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Protocol</h4>
+              <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Popular Subjects</h4>
               <ul className="space-y-4 text-bit-muted">
-                <li><Link to="/about" className="hover:text-bit-accent transition-all">ABOUT ENGINE</Link></li>
-                <li><Link to="/terms" className="hover:text-bit-accent transition-all">TERMS OF USE</Link></li>
-                <li><button className="hover:text-bit-accent transition-all uppercase">NEURAL AUDIT</button></li>
+                {CATEGORIES.slice(0, 4).map((category) => (
+                  <li key={category}>
+                    <Link to={`/category/${encodeURIComponent(category)}`} className="hover:text-bit-accent transition-all">
+                      {category.toUpperCase()}
+                    </Link>
+                  </li>
+                ))}
               </ul>
             </div>
             <div className="hidden md:block">
-              <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Lab Status</h4>
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-1 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                  <span className="text-[9px] text-bit-muted">STABLE</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-1 h-1 rounded-full bg-bit-accent shadow-[0_0_8px_rgba(255,77,0,0.6)]" />
-                  <span className="text-[9px] text-bit-muted">SYNC ACTIVE</span>
-                </div>
-              </div>
+              <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Protocol</h4>
+              <ul className="space-y-4 text-bit-muted">
+                <li><Link to="/about" className="hover:text-bit-accent transition-all">ABOUT BITLIBRARY</Link></li>
+                <li><Link to="/terms" className="hover:text-bit-accent transition-all">TERMS OF USE</Link></li>
+                <li><a href="https://github.com/Shubhamnpk/bitlibrary" target="_blank" rel="noopener noreferrer" className="hover:text-bit-accent transition-all">SOURCE CODE</a></li>
+              </ul>
             </div>
           </div>
 

@@ -6,6 +6,8 @@ import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, Chevr
 import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
 import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
+import Seo from '@/components/Seo';
+import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 
 interface BookDetailsProps {
   book: Book;
@@ -108,6 +110,59 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
 
   return (
     <div className="animate-fade-in pb-20">
+      <Seo
+        title={`${book.title} by ${book.author || 'Unknown Author'} | Read Online | BitLibrary`}
+        description={truncate(
+          `${book.description || `Read ${book.title} by ${book.author || 'Unknown Author'} in BitLibrary.`} Explore metadata, subjects, related works, reading options, and source downloads.`,
+          155
+        )}
+        canonicalPath={`/book/${book.id}`}
+        image={book.coverUrl}
+        type="book"
+        keywords={[
+          book.title,
+          book.author,
+          book.category,
+          ...(book.subjects || []).slice(0, 6),
+          'read online',
+          'public domain book',
+        ].filter(Boolean)}
+        structuredData={[
+          createBreadcrumbSchema([
+            { name: 'BitLibrary', path: '/' },
+            { name: 'Library', path: '/library' },
+            { name: book.category || 'Books', path: `/category/${encodeURIComponent(book.category || 'Books')}` },
+            { name: book.title, path: `/book/${book.id}` },
+          ]),
+          {
+            '@context': 'https://schema.org',
+            '@type': 'Book',
+            name: book.title,
+            url: toAbsoluteUrl(`/book/${book.id}`),
+            author: (book.authors && book.authors.length > 0 ? book.authors : [{ name: book.author }]).map((author) => ({
+              '@type': 'Person',
+              name: author.name,
+              ...(author.birth_year ? { birthDate: String(author.birth_year) } : {}),
+              ...(author.death_year ? { deathDate: String(author.death_year) } : {}),
+            })),
+            description: truncate(book.description || `${book.title} by ${book.author}`, 300),
+            genre: book.category,
+            image: book.coverUrl,
+            datePublished: book.year ? String(book.year) : undefined,
+            inLanguage: 'en',
+            isAccessibleForFree: true,
+            keywords: [...(book.subjects || []), ...(book.bookshelves || [])].slice(0, 12).join(', '),
+            sameAs: book.externalUrl,
+            workExample: book.downloadUrl
+              ? {
+                  '@type': 'Book',
+                  bookFormat: 'https://schema.org/EBook',
+                  url: book.downloadUrl,
+                }
+              : undefined,
+          },
+        ]}
+      />
       <div className="flex items-center justify-between mb-8 opacity-60 hover:opacity-100 transition-opacity">
         <button
           onClick={onClose}

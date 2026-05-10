@@ -6,6 +6,8 @@ import BookCard from '@/components/BookCard';
 import { fetchBooksFromGutendex } from '@/services/bookService';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { BookOpen, Disc, LayoutGrid, List } from 'lucide-react';
+import Seo from '@/components/Seo';
+import { createItemListSchema, truncate } from '@/lib/seo';
 
 interface BrowseBooksProps {
    onBookClick: (book: Book) => void;
@@ -128,6 +130,37 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
 
    return (
       <div className="animate-fade-in pb-20">
+         <Seo
+            title={selectedCategory === 'All' ? 'Browse Open Books and Digital Library Collections | BitLibrary' : `${selectedCategory} Books and Digital Library Collections | BitLibrary`}
+            description={truncate(
+               selectedCategory === 'All'
+                  ? 'Browse open books, public-domain classics, research texts, educational resources, and archive collections in BitLibrary.'
+                  : `Browse ${selectedCategory} books, public-domain classics, educational resources, and open archive records in BitLibrary.`,
+               155
+            )}
+            canonicalPath={selectedCategory === 'All' ? '/library' : `/category/${encodeURIComponent(selectedCategory)}`}
+            keywords={selectedCategory === 'All' ? ['browse books', 'digital library collections'] : [selectedCategory, `${selectedCategory} books`, `${selectedCategory} digital library`]}
+            structuredData={[
+               {
+                  '@context': 'https://schema.org',
+                  '@type': 'CollectionPage',
+                  name: selectedCategory === 'All' ? 'BitLibrary open book collection' : `${selectedCategory} books`,
+                  description: selectedCategory === 'All'
+                     ? 'Open digital library collection for books, authors, and archive records.'
+                     : `Open digital library collection for ${selectedCategory} books and archive records.`,
+               },
+               ...(books.length > 0 ? [
+                  createItemListSchema(
+                     books.map((book) => ({
+                        name: book.title,
+                        path: `/book/${book.id}`,
+                        image: book.coverUrl,
+                     })),
+                     selectedCategory === 'All' ? 'BitLibrary open book collection' : `${selectedCategory} books on BitLibrary`
+                  ),
+               ] : []),
+            ]}
+         />
          <div className="mb-12">
             <h1 className="text-5xl font-display font-bold text-bit-text mb-4 tracking-tight">Book Archive</h1>
             <p className="text-bit-muted font-mono text-sm max-w-xl">

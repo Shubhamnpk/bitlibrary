@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowLeft, FileText, Globe, Library, Search, ShieldCheck } from 'lucide-react';
 import staticPages from '@/content/static-pages.json';
+import Seo from '@/components/Seo';
 
 interface StaticPageProps {
   type: 'terms';
@@ -48,6 +49,26 @@ const StaticPage: React.FC<StaticPageProps> = ({ type, onBack }) => {
 
   return (
     <div className="animate-fade-in pb-24 pt-4 md:pt-6">
+      <Seo
+        title={`${content.title} | BitLibrary`}
+        description={content.subtitle}
+        canonicalPath={`/${type}`}
+        robots="noindex,follow"
+        structuredData={[
+          {
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            mainEntity: content.faq.map((item) => ({
+              '@type': 'Question',
+              name: item.question,
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: item.answer,
+              },
+            })),
+          },
+        ]}
+      />
       <div className="mx-auto max-w-5xl">
         <button
           onClick={onBack}

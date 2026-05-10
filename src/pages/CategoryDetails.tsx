@@ -5,6 +5,8 @@ import { fetchBooksFromGutendex } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { ArrowLeft, Library, Zap, Info, ChevronRight, LayoutGrid, SlidersHorizontal } from 'lucide-react';
+import Seo from '@/components/Seo';
+import { createItemListSchema, truncate } from '@/lib/seo';
 
 const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookClick }) => {
   const { categoryId } = useParams();
@@ -54,6 +56,33 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
 
   return (
     <div className="animate-fade-in pb-20 max-w-7xl mx-auto px-6 pt-10">
+      <Seo
+        title={`${decodedCategory} Books, Authors, and Open Archives | BitLibrary`}
+        description={truncate(
+          `Discover ${decodedCategory} books, public-domain editions, author records, related subjects, and reading options in BitLibrary's open digital library.`,
+          155
+        )}
+        canonicalPath={`/category/${encodeURIComponent(decodedCategory)}`}
+        keywords={[decodedCategory, `${decodedCategory} books`, `${decodedCategory} ebooks`, `${decodedCategory} public domain`]}
+        structuredData={[
+          {
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: `${decodedCategory} books`,
+            description: `Open digital library collection for ${decodedCategory} books and archive records.`,
+          },
+          ...(books.length > 0 ? [
+          createItemListSchema(
+            books.map((book) => ({
+              name: book.title,
+              path: `/book/${book.id}`,
+              image: book.coverUrl,
+            })),
+            `${decodedCategory} books on BitLibrary`
+          ),
+          ] : []),
+        ]}
+      />
       {/* Navigation Header */}
       <nav className="mb-12 flex items-center justify-between">
         <button 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowLeft, BookHeart, BookOpenText, Github, Library, Sparkles, Users, Waypoints } from 'lucide-react';
+import Seo from '@/components/Seo';
 
 interface AboutPageProps {
   onBack: () => void;
@@ -79,6 +80,26 @@ const visualMoments = [
 const AboutPage: React.FC<AboutPageProps> = ({ onBack }) => {
   return (
     <div className="animate-fade-in pb-28 pt-4 md:pb-32 md:pt-6">
+      <Seo
+        title="About BitLibrary | Open Digital Library by Bitnepal"
+        description="BitLibrary is an open digital library for students, researchers, and readers who want faster access to public-domain books, authors, and readable archive records."
+        canonicalPath="/about"
+        keywords={['about BitLibrary', 'Bitnepal library', 'open digital library', 'public domain books']}
+        structuredData={[
+          {
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            mainEntity: quickAnswers.map((item) => ({
+              '@type': 'Question',
+              name: item.question,
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: item.answer,
+              },
+            })),
+          },
+        ]}
+      />
       <div className="mx-auto max-w-6xl">
         <article className="space-y-8 md:space-y-12">
           <section className="relative overflow-hidden rounded-[2.75rem] border border-bit-border bg-[linear-gradient(160deg,rgba(var(--bit-accent-rgb),0.08),rgba(var(--bit-accent-rgb),0.02))] px-6 py-10 shadow-[0_24px_80px_rgba(0,0,0,0.16)] md:px-12 md:py-16">
