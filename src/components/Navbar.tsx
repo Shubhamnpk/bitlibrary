@@ -185,7 +185,7 @@ const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <div className="hidden md:flex items-center gap-6 font-mono text-xs tracking-wider">
-            <Link to="/" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Discover</Link>
+            <Link to="/" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Home</Link>
             <Link to="/library" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/library') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Library</Link>
             <Link to="/mylibrary" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/mylibrary') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>My Library</Link>
             <ThemeToggle />
