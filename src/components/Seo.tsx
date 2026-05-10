@@ -114,6 +114,31 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
     };
   }
 
+  if (pathname === '/audiobooks') {
+    return {
+      title: 'Public Domain Audiobooks | BitLibrary',
+      description:
+        'Listen to public-domain audiobooks from LibriVox inside BitLibrary, with source attribution and chapter-level playback.',
+      canonicalPath: '/audiobooks',
+      keywords: ['public domain audiobooks', 'LibriVox audiobooks', 'free audiobooks', 'classic audiobooks'],
+      structuredData: [
+        createBreadcrumbSchema([
+          { name: 'BitLibrary', path: '/' },
+          { name: 'Audiobooks', path: '/audiobooks' },
+        ]),
+      ],
+    };
+  }
+
+  if (pathname.startsWith('/audiobook/')) {
+    return {
+      title: 'Audiobook Details and Player | BitLibrary',
+      description: 'Listen to a public-domain audiobook with chapter metadata, source links, and LibriVox attribution in BitLibrary.',
+      canonicalPath: pathname,
+      type: 'book',
+    };
+  }
+
   if (pathname === '/about') {
     return {
       title: 'About BitLibrary | Open Digital Library by Bitnepal',
@@ -128,6 +153,38 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
           url: toAbsoluteUrl('/about'),
           isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: SITE_URL },
         },
+      ],
+    };
+  }
+
+  if (pathname === '/releases') {
+    return {
+      title: 'Release History | BitLibrary',
+      description:
+        'Follow BitLibrary version history, shipped improvements, small changes, and development direction.',
+      canonicalPath: '/releases',
+      keywords: ['BitLibrary releases', 'BitLibrary changelog', 'digital library version history'],
+      structuredData: [
+        createBreadcrumbSchema([
+          { name: 'BitLibrary', path: '/' },
+          { name: 'Releases', path: '/releases' },
+        ]),
+      ],
+    };
+  }
+
+  if (pathname === '/roadmap') {
+    return {
+      title: 'Roadmap | BitLibrary',
+      description:
+        'See what BitLibrary is working on now, what is planned next, and the principles guiding future development.',
+      canonicalPath: '/roadmap',
+      keywords: ['BitLibrary roadmap', 'digital library roadmap', 'audiobook roadmap'],
+      structuredData: [
+        createBreadcrumbSchema([
+          { name: 'BitLibrary', path: '/' },
+          { name: 'Roadmap', path: '/roadmap' },
+        ]),
       ],
     };
   }

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { Book, LocalUserState, ThemeMode } from '@/types/index';
+import type { Audiobook, Book, LocalUserState, ThemeMode } from '@/types/index';
 
 const USER_STATE_KEY = 'bitlibrary-user-state-v1';
+const LEGACY_SAVED_AUDIOBOOKS_KEY = 'bitlibrary-saved-audiobooks-v1';
 const LEGACY_KEYS = [
   'bitlibrary-explore-cache-v1',
   'bitlibrary-search-cache-v1',
+  LEGACY_SAVED_AUDIOBOOKS_KEY,
   'recentSearches',
 ];
 const USER_STATE_EVENT = 'bitlibrary:user-state-changed';
@@ -19,6 +21,7 @@ const defaultUserState: LocalUserState = {
     theme: 'dark',
   },
   savedBooks: [],
+  savedAudiobooks: [],
   recentSearches: [],
   recentlyViewed: [],
 };
@@ -32,9 +35,29 @@ const dedupeBooks = (books: Book[]) => {
   });
 };
 
+const dedupeAudiobooks = (audiobooks: Audiobook[]) => {
+  const seen = new Set<string>();
+  return audiobooks.filter((audiobook) => {
+    if (!audiobook?.id || seen.has(audiobook.id)) return false;
+    seen.add(audiobook.id);
+    return true;
+  });
+};
+
 const emitUserStateChange = () => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event(USER_STATE_EVENT));
+};
+
+const readLegacySavedAudiobooks = (): Audiobook[] => {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const raw = window.localStorage.getItem(LEGACY_SAVED_AUDIOBOOKS_KEY);
+    return raw ? dedupeAudiobooks(JSON.parse(raw) as Audiobook[]) : [];
+  } catch {
+    return [];
+  }
 };
 
 export const readLocalUserState = (): LocalUserState => {
@@ -42,9 +65,18 @@ export const readLocalUserState = (): LocalUserState => {
 
   try {
     const raw = window.localStorage.getItem(USER_STATE_KEY);
-    if (!raw) return defaultUserState;
+    if (!raw) {
+      return {
+        ...defaultUserState,
+        savedAudiobooks: readLegacySavedAudiobooks(),
+      };
+    }
 
     const parsed = JSON.parse(raw) as Partial<LocalUserState>;
+    const hasSavedAudiobooks = Object.prototype.hasOwnProperty.call(parsed, 'savedAudiobooks');
+    const savedAudiobooks = hasSavedAudiobooks
+      ? dedupeAudiobooks(parsed.savedAudiobooks || [])
+      : readLegacySavedAudiobooks();
     return {
       profile: {
         displayName: parsed.profile?.displayName?.trim() || defaultUserState.profile.displayName,
@@ -53,11 +85,15 @@ export const readLocalUserState = (): LocalUserState => {
         theme: parsed.settings?.theme === 'light' ? 'light' : 'dark',
       },
       savedBooks: dedupeBooks(parsed.savedBooks || []),
+      savedAudiobooks,
       recentSearches: (parsed.recentSearches || []).filter(Boolean).slice(0, MAX_RECENT_SEARCHES),
       recentlyViewed: dedupeBooks(parsed.recentlyViewed || []).slice(0, MAX_RECENTLY_VIEWED),
     };
   } catch {
-    return defaultUserState;
+    return {
+      ...defaultUserState,
+      savedAudiobooks: readLegacySavedAudiobooks(),
+    };
   }
 };
 
@@ -91,6 +127,18 @@ export const toggleSavedBook = (book: Book) => {
       savedBooks: alreadySaved
         ? current.savedBooks.filter((entry) => entry.id !== book.id)
         : [book, ...current.savedBooks].slice(0, 100),
+    };
+  });
+};
+
+export const toggleSavedAudiobook = (audiobook: Audiobook) => {
+  return updateLocalUserState((current) => {
+    const alreadySaved = current.savedAudiobooks.some((entry) => entry.id === audiobook.id);
+    return {
+      ...current,
+      savedAudiobooks: alreadySaved
+        ? current.savedAudiobooks.filter((entry) => entry.id !== audiobook.id)
+        : [audiobook, ...current.savedAudiobooks.filter((entry) => entry.id !== audiobook.id)].slice(0, 50),
     };
   });
 };
@@ -146,6 +194,7 @@ export const useLocalUserState = () => {
     state,
     recordRecentSearch,
     toggleSavedBook,
+    toggleSavedAudiobook,
     recordRecentlyViewedBook,
     updateDisplayName,
     setThemeMode,

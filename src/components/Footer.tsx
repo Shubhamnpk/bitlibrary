@@ -49,6 +49,7 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
               <ul className="space-y-4 text-bit-muted">
                 <li><Link to="/library" className="hover:text-bit-accent transition-all">CENTRAL REGISTRY</Link></li>
                 <li><Link to="/browse" className="hover:text-bit-accent transition-all">COLLECTIONS</Link></li>
+                <li><Link to="/audiobooks" className="hover:text-bit-accent transition-all">AUDIOBOOKS</Link></li>
                 <li><Link to="/mylibrary" className="hover:text-bit-accent transition-all">MY ARCHIVE</Link></li>
                 <li><Link to="/search?q=public%20domain%20classics" className="hover:text-bit-accent transition-all">PUBLIC DOMAIN CLASSICS</Link></li>
               </ul>
@@ -69,6 +70,8 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
               <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Protocol</h4>
               <ul className="space-y-4 text-bit-muted">
                 <li><Link to="/about" className="hover:text-bit-accent transition-all">ABOUT BITLIBRARY</Link></li>
+                <li><Link to="/releases" className="hover:text-bit-accent transition-all">RELEASE HISTORY</Link></li>
+                <li><Link to="/roadmap" className="hover:text-bit-accent transition-all">ROADMAP</Link></li>
                 <li><Link to="/terms" className="hover:text-bit-accent transition-all">TERMS OF USE</Link></li>
                 <li><a href="https://github.com/Shubhamnpk/bitlibrary" target="_blank" rel="noopener noreferrer" className="hover:text-bit-accent transition-all">SOURCE CODE</a></li>
               </ul>

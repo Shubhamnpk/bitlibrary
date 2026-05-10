@@ -237,7 +237,7 @@ const App: React.FC = () => {
     }
   }, [searchQuery, searchParams, location.pathname, navigateToSearch]);
 
-  const isReaderActive = activeBook && !isMinimized;
+  const isReaderActive = Boolean(activeBook && !isMinimized);
   const activeTab = (path: string) => location.pathname === path;
   const isNotFoundRoute = useMemo(
     () => !ROUTE_PATTERNS.some((path) => matchPath({ path, end: true }, location.pathname)),
@@ -509,9 +509,9 @@ const App: React.FC = () => {
           } />
 
           {/* Discovery / Library Registry */}
-          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} /></div>} />
-          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} /></div>} />
-          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
 
           {/* Personal Bookshelf */}
           <Route path="/mylibrary" element={
@@ -519,11 +519,13 @@ const App: React.FC = () => {
               <LibraryPage
                 borrowedBooks={borrowedBooks}
                 savedBooks={localUserState.savedBooks}
+                savedAudiobooks={localUserState.savedAudiobooks}
                 recentSearches={localUserState.recentSearches}
                 recentlyViewed={localUserState.recentlyViewed}
                 profile={localUserState.profile}
                 settings={localUserState.settings}
                 onBookClick={(b) => navigate(`/book/${b.id}`)}
+                onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
                 onRead={handleReadBook}
                 onExplore={() => navigate('/')}
               />
@@ -534,6 +536,7 @@ const App: React.FC = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <SearchPage
                 onBookClick={(book) => navigate(`/book/${book.id}`)}
+                onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
                 onRead={handleReadBook}
                 onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
                 onResultsChange={setSearchResults}

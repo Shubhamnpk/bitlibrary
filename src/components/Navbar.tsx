@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info } from 'lucide-react';
+import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 
 interface NavbarProps {
@@ -20,8 +20,8 @@ interface NavbarProps {
   localUserState: any;
   handleMobileMenuSearchSubmit: (e: React.FormEvent) => void;
   activeTab: (path: string) => boolean;
-  searchInputRef: React.RefObject<HTMLInputElement>;
-  searchShellRef: React.RefObject<HTMLDivElement>;
+  searchInputRef: React.RefObject<HTMLInputElement | null>;
+  searchShellRef: React.RefObject<HTMLDivElement | null>;
   setIsSearchFocused: (focused: boolean) => void;
   mobileQuickTopics: string[];
   navigateToSearch: (query: string, options?: { persistRecent?: boolean }) => void;
@@ -262,6 +262,10 @@ const Navbar: React.FC<NavbarProps> = ({
                 <Link to="/library" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/library') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
                   <Library size={16} />
                   Library
+                </Link>
+                <Link to="/audiobooks" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/audiobooks') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
+                  <AudioLines size={16} />
+                  Audiobooks
                 </Link>
                 <Link to="/mylibrary" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/mylibrary') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
                   <BookOpenText size={16} />

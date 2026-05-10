@@ -1,4 +1,4 @@
-import { Book } from '@/types/index';
+import { Author, Book } from '@/types/index';
 import { INITIAL_BOOKS } from '@/constants';
 
 const GUTENDEX_BASE = 'https://gutendex.com/books';
@@ -93,11 +93,11 @@ const formatAuthorName = (name: string): string => {
 
 // --- Archival Data Mappers ---
 const mapGutendexToBook = (item: any): Book => {
-  const formattedAuthors = (item.authors || []).map((a: any) => ({
+  const formattedAuthors: Author[] = (item.authors || []).map((a: any) => ({
     ...a,
     name: formatAuthorName(a.name)
   }));
-  const author = formattedAuthors.map(a => a.name).join(', ');
+  const author = formattedAuthors.map((a: Author) => a.name).join(', ');
 
   const category = item.subjects && item.subjects.length > 0 ? item.subjects[0].split(' -- ')[0] : 'Unknown Science';
   const coverUrl = item.formats['image/jpeg'] || `https://covers.openlibrary.org/b/id/${item.id}-L.jpg`;
@@ -217,7 +217,7 @@ const mapArchiveToBook = (item: any): Book => {
     coverUrl,
     year: parseInt(String(item.date || '').split('-')[0]) || undefined,
     source: 'Open Library', // Grouping with Open Library since they share IA identifiers
-    subjects: subjectArray.filter(s => typeof s === 'string').slice(0, 5),
+    subjects: subjectArray.filter((s: unknown): s is string => typeof s === 'string').slice(0, 5),
     downloads: parseInt(item.downloads || 0),
     externalUrl,
     downloadUrl

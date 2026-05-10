@@ -25,6 +25,39 @@ export interface Book {
   source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library';
 }
 
+export interface AudiobookTrack {
+  id: string;
+  sectionNumber: number;
+  title: string;
+  listenUrl: string;
+  fallbackUrls?: string[];
+  playtimeSeconds?: number;
+  readers: string[];
+}
+
+export interface Audiobook {
+  id: string;
+  title: string;
+  author: string;
+  authors: Author[];
+  description: string;
+  language: string;
+  copyrightYear?: string;
+  coverUrl?: string;
+  thumbnailUrl?: string;
+  totalTime?: string;
+  totalTimeSeconds?: number;
+  numSections: number;
+  genres: string[];
+  sourceTextUrl?: string;
+  librivoxUrl: string;
+  archiveUrl?: string;
+  rssUrl?: string;
+  zipUrl?: string;
+  tracks: AudiobookTrack[];
+  source: 'LibriVox' | 'Internet Archive' | 'Project Gutenberg';
+}
+
 export enum ViewState {
   HOME = 'HOME',
   SEARCH = 'SEARCH',
@@ -55,6 +88,7 @@ export interface LocalUserState {
   profile: UserProfile;
   settings: UserSettings;
   savedBooks: Book[];
+  savedAudiobooks: Audiobook[];
   recentSearches: string[];
   recentlyViewed: Book[];
 }

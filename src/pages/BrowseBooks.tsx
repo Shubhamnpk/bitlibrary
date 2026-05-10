@@ -1,23 +1,159 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Book } from '@/types/index';
+import { Audiobook, Book } from '@/types/index';
 import { CATEGORIES, INITIAL_BOOKS } from '@/constants';
 import BookCard from '@/components/BookCard';
-import { fetchBooksFromGutendex } from '@/services/bookService';
+import AudiobookCard from '@/components/AudiobookCard';
+import { fetchBooksFromGutendex, searchGoogleBooks, searchInternetArchive, searchOpenLibrary } from '@/services/bookService';
+import { fetchFeaturedAudiobooks } from '@/services/audiobookService';
 import { BookGridSkeleton } from '@/components/Skeletons';
-import { BookOpen, Disc, LayoutGrid, List } from 'lucide-react';
+import { ArrowRight, BookOpen, Disc, Headphones, LayoutGrid, List } from 'lucide-react';
 import Seo from '@/components/Seo';
 import { createItemListSchema, truncate } from '@/lib/seo';
 
+const SHELF_ITEM_LIMIT = 6;
+const INITIAL_VISIBLE_CATEGORY_ROWS = 3;
+const CATEGORY_ROW_BATCH_SIZE = 2;
+const CATEGORY_ROW_LOAD_MARGIN = '240px';
+const CATEGORY_ROW_SCROLL_STEP = 140;
+const SHELF_PRIMARY_TIMEOUT_MS = 3500;
+const SHELF_FALLBACK_TIMEOUT_MS = 3500;
+const SHELF_FALLBACK_BOOKS: Book[] = [
+   { id: 'shelf-shakespeare', title: 'The Complete Works of William Shakespeare', author: 'William Shakespeare', category: 'Poetry', description: 'A public-domain collection of plays and poems.', coverUrl: 'https://www.gutenberg.org/cache/epub/100/pg100.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/100.html.images', subjects: ['Poetry', 'Drama', 'Fiction'] },
+   { id: 'shelf-frankenstein', title: 'Frankenstein; or, The Modern Prometheus', author: 'Mary Wollstonecraft Shelley', category: 'Fiction', description: 'A gothic novel about creation, responsibility, and fear.', coverUrl: 'https://www.gutenberg.org/cache/epub/84/pg84.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/84.html.images', subjects: ['Fiction', 'Science', 'Drama'] },
+   { id: 'shelf-sherlock', title: 'The Adventures of Sherlock Holmes', author: 'Arthur Conan Doyle', category: 'Mystery', description: 'Classic detective stories with Sherlock Holmes and Dr. Watson.', coverUrl: 'https://www.gutenberg.org/cache/epub/1661/pg1661.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1661.html.images', subjects: ['Mystery', 'Short Stories', 'Adventure'] },
+   { id: 'shelf-two-cities', title: 'A Tale of Two Cities', author: 'Charles Dickens', category: 'History', description: 'A historical novel set around the French Revolution.', coverUrl: 'https://www.gutenberg.org/cache/epub/98/pg98.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/98.html.images', subjects: ['History', 'Fiction', 'Drama'] },
+   { id: 'shelf-republic', title: 'The Republic', author: 'Plato', category: 'Philosophy', description: 'A foundational work on justice, politics, and education.', coverUrl: 'https://www.gutenberg.org/cache/epub/1497/pg1497.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1497.html.images', subjects: ['Philosophy', 'History'] },
+   { id: 'shelf-douglass', title: 'Narrative of the Life of Frederick Douglass', author: 'Frederick Douglass', category: 'Biography', description: 'A powerful autobiography by Frederick Douglass.', coverUrl: 'https://www.gutenberg.org/cache/epub/23/pg23.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/23.html.images', subjects: ['Biography', 'History'] },
+   { id: 'shelf-origin', title: 'On the Origin of Species', author: 'Charles Darwin', category: 'Science', description: 'Darwin’s major work on evolution by natural selection.', coverUrl: 'https://www.gutenberg.org/cache/epub/1228/pg1228.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1228.html.images', subjects: ['Science', 'History'] },
+   { id: 'shelf-wonderland', title: "Alice's Adventures in Wonderland", author: 'Lewis Carroll', category: 'Children', description: 'A playful fantasy classic for younger readers.', coverUrl: 'https://www.gutenberg.org/cache/epub/11/pg11.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/11.html.images', subjects: ['Children', 'Adventure', 'Fiction'] },
+   { id: 'shelf-treasure-island', title: 'Treasure Island', author: 'Robert Louis Stevenson', category: 'Adventure', description: 'A sea adventure with pirates, maps, and danger.', coverUrl: 'https://www.gutenberg.org/cache/epub/120/pg120.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/120.html.images', subjects: ['Adventure', 'Children', 'Fiction'] },
+   { id: 'shelf-pride', title: 'Pride and Prejudice', author: 'Jane Austen', category: 'Romance', description: 'A sharp novel about manners, family, pride, and love.', coverUrl: 'https://www.gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1342.html.images', subjects: ['Romance', 'Fiction', 'Drama'] },
+   { id: 'shelf-dorian', title: 'The Picture of Dorian Gray', author: 'Oscar Wilde', category: 'Drama', description: 'A gothic philosophical novel about beauty and consequence.', coverUrl: 'https://www.gutenberg.org/cache/epub/174/pg174.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/174.html.images', subjects: ['Drama', 'Fiction', 'Philosophy'] },
+   { id: 'shelf-poe', title: 'The Works of Edgar Allan Poe, Volume 1', author: 'Edgar Allan Poe', category: 'Short Stories', description: 'Stories and poems from a defining gothic fiction voice.', coverUrl: 'https://www.gutenberg.org/cache/epub/2147/pg2147.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/2147.html.images', subjects: ['Short Stories', 'Mystery', 'Poetry'] },
+];
+
 interface BrowseBooksProps {
    onBookClick: (book: Book) => void;
+   onAudiobookClick: (audiobook: Audiobook) => void;
    onRead: (book: Book) => void;
 }
 
-const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
+interface BookCategoryShelfProps {
+   category: string;
+   onBookClick: (book: Book) => void;
+   onRead: (book: Book) => void;
+   onViewAll: (category: string) => void;
+}
+
+const loadBooksForShelf = async (category: string): Promise<Book[]> => {
+   const controller = new AbortController();
+   const timeoutId = window.setTimeout(() => controller.abort(), SHELF_PRIMARY_TIMEOUT_MS);
+   const result = await fetchBooksFromGutendex(1, category, controller.signal).finally(() => {
+      window.clearTimeout(timeoutId);
+   });
+   let shelfBooks = result.books;
+
+   if (shelfBooks.length === 0) {
+      const fallbackResults = await Promise.race([
+         Promise.allSettled([
+            searchGoogleBooks(category),
+            searchOpenLibrary(category),
+            searchInternetArchive(category),
+         ]),
+         new Promise<PromiseSettledResult<Book[]>[]>((resolve) => {
+            window.setTimeout(() => resolve([]), SHELF_FALLBACK_TIMEOUT_MS);
+         }),
+      ]);
+      shelfBooks = fallbackResults.flatMap((fallback) => fallback.status === 'fulfilled' ? fallback.value : []);
+   }
+
+   const dedupedBooks = shelfBooks
+      .filter((book, index, list) => list.findIndex((entry) => entry.id === book.id) === index)
+      .slice(0, SHELF_ITEM_LIMIT);
+
+   if (dedupedBooks.length > 0) return dedupedBooks;
+
+   const categoryFallbacks = SHELF_FALLBACK_BOOKS.filter((book) =>
+      book.category === category || book.subjects?.includes(category)
+   );
+   const fallbackPool = [
+      ...categoryFallbacks,
+      ...SHELF_FALLBACK_BOOKS.filter((book) => !categoryFallbacks.some((entry) => entry.id === book.id)),
+   ];
+
+   return fallbackPool.slice(0, SHELF_ITEM_LIMIT).map((book) => ({
+      ...book,
+      id: `${book.id}-${category.toLowerCase().replace(/\s+/g, '-')}`,
+      category,
+   }));
+};
+
+const BookCategoryShelf: React.FC<BookCategoryShelfProps> = ({ category, onBookClick, onRead, onViewAll }) => {
+   const [shelfBooks, setShelfBooks] = useState<Book[]>([]);
+   const [isLoading, setIsLoading] = useState(true);
+
+   useEffect(() => {
+      let isMounted = true;
+
+      setIsLoading(true);
+      loadBooksForShelf(category)
+         .then((items) => {
+            if (isMounted) setShelfBooks(items);
+         })
+         .catch((error) => {
+            console.warn(`Library shelf skipped for ${category}:`, error);
+            if (isMounted) setShelfBooks([]);
+         })
+         .finally(() => {
+            if (isMounted) setIsLoading(false);
+         });
+
+      return () => {
+         isMounted = false;
+      };
+   }, [category]);
+
+   if (!isLoading && shelfBooks.length === 0) return null;
+
+   return (
+      <section>
+         <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+               <h3 className="text-xl font-display font-bold text-bit-text">{category}</h3>
+               <p className="mt-1 line-clamp-1 text-xs text-bit-muted">Open books and archive records for {category.toLowerCase()}.</p>
+            </div>
+            <button type="button" onClick={() => onViewAll(category)} className="shrink-0 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent hover:text-bit-text">
+               View all
+            </button>
+         </div>
+
+         {isLoading ? (
+            <div className="flex gap-4 overflow-hidden">
+               {Array.from({ length: SHELF_ITEM_LIMIT }).map((_, index) => (
+                  <div key={index} className="h-72 w-40 shrink-0 animate-pulse rounded-xl border border-bit-border bg-bit-panel/40 sm:w-44" />
+               ))}
+            </div>
+         ) : (
+            <div className="flex snap-x gap-4 overflow-x-auto pb-4">
+               {shelfBooks.map((book) => (
+                  <div key={book.id} className="w-40 shrink-0 snap-start sm:w-44 lg:w-48">
+                     <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} />
+                  </div>
+               ))}
+            </div>
+         )}
+      </section>
+   );
+};
+
+const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick, onRead }) => {
    const { categoryId } = useParams();
    const navigate = useNavigate();
    const [books, setBooks] = useState<Book[]>([]);
+   const [featuredAudiobooks, setFeaturedAudiobooks] = useState<Audiobook[]>([]);
+   const [loadingMoreShelves, setLoadingMoreShelves] = useState(false);
+   const [visibleShelfCount, setVisibleShelfCount] = useState(INITIAL_VISIBLE_CATEGORY_ROWS);
    const [loading, setLoading] = useState(true);
    const [loadingMore, setLoadingMore] = useState(false);
    const [page, setPage] = useState(1);
@@ -25,8 +161,18 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
    
    const observerRef = useRef<HTMLDivElement>(null);
+   const shelfObserverRef = useRef<HTMLDivElement>(null);
+   const lastShelfLoadYRef = useRef(0);
    const allFetchedBooks = useRef<Book[]>([]); // Global Session Cache for Instant Filtering
    const selectedCategory = categoryId || 'All';
+   const shouldShowShelves = selectedCategory === 'All';
+
+   useEffect(() => {
+      if (!shouldShowShelves) return;
+
+      setVisibleShelfCount(INITIAL_VISIBLE_CATEGORY_ROWS);
+      lastShelfLoadYRef.current = 0;
+   }, [selectedCategory, shouldShowShelves]);
 
    const loadInitialBooks = useCallback(async (isInstant = false) => {
       // If NOT instant, we show skeleton
@@ -76,6 +222,32 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
       }
    }, [selectedCategory, loadInitialBooks]);
 
+   useEffect(() => {
+      let isMounted = true;
+
+      const loadInitialAudio = async () => {
+         const featured = await fetchFeaturedAudiobooks(SHELF_ITEM_LIMIT).catch(() => []);
+         if (isMounted) {
+            setFeaturedAudiobooks(featured.slice(0, SHELF_ITEM_LIMIT));
+         }
+      };
+
+      if (shouldShowShelves) {
+         lastShelfLoadYRef.current = 0;
+         if (featuredAudiobooks.length === 0) {
+            void loadInitialAudio();
+         }
+      } else {
+         setFeaturedAudiobooks([]);
+         setLoadingMoreShelves(false);
+         setVisibleShelfCount(INITIAL_VISIBLE_CATEGORY_ROWS);
+      }
+
+      return () => {
+         isMounted = false;
+      };
+   }, [featuredAudiobooks.length, shouldShowShelves]);
+
    const handleLoadMore = useCallback(async () => {
       if (loadingMore || !hasMore) return;
       
@@ -109,7 +281,7 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
       const observer = new IntersectionObserver(
          (entries) => {
             // Trigger 200px before reaching the end for a "seamless" feel
-            if (entries[0].isIntersecting && !loadingMore && hasMore && !loading) {
+            if (!shouldShowShelves && entries[0].isIntersecting && !loadingMore && hasMore && !loading) {
                void handleLoadMore();
             }
          },
@@ -126,7 +298,34 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
             observer.unobserve(currentTarget);
          }
       };
-   }, [handleLoadMore, loadingMore, hasMore, loading]);
+   }, [handleLoadMore, loadingMore, hasMore, loading, shouldShowShelves]);
+
+   useEffect(() => {
+      if (!shouldShowShelves) return;
+
+      const observer = new IntersectionObserver(
+         (entries) => {
+            const movedFartherDown = window.scrollY > lastShelfLoadYRef.current + CATEGORY_ROW_SCROLL_STEP;
+
+            if (entries[0].isIntersecting && movedFartherDown && !loadingMoreShelves && visibleShelfCount < CATEGORIES.length) {
+               lastShelfLoadYRef.current = window.scrollY;
+               setVisibleShelfCount((count) => Math.min(count + CATEGORY_ROW_BATCH_SIZE, CATEGORIES.length));
+            }
+         },
+         { threshold: 0, rootMargin: CATEGORY_ROW_LOAD_MARGIN }
+      );
+
+      const currentTarget = shelfObserverRef.current;
+      if (currentTarget) {
+         observer.observe(currentTarget);
+      }
+
+      return () => {
+         if (currentTarget) {
+            observer.unobserve(currentTarget);
+         }
+      };
+   }, [loadingMoreShelves, shouldShowShelves, visibleShelfCount]);
 
    return (
       <div className="animate-fade-in pb-20">
@@ -188,6 +387,7 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
                ))}
             </div>
 
+            {!shouldShowShelves && (
             <div className="flex items-center gap-4">
                <div className="h-10 w-[1px] bg-bit-border hidden md:block" />
                <div className="flex gap-1 bg-bit-panel/50 p-1 rounded-lg border border-bit-border">
@@ -207,12 +407,93 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
                   </button>
                </div>
             </div>
+            )}
          </div>
 
+         {shouldShowShelves && (
+            <section className="mb-14 space-y-10 border-b border-bit-border pb-12">
+               <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                  <div>
+                     <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                        <Headphones size={18} />
+                        <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Audiobooks</p>
+                     </div>
+                     <h2 className="text-3xl font-display font-bold tracking-tight text-bit-text">Start listening</h2>
+                     <p className="mt-2 max-w-2xl text-sm leading-7 text-bit-muted">
+                        One quick row for public-domain recordings. Open the audiobook page when you want more listening categories.
+                     </p>
+                  </div>
+                  <button
+                     type="button"
+                     onClick={() => navigate('/audiobooks')}
+                     className="inline-flex w-fit items-center gap-2 rounded-full border border-bit-border bg-bit-panel/40 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent"
+                  >
+                     View all audiobooks <ArrowRight size={14} />
+                  </button>
+               </div>
+
+               {featuredAudiobooks.length === 0 ? (
+                  <div className="flex gap-4 overflow-hidden">
+                     {Array.from({ length: 5 }).map((_, index) => (
+                        <div key={index} className="h-72 w-40 shrink-0 animate-pulse rounded-xl border border-bit-border bg-bit-panel/40 sm:w-44" />
+                     ))}
+                  </div>
+               ) : featuredAudiobooks.length > 0 && (
+                  <div className="flex snap-x gap-4 overflow-x-auto pb-4">
+                     {featuredAudiobooks.map((audiobook) => (
+                        <div key={audiobook.id} className="w-40 shrink-0 snap-start sm:w-44 lg:w-48">
+                           <AudiobookCard variant="compact" audiobook={audiobook} onClick={onAudiobookClick} />
+                        </div>
+                     ))}
+                  </div>
+               )}
+            </section>
+         )}
+
+         {shouldShowShelves && (
+            <section className="space-y-12">
+               <div>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Books</p>
+                  <h2 className="mt-2 text-3xl font-display font-bold tracking-tight text-bit-text">Browse by category</h2>
+               </div>
+
+               <div className="space-y-12">
+                     {CATEGORIES.slice(0, visibleShelfCount).map((category) => (
+                        <BookCategoryShelf
+                           key={category}
+                           category={category}
+                           onBookClick={onBookClick}
+                           onRead={onRead}
+                           onViewAll={(nextCategory) => navigate(`/browse/${encodeURIComponent(nextCategory)}`)}
+                        />
+                     ))}
+                     {visibleShelfCount < CATEGORIES.length && (
+                        <div ref={shelfObserverRef} className="flex flex-col items-center gap-4 py-8">
+                           {loadingMoreShelves ? (
+                              <div className="flex gap-4 overflow-hidden">
+                                 {Array.from({ length: SHELF_ITEM_LIMIT }).map((_, index) => (
+                                    <div key={index} className="h-72 w-40 shrink-0 animate-pulse rounded-xl border border-bit-border bg-bit-panel/40 sm:w-44" />
+                                 ))}
+                              </div>
+                           ) : (
+                              <button
+                                 type="button"
+                                 onClick={() => setVisibleShelfCount((count) => Math.min(count + CATEGORY_ROW_BATCH_SIZE, CATEGORIES.length))}
+                                 className="rounded-full border border-bit-border bg-bit-panel/40 px-5 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent"
+                              >
+                                 Show more categories
+                              </button>
+                           )}
+                        </div>
+                     )}
+                  </div>
+            </section>
+         )}
+
          {/* Results */}
-         {loading && books.length === 0 ? (
+         {!shouldShowShelves && loading && books.length === 0 ? (
             <BookGridSkeleton count={8} />
-         ) : viewMode === 'grid' ? (
+         ) : !shouldShowShelves && viewMode === 'grid' ? (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
                {books.map((book, idx) => (
                   <div key={`${book.id}-${idx}`} className="animate-fade-in-up" style={{ animationDelay: `${(idx % 8) * 40}ms` }}>
@@ -220,7 +501,7 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
                   </div>
                ))}
             </div>
-         ) : (
+         ) : !shouldShowShelves ? (
             <div className="space-y-4">
                {books.map((book, idx) => (
                   <div
@@ -305,19 +586,21 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onRead }) => {
                   </div>
                ))}
             </div>
-         )}
+         ) : null}
 
          {/* Infinite Scroll Sentinel */}
-         <div ref={observerRef} className="mt-12 flex flex-col items-center gap-6 py-10">
-            {hasMore ? (
-               <div className="flex flex-col items-center gap-3">
-                  <Disc className="text-bit-accent animate-spin" size={24} />
-                  <span className="text-[10px] font-mono text-bit-muted font-bold uppercase tracking-[0.3em] animate-pulse">Syncing_Sector_Registry...</span>
-               </div>
-            ) : books.length > 0 && (
-               <div className="h-[1px] w-32 bg-gradient-to-r from-transparent via-bit-border to-transparent" />
-            )}
-         </div>
+         {!shouldShowShelves && (
+            <div ref={observerRef} className="mt-12 flex flex-col items-center gap-6 py-10">
+               {hasMore ? (
+                  <div className="flex flex-col items-center gap-3">
+                     <Disc className="text-bit-accent animate-spin" size={24} />
+                     <span className="text-[10px] font-mono text-bit-muted font-bold uppercase tracking-[0.3em] animate-pulse">Syncing_Sector_Registry...</span>
+                  </div>
+               ) : books.length > 0 && (
+                  <div className="h-[1px] w-32 bg-gradient-to-r from-transparent via-bit-border to-transparent" />
+               )}
+            </div>
+         )}
       </div>
    );
 };

@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Book } from '@/types/index';
+import { Audiobook, Book } from '@/types/index';
 import { searchBooksInGutendex, searchGoogleBooks, searchITBooks, searchOpenLibrary, searchInternetArchive } from '@/services/bookService';
+import { searchAudiobooks } from '@/services/audiobookService';
 import BookCard from '@/components/BookCard';
+import AudiobookCard from '@/components/AudiobookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Search, SlidersHorizontal, Sparkles, Zap } from 'lucide-react';
@@ -123,6 +125,7 @@ const writeSearchCache = (query: string, results: Book[]) => {
 
 interface SearchPageProps {
   onBookClick: (book: Book) => void;
+  onAudiobookClick: (audiobook: Audiobook) => void;
   onRead: (book: Book) => void;
   onAuthorClick: (name: string) => void;
   onResultsChange: (books: Book[]) => void;
@@ -134,6 +137,7 @@ interface SearchPageProps {
 
 const SearchPage: React.FC<SearchPageProps> = ({
   onBookClick,
+  onAudiobookClick,
   onRead,
   onAuthorClick,
   onResultsChange,
@@ -145,7 +149,9 @@ const SearchPage: React.FC<SearchPageProps> = ({
   const [searchParams] = useSearchParams();
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Book[]>([]);
-  const [activeSource, setActiveSource] = useState<'all' | Book['source']>('all');
+  const [audiobookResults, setAudiobookResults] = useState<Audiobook[]>([]);
+  const [activeType, setActiveType] = useState<'all' | 'books' | 'audiobooks'>('all');
+  const [activeSource, setActiveSource] = useState<'all' | Book['source'] | 'LibriVox'>('all');
   const [activeCategory, setActiveCategory] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
   const activeSearchRequestRef = useRef(0);
@@ -157,6 +163,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
     if (!query) {
       activeSearchRequestRef.current += 1;
       setSearchResults([]);
+      setAudiobookResults([]);
       setIsSearching(false);
       onResultsChange([]);
       onSearchingChange(false);
@@ -165,6 +172,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
 
     if (query.length < SEARCH_MIN_QUERY_LENGTH) {
       setSearchResults([]);
+      setAudiobookResults([]);
       setIsSearching(false);
       onResultsChange([]);
       onSearchingChange(false);
@@ -195,8 +203,16 @@ const SearchPage: React.FC<SearchPageProps> = ({
           return rankBooks(merged, query);
         });
       };
+      const updateAudiobookResults = (newAudiobooks: Audiobook[]) => {
+        if (activeSearchRequestRef.current !== requestId || controller.signal.aborted) {
+          return;
+        }
+
+        setAudiobookResults(newAudiobooks);
+      };
 
       // 1. Concurrent Independent Streaming Fetches
+      setAudiobookResults([]);
       const searchTasks = [
         searchBooksInGutendex(query, controller.signal).then(updateResults),
         searchGoogleBooks(query, controller.signal).then(updateResults),
@@ -204,6 +220,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
         // Secondary sources
         searchITBooks(query, controller.signal).then(updateResults),
         searchInternetArchive(query, controller.signal).then(updateResults),
+        searchAudiobooks(query, 8).then(updateAudiobookResults),
       ];
 
       try {
@@ -233,27 +250,51 @@ const SearchPage: React.FC<SearchPageProps> = ({
 
   const currentQuery = searchParams.get('q')?.trim() || '';
   const isQueryReady = currentQuery.length >= SEARCH_MIN_QUERY_LENGTH;
-  const availableSources = Array.from(new Set(searchResults.map((book) => book.source).filter(Boolean))) as Book['source'][];
-  const availableCategories = Array.from(new Set(searchResults.map((book) => book.category).filter(Boolean))).slice(0, 8);
+  const availableSources = Array.from(new Set([
+    ...searchResults.map((book) => book.source).filter(Boolean),
+    ...(audiobookResults.length ? ['LibriVox'] : []),
+  ])) as Array<Book['source'] | 'LibriVox'>;
+  const availableCategories = Array.from(new Set([
+    ...searchResults.map((book) => book.category).filter(Boolean),
+    ...audiobookResults.flatMap((audiobook) => audiobook.genres).filter(Boolean),
+  ])).slice(0, 8);
   const filteredResults = searchResults.filter((book) => {
     const matchesSource = activeSource === 'all' || book.source === activeSource;
     const matchesCategory = activeCategory === 'all' || book.category === activeCategory;
     return matchesSource && matchesCategory;
   });
+  const filteredAudiobooks = audiobookResults.filter((audiobook) => {
+    const matchesSource = activeSource === 'all' || activeSource === 'LibriVox';
+    const matchesCategory = activeCategory === 'all' || audiobook.genres.includes(activeCategory);
+    return matchesSource && matchesCategory;
+  });
+  const mixedResults = [
+    ...(activeType === 'all' || activeType === 'audiobooks'
+      ? filteredAudiobooks.map((audiobook) => ({ type: 'audiobook' as const, id: `audio-${audiobook.id}`, item: audiobook }))
+      : []),
+    ...(activeType === 'all' || activeType === 'books'
+      ? filteredResults.map((book) => ({ type: 'book' as const, id: `book-${book.id}`, item: book }))
+      : []),
+  ];
   const sourceCounts = availableSources.map((source) => ({
     source,
-    count: searchResults.filter((book) => book.source === source).length,
+    count: source === 'LibriVox'
+      ? audiobookResults.length
+      : searchResults.filter((book) => book.source === source).length,
   }));
   const quickTopics = Array.from(new Set([...recentSearches, 'Philosophy', 'History', 'Science Fiction', 'Machine Learning'])).slice(0, 6);
 
   useEffect(() => {
+    setActiveType('all');
     setActiveSource('all');
     setActiveCategory('all');
     setShowFilters(false);
   }, [currentQuery]);
 
-  const hasActiveFilters = activeSource !== 'all' || activeCategory !== 'all';
+  const hasActiveFilters = activeType !== 'all' || activeSource !== 'all' || activeCategory !== 'all';
   const shouldShowFilters = showFilters || hasActiveFilters;
+  const totalResultCount = searchResults.length + audiobookResults.length;
+  const totalFilteredCount = mixedResults.length;
 
   return (
     <div className="animate-fade-in">
@@ -264,19 +305,19 @@ const SearchPage: React.FC<SearchPageProps> = ({
           <div className="relative flex flex-col gap-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div>
-                <p className="text-[10px] font-mono uppercase tracking-[0.28em] text-bit-accent mb-4 font-bold">Search Network</p>
+                <p className="text-[10px] font-mono uppercase tracking-[0.28em] text-bit-accent mb-4 font-bold">Search</p>
                 <h2 className="text-4xl md:text-5xl font-display font-bold text-bit-text tracking-tighter">
-                  {isQueryReady ? `Results for "${currentQuery}"` : 'Global Registry Search'}
+                  {isQueryReady ? `Results for "${currentQuery}"` : 'Search books and audiobooks'}
                 </h2>
               </div>
-              {isQueryReady && searchResults.length > 0 && (
+              {isQueryReady && totalResultCount > 0 && (
                 <div className="flex items-center md:self-center">
                   <button
                     onClick={() => setShowFilters((prev) => !prev)}
                     className="inline-flex items-center gap-3 rounded-full border border-bit-border bg-bit-panel/50 px-4 py-2 text-sm text-bit-muted hover:text-bit-text hover:border-bit-accent/40 hover:bg-bit-accent/10 transition-all font-mono uppercase tracking-widest"
                   >
                     <SlidersHorizontal size={14} className="text-bit-accent" />
-                    <span>Refine Sector</span>
+                    <span>Filters</span>
                     <ChevronDown
                       size={14}
                       className={`transition-transform duration-300 ${shouldShowFilters ? 'rotate-180' : ''}`}
@@ -301,17 +342,36 @@ const SearchPage: React.FC<SearchPageProps> = ({
           </div>
         </section>
 
-        {shouldShowFilters && searchResults.length > 0 && (
+        {shouldShowFilters && totalResultCount > 0 && (
           <section className="rounded-[2rem] border border-bit-border bg-bit-panel/30 p-6 shadow-sm animate-fade-in-up">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
               <div>
-                <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent mb-4 font-bold">Source Registry</p>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent mb-4 font-bold">Type</p>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    ['all', `All (${totalResultCount})`],
+                    ['books', `Books (${searchResults.length})`],
+                    ['audiobooks', `Audiobooks (${audiobookResults.length})`],
+                  ] as const).map(([type, label]) => (
+                    <button
+                      key={type}
+                      onClick={() => setActiveType(type)}
+                      className={`px-3 py-1.5 rounded-full border text-[10px] font-mono uppercase tracking-widest transition-all ${activeType === type ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20' : 'border-bit-border bg-bit-panel/50 text-bit-muted hover:border-bit-accent/40'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent mb-4 font-bold">Sources</p>
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => setActiveSource('all')}
                     className={`px-3 py-1.5 rounded-full border text-[10px] font-mono uppercase tracking-widest transition-all ${activeSource === 'all' ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20' : 'border-bit-border bg-bit-panel/50 text-bit-muted hover:border-bit-accent/40'}`}
                   >
-                    ALL_PROVIDERS
+                    All sources
                   </button>
                   {sourceCounts.map(({ source, count }) => (
                     <button
@@ -326,13 +386,13 @@ const SearchPage: React.FC<SearchPageProps> = ({
               </div>
 
               <div>
-                <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent mb-4 font-bold">Subject Cluster</p>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent mb-4 font-bold">Categories</p>
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => setActiveCategory('all')}
                     className={`px-3 py-1.5 rounded-full border text-[10px] font-mono uppercase tracking-widest transition-all ${activeCategory === 'all' ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20' : 'border-bit-border bg-bit-panel/50 text-bit-muted hover:border-bit-accent/40'}`}
                   >
-                    ALL_CATEGORIES
+                    All categories
                   </button>
                   {availableCategories.map((category) => (
                     <button
@@ -354,11 +414,11 @@ const SearchPage: React.FC<SearchPageProps> = ({
             <div className="rounded-[2rem] border border-bit-border bg-bit-panel/30 p-8 shadow-sm">
               <div className="flex items-center gap-3 mb-4 text-bit-accent">
                 <Search size={18} />
-                <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold">Search Protocol</p>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold">Search tips</p>
               </div>
-              <h3 className="text-2xl font-display font-bold text-bit-text mb-3 tracking-tight">Sync via title, author, or broad topic.</h3>
+              <h3 className="text-2xl font-display font-bold text-bit-text mb-3 tracking-tight">Search by title, author, or topic.</h3>
               <p className="text-bit-muted leading-relaxed mb-6 text-sm">
-                BitLibrary works best when the query has at least {SEARCH_MIN_QUERY_LENGTH} characters. Try a broad sector first, then refine once the stream is active.
+                BitLibrary works best when the query has at least {SEARCH_MIN_QUERY_LENGTH} characters. Try a broad topic first, then narrow the results with filters.
               </p>
               <div className="flex flex-wrap gap-3">
                 {recentSearches.slice(0, 4).map(q => (
@@ -372,7 +432,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
             <div className="rounded-[2rem] border border-bit-border bg-bit-panel/30 p-8 shadow-sm">
               <div className="flex items-center gap-3 mb-4 text-bit-accent">
                 <Sparkles size={18} />
-                <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold">Suggested Nodes</p>
+                <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold">Suggested searches</p>
               </div>
               <div className="space-y-3 text-sm text-bit-muted font-mono uppercase tracking-widest text-[11px]">
                 <p className="flex items-center gap-2"><ChevronRight size={12} className="text-bit-accent" /> "Jane Austen"</p>
@@ -386,39 +446,64 @@ const SearchPage: React.FC<SearchPageProps> = ({
       </div>
 
       <div className="mb-24">
-        {isSearching && searchResults.length === 0 ? (
+        {isSearching && totalResultCount === 0 ? (
           <div className="animate-fade-in space-y-12">
             <BookGridSkeleton count={8} />
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-10 animate-fade-in">
-            {filteredResults.length > 0 ? (
-              filteredResults.map((book) => (
-                <div key={book.id} className="relative group">
-                  {book.source === 'neural' && (
-                    <div className="absolute -top-3 -right-3 z-20 px-2 py-1 bg-bit-accent text-white text-[8px] font-bold font-mono rounded rounded-bl-none shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.4)] transition-transform group-hover:scale-110">
-                      NEURAL
-                    </div>
-                  )}
-                  <BookCard 
-                    variant="compact" 
-                    book={book} 
-                    onClick={onBookClick} 
-                    onRead={onRead} 
-                    onAuthorClick={onAuthorClick} 
-                    searchQuery={currentQuery}
-                  />
+          <div className="animate-fade-in space-y-12">
+            {mixedResults.length > 0 && (
+              <section>
+                <div className="mb-5">
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-accent">Results</p>
+                  <h2 className="mt-2 text-2xl font-display font-bold text-bit-text">Books and audiobooks</h2>
                 </div>
-              ))
-            ) : (
-              isQueryReady && !isSearching && (
-                <div className="col-span-full py-40 text-center rounded-[2rem] border border-dashed border-bit-border bg-bit-panel/30">
-                  <Zap className="mx-auto text-bit-border mb-6" size={48} />
-                  <p className="text-bit-muted font-mono text-xs uppercase tracking-[0.3em]">
-                    {searchResults.length > 0 ? 'No blocks match the active filters.' : 'Sector sync failed. No results found.'}
-                  </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-10">
+                  {mixedResults.map((result) => (
+                    result.type === 'audiobook' ? (
+                      <div key={result.id} className="relative">
+                        <div className="absolute -top-3 left-3 z-20 rounded-full bg-bit-accent px-2 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-white shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.28)]">
+                          Audio
+                        </div>
+                        <AudiobookCard
+                          audiobook={result.item}
+                          onClick={onAudiobookClick}
+                          variant="compact"
+                          searchQuery={currentQuery}
+                        />
+                      </div>
+                    ) : (
+                      <div key={result.id} className="relative group">
+                        <div className="absolute -top-3 left-3 z-20 rounded-full bg-bit-panel px-2 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-bit-accent shadow-sm border border-bit-border">
+                          Book
+                        </div>
+                        {result.item.source === 'neural' && (
+                          <div className="absolute -top-3 -right-3 z-20 px-2 py-1 bg-bit-accent text-white text-[8px] font-bold font-mono rounded rounded-bl-none shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.4)] transition-transform group-hover:scale-110">
+                            NEURAL
+                          </div>
+                        )}
+                        <BookCard
+                          variant="compact"
+                          book={result.item}
+                          onClick={onBookClick}
+                          onRead={onRead}
+                          onAuthorClick={onAuthorClick}
+                          searchQuery={currentQuery}
+                        />
+                      </div>
+                    )
+                  ))}
                 </div>
-              )
+              </section>
+            )}
+
+            {totalFilteredCount === 0 && isQueryReady && !isSearching && (
+              <div className="py-40 text-center rounded-[2rem] border border-dashed border-bit-border bg-bit-panel/30">
+                <Zap className="mx-auto text-bit-border mb-6" size={48} />
+                <p className="text-bit-muted font-mono text-xs uppercase tracking-[0.3em]">
+                  {totalResultCount > 0 ? 'No results match the active filters.' : 'No books or audiobooks found.'}
+                </p>
+              </div>
             )}
           </div>
         )}
