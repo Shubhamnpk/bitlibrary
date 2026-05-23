@@ -9,6 +9,13 @@ import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 
+const isCurriculumBook = (book: Book) => (
+  book.source === 'YoBook'
+  || Boolean(book.grade)
+  || book.bookshelves?.includes('Nepali Curriculum')
+  || book.subjects?.includes('Nepali Curriculum')
+);
+
 interface BookDetailsProps {
   book: Book;
   allBooks: Book[];
@@ -59,6 +66,42 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   // Synchronize Similar Books
   useEffect(() => {
     const syncSimilar = async () => {
+      if (isCurriculumBook(book) && book.grade) {
+        const localCurriculum = allBooks
+          .filter((candidate) => (
+            candidate.id !== book.id
+            && candidate.grade === book.grade
+            && candidate.category !== book.category
+          ))
+          .slice(0, 3);
+
+        setSimilarBooks(localCurriculum);
+
+        if (localCurriculum.length < 3) {
+          setSimilarLoading(true);
+          try {
+            const { fetchBooksFromYoBook } = await import('@/services/bookService');
+            const { books } = await fetchBooksFromYoBook(1, `Class ${book.grade}`);
+
+            const merged = [...localCurriculum, ...books]
+              .filter((candidate) => (
+                candidate.id !== book.id
+                && candidate.grade === book.grade
+                && candidate.category !== book.category
+              ))
+              .filter((candidate, index, list) => list.findIndex((entry) => entry.id === candidate.id) === index)
+              .slice(0, 3);
+
+            setSimilarBooks(merged);
+          } catch (err) {
+            console.error("Curriculum Similar Sync Failed:", err);
+          } finally {
+            setSimilarLoading(false);
+          }
+        }
+        return;
+      }
+
       const local = allBooks
         .filter(b => b.category === book.category && b.id !== book.id)
         .slice(0, 3);
@@ -88,7 +131,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
       }
     };
     syncSimilar();
-  }, [book.id, book.category, allBooks]);
+  }, [book.id, book.category, book.grade, book.source, book.subjects, book.bookshelves, allBooks]);
 
   useEffect(() => {
     setContent('');
