@@ -6,7 +6,20 @@ const ALLOWED_PDF_HOSTS = new Set([
   'learning.cehrd.gov.np',
   'yobook-api.vercel.app',
   'pustakalaya.org',
+  'www.pustakalaya.org',
 ]);
+
+const ALLOWED_PDF_DOMAIN_SUFFIXES = [
+  '.pustakalaya.org',
+];
+
+const isAllowedPdfHost = (hostname: string) => {
+  const normalizedHostname = hostname.toLowerCase();
+  return (
+    ALLOWED_PDF_HOSTS.has(normalizedHostname) ||
+    ALLOWED_PDF_DOMAIN_SUFFIXES.some((suffix) => normalizedHostname.endsWith(suffix))
+  );
+};
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -39,7 +52,7 @@ export default defineConfig(({ mode }) => {
                 }
 
                 const target = new URL(rawUrl);
-                if (target.protocol !== 'https:' || !ALLOWED_PDF_HOSTS.has(target.hostname)) {
+                if (target.protocol !== 'https:' || !isAllowedPdfHost(target.hostname)) {
                   res.statusCode = 403;
                   res.end('PDF host is not allowed.');
                   return;
