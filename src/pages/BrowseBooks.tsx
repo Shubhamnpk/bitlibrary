@@ -4,7 +4,7 @@ import { Audiobook, Book } from '@/types/index';
 import { CATEGORIES, INITIAL_BOOKS } from '@/constants';
 import BookCard from '@/components/BookCard';
 import AudiobookCard from '@/components/AudiobookCard';
-import { fetchBooksFromGutendex, searchGoogleBooks, searchInternetArchive, searchOpenLibrary } from '@/services/bookService';
+import { fetchBooksFromGutendex, fetchBooksFromYoBook, searchGoogleBooks, searchInternetArchive, searchOpenLibrary } from '@/services/bookService';
 import { fetchFeaturedAudiobooks } from '@/services/audiobookService';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { ArrowRight, BookOpen, Disc, Headphones, LayoutGrid, List } from 'lucide-react';
@@ -61,6 +61,7 @@ interface ShelfCachePayload {
 
 const getBrowseCacheKey = (category: string) => `${BROWSE_CACHE_PREFIX}:category:${category}`;
 const getShelfCacheKey = (category: string) => `${BROWSE_CACHE_PREFIX}:shelf:${category}`;
+const getCurriculumShelfCacheKey = () => `${BROWSE_CACHE_PREFIX}:shelf:nepali-curriculum`;
 
 const readCachePayload = <T extends { timestamp: number }>(key: string): T | null => {
    if (typeof window === 'undefined') return null;
@@ -145,6 +146,93 @@ const loadBooksForShelf = async (category: string): Promise<Book[]> => {
 
    writeCachePayload(getShelfCacheKey(category), { books: fallbackBooks });
    return fallbackBooks;
+};
+
+const loadCurriculumShelf = async (): Promise<Book[]> => {
+   const cached = readCachePayload<ShelfCachePayload>(getCurriculumShelfCacheKey());
+   if (cached?.books?.length) return cached.books;
+
+   const controller = new AbortController();
+   const timeoutId = window.setTimeout(() => controller.abort(), SHELF_PRIMARY_TIMEOUT_MS);
+   const { books } = await fetchBooksFromYoBook(1, 'Nepali Curriculum', controller.signal).finally(() => {
+      window.clearTimeout(timeoutId);
+   });
+   const shelfBooks = dedupeBooks(books).slice(0, SHELF_ITEM_LIMIT);
+
+   if (shelfBooks.length > 0) {
+      writeCachePayload(getCurriculumShelfCacheKey(), { books: shelfBooks });
+   }
+
+   return shelfBooks;
+};
+
+const CurriculumShelf: React.FC<{
+   onBookClick: (book: Book) => void;
+   onRead: (book: Book) => void;
+   onViewAll: () => void;
+}> = ({ onBookClick, onRead, onViewAll }) => {
+   const [shelfBooks, setShelfBooks] = useState<Book[]>([]);
+   const [isLoading, setIsLoading] = useState(true);
+
+   useEffect(() => {
+      let isMounted = true;
+
+      setIsLoading(true);
+      loadCurriculumShelf()
+         .then((items) => {
+            if (isMounted) setShelfBooks(items);
+         })
+         .catch((error) => {
+            console.warn('Curriculum shelf skipped:', error);
+            if (isMounted) setShelfBooks([]);
+         })
+         .finally(() => {
+            if (isMounted) setIsLoading(false);
+         });
+
+      return () => {
+         isMounted = false;
+      };
+   }, []);
+
+   if (!isLoading && shelfBooks.length === 0) return null;
+
+   return (
+      <section className="mb-14 space-y-6 border-b border-bit-border pb-12">
+         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+               <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Education</p>
+               <h2 className="mt-2 text-3xl font-display font-bold tracking-tight text-bit-text">Nepali curriculum books</h2>
+               <p className="mt-2 max-w-2xl text-sm leading-7 text-bit-muted">
+                  A focused row for CDC Nepal and CEHRD books. Browse the full class-wise collection in Curriculum.
+               </p>
+            </div>
+            <button
+               type="button"
+               onClick={onViewAll}
+               className="inline-flex w-fit items-center gap-2 rounded-full border border-bit-border bg-bit-panel/40 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent"
+            >
+               View curriculum <ArrowRight size={14} />
+            </button>
+         </div>
+
+         {isLoading ? (
+            <div className="flex gap-4 overflow-hidden">
+               {Array.from({ length: SHELF_ITEM_LIMIT }).map((_, index) => (
+                  <div key={index} className="h-72 w-40 shrink-0 animate-pulse rounded-xl border border-bit-border bg-bit-panel/40 sm:w-44" />
+               ))}
+            </div>
+         ) : (
+            <div className="flex snap-x gap-4 overflow-x-auto pb-4">
+               {shelfBooks.map((book) => (
+                  <div key={book.id} className="w-40 shrink-0 snap-start sm:w-44 lg:w-48">
+                     <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} />
+                  </div>
+               ))}
+            </div>
+         )}
+      </section>
+   );
 };
 
 const BookCategoryShelf: React.FC<BookCategoryShelfProps> = ({ category, onBookClick, onRead, onViewAll }) => {
@@ -488,6 +576,14 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
             </div>
             )}
          </div>
+
+         {shouldShowShelves && (
+            <CurriculumShelf
+               onBookClick={onBookClick}
+               onRead={onRead}
+               onViewAll={() => navigate('/curriculum')}
+            />
+         )}
 
          {shouldShowShelves && (
             <section className="mb-14 space-y-10 border-b border-bit-border pb-12">

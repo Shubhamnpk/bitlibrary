@@ -44,7 +44,7 @@ const BookCard: React.FC<BookCardProps> = ({
   return (
     <div
       onClick={() => onClick(book)}
-      className={`group relative overflow-hidden rounded-xl border border-bit-border bg-bit-panel/30 hover:bg-bit-panel/50 transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:border-bit-accent/30 ${variant === 'compact' ? 'p-0' : 'h-full flex flex-col shadow-sm'}`}
+      className={`group relative flex h-full flex-col overflow-hidden rounded-xl border border-bit-border bg-bit-panel/30 hover:bg-bit-panel/50 transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:border-bit-accent/30 ${variant === 'compact' ? 'p-0' : 'shadow-sm'}`}
     >
       <div className={`absolute inset-0 bg-gradient-to-br ${bgGradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
 
@@ -88,7 +88,7 @@ const BookCard: React.FC<BookCardProps> = ({
           {/* Always show category badge */}
           <button 
             onClick={(e) => { e.stopPropagation(); navigate(`/category/${encodeURIComponent(book.category)}`); }}
-            className="absolute top-3 left-3 z-30 bg-bit-panel/80 backdrop-blur-md px-2 py-0.5 rounded border border-bit-border text-[9px] uppercase tracking-wider font-mono text-bit-accent shadow-sm hover:bg-bit-accent hover:text-white hover:border-bit-accent transition-all active:scale-95"
+            className="absolute top-3 left-3 z-30 max-w-[calc(100%-4.5rem)] truncate bg-bit-panel/80 backdrop-blur-md px-2 py-0.5 rounded border border-bit-border text-[9px] uppercase tracking-wider font-mono text-bit-accent shadow-sm hover:bg-bit-accent hover:text-white hover:border-bit-accent transition-all active:scale-95"
           >
             {book.category}
           </button>
@@ -129,15 +129,15 @@ const BookCard: React.FC<BookCardProps> = ({
         </div>
 
         {/* Content Sector */}
-        <div className="p-5 flex flex-col flex-1">
+        <div className={`${variant === 'compact' ? 'min-h-[5.75rem] p-3.5' : 'p-5'} flex flex-col flex-1`}>
           <div className="flex flex-col h-full">
             <div className={variant === 'full' ? 'mb-4' : ''}>
-              <h3 className={`font-display font-bold text-bit-text leading-tight line-clamp-2 group-hover:text-bit-accent transition-colors mb-1 ${variant === 'full' ? 'text-base' : 'text-sm'}`}>
+              <h3 className={`font-display font-bold text-bit-text leading-tight group-hover:text-bit-accent transition-colors mb-1 ${variant === 'full' ? 'text-base min-h-[2.5rem] line-clamp-2' : 'text-sm line-clamp-1'}`}>
                 <HighlightedText text={book.title} query={searchQuery} />
               </h3>
               <button 
                 onClick={(e) => { e.stopPropagation(); onAuthorClick?.(book.author); }}
-                className="text-[9px] text-bit-muted/70 hover:text-bit-accent font-mono tracking-widest uppercase transition-colors text-left"
+                className={`${variant === 'compact' ? 'line-clamp-1' : 'line-clamp-2 min-h-[2rem]'} text-left text-[9px] text-bit-muted/70 hover:text-bit-accent font-mono tracking-widest uppercase transition-colors`}
               >
                 By <HighlightedText text={book.author} query={searchQuery} />
               </button>

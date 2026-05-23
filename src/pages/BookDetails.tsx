@@ -149,7 +149,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
             genre: book.category,
             image: book.coverUrl,
             datePublished: book.year ? String(book.year) : undefined,
-            inLanguage: 'en',
+            inLanguage: book.language || 'en',
             isAccessibleForFree: true,
             keywords: [...(book.subjects || []), ...(book.bookshelves || [])].slice(0, 12).join(', '),
             sameAs: book.externalUrl,
@@ -371,15 +371,35 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                     <p className="text-2xl font-display font-bold text-bit-text">{(book.downloads || 0).toLocaleString()}</p>
                   </div>
                   <button onClick={() => onAuthorClick?.(book.author)} className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 text-left hover:border-bit-accent/50 transition-colors group/meta shadow-sm">
-                    <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 group-hover/meta:text-bit-accent transition-colors font-bold">By Artist</p>
+                    <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 group-hover/meta:text-bit-accent transition-colors font-bold">{book.source === 'YoBook' ? 'By Publisher' : 'By Author'}</p>
                     <p className="text-xl font-display font-bold text-bit-text truncate group-hover/meta:text-bit-accent transition-colors">{book.author}</p>
                   </button>
                   <div className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 shadow-sm">
                     <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 font-bold">Language</p>
-                    <p className="text-2xl font-display font-bold text-bit-text">English</p>
+                    <p className="text-2xl font-display font-bold text-bit-text">{(book.language || 'en').toUpperCase()}</p>
                   </div>
                 </div>
               </section>
+
+              {(book.grade || book.curriculum) && (
+                <section className="mb-12">
+                  <h3 className="text-xl font-display font-semibold text-bit-text mb-6">Curriculum Details</h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {book.grade && (
+                      <div className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 shadow-sm">
+                        <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 font-bold">Class</p>
+                        <p className="text-2xl font-display font-bold text-bit-text">Class {book.grade}</p>
+                      </div>
+                    )}
+                    {book.curriculum && (
+                      <div className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 shadow-sm">
+                        <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 font-bold">Curriculum</p>
+                        <p className="text-2xl font-display font-bold text-bit-text">{book.curriculum}</p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
 
               {((book.subjects && book.subjects.length > 0) || (book.bookshelves && book.bookshelves.length > 0)) && (
                 <section className="mb-12">

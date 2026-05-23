@@ -23,9 +23,9 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
     const loadCategoryBooks = async () => {
       setLoading(true);
       try {
-        const { books: results } = await fetchBooksFromGutendex(1, decodedCategory);
+        const { books: results, next } = await fetchBooksFromGutendex(1, decodedCategory);
         setBooks(results);
-        setHasMore(results.length > 0);
+        setHasMore(Boolean(next));
         setPage(1);
       } catch (err) {
         console.error("[Category Sync] Error:", err);
@@ -41,10 +41,11 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
     setLoadingMore(true);
     try {
       const nextPage = page + 1;
-      const { books: moreBooks } = await fetchBooksFromGutendex(nextPage, decodedCategory);
+      const { books: moreBooks, next } = await fetchBooksFromGutendex(nextPage, decodedCategory);
       if (moreBooks.length > 0) {
         setBooks(prev => [...prev, ...moreBooks]);
         setPage(nextPage);
+        setHasMore(Boolean(next));
       } else {
         setHasMore(false);
       }

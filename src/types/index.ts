@@ -22,7 +22,12 @@ export interface Book {
   externalUrl?: string;
   downloadUrl?: string;
   gutenbergId?: number;
-  source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library';
+  grade?: number;
+  curriculum?: string;
+  language?: string;
+  country?: string;
+  sourceUrl?: string;
+  source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library' | 'YoBook';
 }
 
 export interface AudiobookTrack {

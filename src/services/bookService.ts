@@ -7,6 +7,7 @@ const IT_BOOKSTORE_BASE = 'https://api.itbook.store/1.0';
 const OPEN_LIBRARY_BASE = 'https://openlibrary.org';
 const INTERNET_ARCHIVE_BASE = 'https://archive.org/advancedsearch.php';
 const GUTENDEX_DEV_PROXY_BASE = '/api/gutendex/books';
+const YOBOOK_BASE = 'https://yobook-api.vercel.app';
 
 // --- Browser Cache Configuration ---
 const CACHE_TTL = 6 * 60 * 60 * 1000;
@@ -60,7 +61,7 @@ const isAbortError = (error: unknown): boolean => {
   return (error as { name?: string })?.name === 'AbortError';
 };
 const getGutendexBase = () => ((import.meta as any).env?.DEV ? GUTENDEX_DEV_PROXY_BASE : GUTENDEX_BASE);
-type ProviderName = 'gutendex' | 'google' | 'itbookstore' | 'openlibrary' | 'internetarchive';
+type ProviderName = 'gutendex' | 'google' | 'itbookstore' | 'openlibrary' | 'internetarchive' | 'yobook';
 type ProviderHealth = { disabledUntil: number; failures: number; lastWarnAt: number };
 const PROVIDER_COOLDOWN_DEFAULT_MS = 3 * 60 * 1000;
 const PROVIDER_HEALTH: Record<ProviderName, ProviderHealth> = {
@@ -69,6 +70,7 @@ const PROVIDER_HEALTH: Record<ProviderName, ProviderHealth> = {
   itbookstore: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
   openlibrary: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
   internetarchive: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
+  yobook: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
 };
 const isProviderInCooldown = (provider: ProviderName): boolean => {
   return Date.now() < PROVIDER_HEALTH[provider].disabledUntil;
@@ -110,6 +112,30 @@ const toText = (value: unknown, fallback = ''): string => {
   }
   return String(value);
 };
+
+const getAbsoluteYoBookAssetUrl = (url?: string | null): string | undefined => {
+  if (!url) return undefined;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/')) return `${YOBOOK_BASE}${url}`;
+  return url;
+};
+
+const getGradeFromCategory = (category?: string): number | undefined => {
+  const match = category?.match(/^(?:class|grade)\s*(\d{1,2})$/i);
+  if (!match) return undefined;
+  const grade = Number(match[1]);
+  return grade >= 1 && grade <= 12 ? grade : undefined;
+};
+
+const YOBOOK_SUBJECTS = new Set([
+  'English',
+  'Hamro Serofero',
+  'Health',
+  'Mathematics',
+  'Nepali',
+  'Science',
+  'Social Studies',
+]);
 
 // --- Neural Format Helpers ---
 const formatAuthorName = (name: string): string => {
@@ -255,6 +281,51 @@ const mapArchiveToBook = (item: any): Book => {
   };
 };
 
+const mapYoBookToBook = (item: any): Book => {
+  const grade = typeof item.grade === 'number' ? item.grade : undefined;
+  const subject = toText(item.subject, item.category || 'Textbook');
+  const curriculum = toText(item.curriculum, 'CDC Nepal');
+  const language = toText(item.language, 'en');
+  const pdfUrl = getAbsoluteYoBookAssetUrl(item.pdfUrl);
+  const readUrl = getAbsoluteYoBookAssetUrl(item.readUrl);
+  const coverUrl = getAbsoluteYoBookAssetUrl(item.coverUrl || item.localCoverUrl);
+  const sourceUrl = getAbsoluteYoBookAssetUrl(item.sourceUrl);
+  const subjects = [
+    subject,
+    grade ? `Class ${grade}` : undefined,
+    curriculum,
+    'Nepali Curriculum',
+    'CEHRD',
+    ...(Array.isArray(item.keywords) ? item.keywords : []),
+  ].filter((value, index, list): value is string => Boolean(value) && list.indexOf(value as string) === index);
+
+  return {
+    id: `yobook-${item.id}`,
+    title: toText(item.title, 'Nepali Curriculum Textbook'),
+    author: toText(item.author, 'Centre for Education and Human Resource Development'),
+    authors: [{ name: toText(item.author, 'Centre for Education and Human Resource Development') }],
+    category: subject,
+    description: toText(
+      item.description,
+      `${subject}${grade ? ` for Class ${grade}` : ''} from the ${curriculum} curriculum.`
+    ),
+    coverUrl,
+    subjects,
+    bookshelves: [grade ? `Class ${grade}` : '', curriculum, 'Nepali Curriculum'].filter(Boolean),
+    externalUrl: pdfUrl || readUrl || sourceUrl,
+    downloadUrl: pdfUrl,
+    sourceUrl,
+    source: 'YoBook',
+    grade,
+    curriculum,
+    language,
+    country: toText(item.country, 'np'),
+    year: item.scrapedAt ? new Date(item.scrapedAt).getFullYear() : undefined,
+    popularity: grade ? Math.max(50, 100 - Math.abs(grade - 6) * 3) : 70,
+    downloads: 0,
+  };
+};
+
 // --- Exported Archival Connectors ---
 
 export const fetchBooksFromGutendex = async (page = 1, category?: string, signal?: AbortSignal): Promise<{ books: Book[], next: string | null }> => {
@@ -292,6 +363,99 @@ export const fetchBooksFromGutendex = async (page = 1, category?: string, signal
       console.error('Failed to fetch from Gutendex:', error);
     }
     return { books: [], next: null };
+  }
+};
+
+export const fetchBooksFromYoBook = async (page = 1, category?: string, signal?: AbortSignal): Promise<{ books: Book[], next: string | null }> => {
+  const cacheKey = `yobook-list-${page}-${category || 'all'}`;
+  const cached = getFromCache<{ books: Book[], next: string | null }>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('yobook')) {
+    warnProviderCooldown('yobook');
+    return { books: [], next: null };
+  }
+
+  try {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: '52',
+    });
+
+    const grade = getGradeFromCategory(category);
+    if (grade) {
+      params.set('grade', String(grade));
+    } else if (category && category !== 'All' && category !== 'Nepali Curriculum') {
+      if (YOBOOK_SUBJECTS.has(category)) {
+        params.set('subject', category);
+      } else {
+        params.set('q', category);
+      }
+    }
+
+    const response = await fetch(`${YOBOOK_BASE}/api/books?${params.toString()}`, { signal });
+    if (!response.ok) {
+      markProviderFailure('yobook', response.status);
+      return { books: [], next: null };
+    }
+
+    const data = await response.json();
+    const books = Array.isArray(data.data) ? data.data.map(mapYoBookToBook) : [];
+    const pages = Number(data.meta?.pages || 1);
+    const currentPage = Number(data.meta?.page || page);
+    const result = {
+      books,
+      next: currentPage < pages ? String(currentPage + 1) : null,
+    };
+
+    setInCache(cacheKey, result);
+    markProviderSuccess('yobook');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('yobook');
+      console.error('Failed to fetch from YoBook:', error);
+    }
+    return { books: [], next: null };
+  }
+};
+
+export const searchYoBookBooks = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `yobook-search-${normalizeCacheKey(query)}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('yobook')) {
+    warnProviderCooldown('yobook');
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams({ q: query, limit: '52' });
+    const grade = getGradeFromCategory(query);
+    if (grade) {
+      params.delete('q');
+      params.set('grade', String(grade));
+    } else if (YOBOOK_SUBJECTS.has(query)) {
+      params.delete('q');
+      params.set('subject', query);
+    }
+
+    const response = await fetch(`${YOBOOK_BASE}/api/books?${params.toString()}`, { signal });
+    if (!response.ok) {
+      markProviderFailure('yobook', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const result = Array.isArray(data.data) ? data.data.map(mapYoBookToBook) : [];
+    setInCache(cacheKey, result);
+    markProviderSuccess('yobook');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('yobook');
+      console.error('YoBook search failed:', error);
+    }
+    return [];
   }
 };
 
@@ -450,6 +614,17 @@ export const fetchBookById = async (id: string): Promise<Book | null> => {
   if (cached) return cached;
 
   try {
+    // Handle Nepali curriculum textbooks from YoBook
+    if (id.startsWith('yobook-')) {
+      const yoBookId = id.replace('yobook-', '');
+      const response = await fetch(`${YOBOOK_BASE}/api/books/${encodeURIComponent(yoBookId)}`);
+      if (!response.ok) return null;
+      const data = await response.json();
+      const result = data.data ? mapYoBookToBook(data.data) : null;
+      if (result) setInCache(cacheKey, result);
+      return result;
+    }
+
     // Handle Internet Archive
     if (id.startsWith('ia-')) {
       const iaId = id.replace('ia-', '');

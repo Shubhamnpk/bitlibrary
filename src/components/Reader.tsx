@@ -3,6 +3,7 @@ import { Book } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import { ArrowLeft, BookOpen, Settings, ExternalLink, Download, ChevronLeft, ChevronRight, Loader2, Maximize2, X, Layout, Monitor, Minimize2, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import PDFFlipBook from './PDFFlipBook';
 
 interface ReaderProps {
   book: Book;
@@ -34,6 +35,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
   const contentRef = useRef<HTMLDivElement>(null);
   const isExternal = !!book.externalUrl;
+  const externalReaderUrl = book.externalUrl || book.downloadUrl || '';
+  const isPdfReader = /\.pdf(?:$|[?#])/i.test(externalReaderUrl) || /\.pdf(?:$|[?#])/i.test(book.downloadUrl || '');
+  const readerUrl = isPdfReader && book.downloadUrl ? book.downloadUrl : externalReaderUrl;
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -183,11 +187,11 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           <div className="flex items-center gap-1 bg-bit-panel/50 rounded-xl border border-bit-border p-1 shadow-sm">
             {isExternal && (
               <a 
-                href={book.externalUrl}
+                href={readerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="p-3 hover:bg-bit-panel rounded-lg text-bit-accent hover:text-bit-text transition-all group border-r border-bit-border"
-                title="Open External Archive"
+                title={isPdfReader ? 'Open PDF in new tab' : 'Open External Archive'}
               >
                 <ExternalLink size={18} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </a>
@@ -230,7 +234,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
       {/* Main Content Area - Optimized Strip Layout */}
       <main className="flex-1 overflow-y-auto relative scrollbar-hide bg-bit-bg flex flex-col items-center">
-        {isExternal ? (
+        {isExternal && isPdfReader ? (
+          <PDFFlipBook pdfUrl={readerUrl} title={book.title} />
+        ) : isExternal ? (
           <div className="w-full max-w-[1000px] h-full bg-white relative shadow-2xl border-x border-bit-border overflow-hidden">
             {iframeLoading && (
               <div className="absolute inset-0 bg-bit-bg z-20 p-12 md:p-24 animate-fade-in flex flex-col gap-10">
@@ -245,14 +251,14 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             )}
 
             <iframe
-              src={book.externalUrl}
+              src={readerUrl}
               onLoad={() => {
                 // Ensure the loading state is cleared even if some content is blocked
                 setTimeout(() => setIframeLoading(false), 2000);
               }}
               className="w-full h-full border-none bg-white"
               title={book.title}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock allow-modals"
+              sandbox={isPdfReader ? undefined : 'allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock allow-modals'}
               loading="lazy"
             ></iframe>
 

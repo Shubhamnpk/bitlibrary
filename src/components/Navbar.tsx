@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines } from 'lucide-react';
+import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 
 interface NavbarProps {
@@ -187,6 +187,7 @@ const Navbar: React.FC<NavbarProps> = ({
           <div className="hidden md:flex items-center gap-6 font-mono text-xs tracking-wider">
             <Link to="/" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Home</Link>
             <Link to="/library" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/library') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Library</Link>
+            <Link to="/curriculum" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/curriculum') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Curriculum</Link>
             <Link to="/mylibrary" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/mylibrary') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>My Library</Link>
             <ThemeToggle />
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-bit-panel to-bit-border border border-bit-border flex items-center justify-center cursor-pointer hover:border-bit-accent/50 transition-all">
@@ -266,6 +267,10 @@ const Navbar: React.FC<NavbarProps> = ({
                 <Link to="/audiobooks" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/audiobooks') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
                   <AudioLines size={16} />
                   Audiobooks
+                </Link>
+                <Link to="/curriculum" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/curriculum') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
+                  <GraduationCap size={16} />
+                  Curriculum
                 </Link>
                 <Link to="/mylibrary" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/mylibrary') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
                   <BookOpenText size={16} />

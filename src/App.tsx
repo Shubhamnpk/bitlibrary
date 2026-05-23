@@ -19,6 +19,7 @@ import ReleasesPage from '@/pages/ReleasesPage';
 import RoadmapPage from '@/pages/RoadmapPage';
 import AudiobooksPage from '@/pages/AudiobooksPage';
 import AudiobookDetails from '@/pages/AudiobookDetails';
+import CurriculumPage from '@/pages/CurriculumPage';
 import { recordRecentSearch, useLocalUserState } from '@/lib/local-user';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -32,7 +33,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
-const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/mylibrary','/search','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap',];
+const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/mylibrary','/search','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap',];
 const HERO_ORBIT_NODES = {
   star: {
     title: 'Archive Star',
@@ -516,6 +517,15 @@ const App: React.FC = () => {
           <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
           <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
           <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+
+          <Route path="/curriculum" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <CurriculumPage
+                onBookClick={(book) => navigate(`/book/${book.id}`)}
+                onRead={handleReadBook}
+              />
+            </div>
+          } />
 
           {/* Personal Bookshelf */}
           <Route path="/mylibrary" element={

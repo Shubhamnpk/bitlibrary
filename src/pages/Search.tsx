@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Audiobook, Book } from '@/types/index';
-import { searchBooksInGutendex, searchGoogleBooks, searchITBooks, searchOpenLibrary, searchInternetArchive } from '@/services/bookService';
+import { searchBooksInGutendex, searchGoogleBooks, searchITBooks, searchOpenLibrary, searchInternetArchive, searchYoBookBooks } from '@/services/bookService';
 import { searchAudiobooks } from '@/services/audiobookService';
 import BookCard from '@/components/BookCard';
 import AudiobookCard from '@/components/AudiobookCard';
@@ -214,6 +214,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
       // 1. Concurrent Independent Streaming Fetches
       setAudiobookResults([]);
       const searchTasks = [
+        searchYoBookBooks(query, controller.signal).then(updateResults),
         searchBooksInGutendex(query, controller.signal).then(updateResults),
         searchGoogleBooks(query, controller.signal).then(updateResults),
         searchOpenLibrary(query, controller.signal).then(updateResults),
