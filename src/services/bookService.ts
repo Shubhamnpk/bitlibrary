@@ -237,6 +237,64 @@ const mapOpenLibraryToBook = (item: any): Book => {
   };
 };
 
+const getOpenLibraryKeyId = (key?: string): string => {
+  if (!key) return '';
+  return key.split('/').filter(Boolean).pop() || '';
+};
+
+const fetchOpenLibraryAuthor = async (authorKey?: string): Promise<Author | null> => {
+  const authorId = getOpenLibraryKeyId(authorKey);
+  if (!authorId) return null;
+
+  try {
+    const response = await fetch(`${OPEN_LIBRARY_BASE}/authors/${encodeURIComponent(authorId)}.json`);
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const birthYear = parseInt(String(data.birth_date || '').match(/\d{4}/)?.[0] || '', 10);
+    const deathYear = parseInt(String(data.death_date || '').match(/\d{4}/)?.[0] || '', 10);
+
+    return {
+      name: formatAuthorName(toText(data.name, 'Unknown Author')),
+      birth_year: Number.isFinite(birthYear) ? birthYear : undefined,
+      death_year: Number.isFinite(deathYear) ? deathYear : undefined,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const mapOpenLibraryWorkToBook = async (item: any): Promise<Book> => {
+  const workId = getOpenLibraryKeyId(item.key);
+  const authorKeys = (Array.isArray(item.authors) ? item.authors : [])
+    .map((entry: any) => entry?.author?.key)
+    .filter((key: unknown): key is string => typeof key === 'string')
+    .slice(0, 4);
+  const authors = (await Promise.all(authorKeys.map(fetchOpenLibraryAuthor)))
+    .filter((author): author is Author => Boolean(author));
+  const author = authors.length ? authors.map((entry) => entry.name).join(', ') : 'Unknown Author';
+  const coverId = Array.isArray(item.covers) ? item.covers.find(Number.isFinite) : undefined;
+  const subjects = Array.isArray(item.subjects)
+    ? item.subjects.filter((subject: unknown): subject is string => typeof subject === 'string')
+    : [];
+  const year = parseInt(String(item.first_publish_date || '').match(/\d{4}/)?.[0] || '', 10);
+
+  return {
+    id: `ol-${workId}`,
+    title: toText(item.title, 'Untitled Open Library Work'),
+    author,
+    authors: authors.length ? authors : [{ name: author }],
+    category: subjects[0] || 'Library Volume',
+    description: toText(item.description, 'Historical volume from Open Library Archive.'),
+    coverUrl: coverId ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg` : undefined,
+    year: Number.isFinite(year) ? year : undefined,
+    source: 'Open Library',
+    subjects: subjects.slice(0, 12),
+    externalUrl: workId ? `${OPEN_LIBRARY_BASE}/works/${workId}` : OPEN_LIBRARY_BASE,
+    downloads: 0,
+  };
+};
+
 const mapITToBook = (item: any): Book => {
   return {
     id: `it-${item.isbn13}`,
@@ -632,6 +690,17 @@ export const fetchBookById = async (id: string): Promise<Book | null> => {
       if (!response.ok) return null;
       const data = await response.json();
       const result = mapArchiveToBook(data.metadata);
+      setInCache(cacheKey, result);
+      return result;
+    }
+
+    // Handle Open Library works
+    if (id.startsWith('ol-')) {
+      const openLibraryId = id.replace('ol-', '');
+      const response = await fetch(`${OPEN_LIBRARY_BASE}/works/${encodeURIComponent(openLibraryId)}.json`);
+      if (!response.ok) return null;
+      const data = await response.json();
+      const result = await mapOpenLibraryWorkToBook(data);
       setInCache(cacheKey, result);
       return result;
     }
