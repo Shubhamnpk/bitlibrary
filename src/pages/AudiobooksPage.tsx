@@ -114,9 +114,9 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
     <div className="animate-fade-in pb-24">
       <Seo
         title={`${pageTitle} | BitLibrary`}
-        description={selectedCategory ? `Listen to ${selectedCategory.label.toLowerCase()} public-domain audiobooks on BitLibrary.` : 'Browse and listen to public-domain audiobooks from LibriVox inside BitLibrary.'}
+        description={selectedCategory ? `Listen to ${selectedCategory.label.toLowerCase()} audiobooks on BitLibrary.` : 'Browse and listen to audiobooks from YoBook and LibriVox inside BitLibrary.'}
         canonicalPath={selectedCategory ? `/audiobooks/category/${selectedCategory.id}` : '/audiobooks'}
-        keywords={['public domain audiobooks', 'LibriVox audiobooks', 'free audiobooks', selectedCategory?.label || 'audiobook categories'].filter(Boolean)}
+        keywords={['YoBook audiobooks', 'LibriVox audiobooks', 'free audiobooks', selectedCategory?.label || 'audiobook categories'].filter(Boolean)}
         structuredData={[schema]}
       />
 

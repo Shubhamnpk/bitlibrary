@@ -11,7 +11,7 @@ const YOBOOK_BASE = 'https://yobook-api.vercel.app';
 
 // --- Browser Cache Configuration ---
 const CACHE_TTL = 6 * 60 * 60 * 1000;
-const CACHE_STORAGE_PREFIX = 'bitlibrary-book-cache-v2';
+const CACHE_STORAGE_PREFIX = 'bitlibrary-book-cache-v3';
 const cache: Record<string, { data: any, timestamp: number }> = {};
 
 const getStorageKey = (key: string) => `${CACHE_STORAGE_PREFIX}:${key}`;
@@ -129,13 +129,38 @@ const getGradeFromCategory = (category?: string): number | undefined => {
 
 const YOBOOK_SUBJECTS = new Set([
   'English',
+  'English Stories',
   'Hamro Serofero',
   'Health',
   'Mathematics',
+  'NFE Level 1',
+  'NFE Level 2',
+  'NFE Level 3',
   'Nepali',
+  'Nepali Stories',
   'Science',
   'Social Studies',
+  'Audio Drama',
 ]);
+
+const YOBOOK_SOURCE_LABELS: Record<string, string> = {
+  'cehrd-learning': 'CEHRD Learning',
+  'cehrd-audio': 'CEHRD Audio',
+  'cehrd-stories': 'CEHRD Stories',
+  'cehrd-nfe': 'CEHRD NFE',
+  'pustakalaya-stories': 'Pustakalaya Stories',
+  'pustakalaya-reference': 'Pustakalaya Reference',
+  'pustakalaya-course': 'Pustakalaya Course',
+  'pustakalaya-teaching': 'Pustakalaya Teaching',
+  'pustakalaya-other-educational': 'Pustakalaya Educational',
+};
+
+const getYoBookQueryType = (value?: string): 'all' | 'grade' | 'subject' | 'query' => {
+  if (!value || value === 'All' || value === 'Nepali Curriculum') return 'all';
+  if (getGradeFromCategory(value)) return 'grade';
+  if (YOBOOK_SUBJECTS.has(value)) return 'subject';
+  return 'query';
+};
 
 // --- Neural Format Helpers ---
 const formatAuthorName = (name: string): string => {
@@ -345,41 +370,59 @@ const mapYoBookToBook = (item: any): Book => {
   const curriculum = toText(item.curriculum, 'CDC Nepal');
   const language = toText(item.language, 'en');
   const pdfUrl = getAbsoluteYoBookAssetUrl(item.pdfUrl);
+  const audioUrl = getAbsoluteYoBookAssetUrl(item.audioUrl);
   const readUrl = getAbsoluteYoBookAssetUrl(item.readUrl);
   const coverUrl = getAbsoluteYoBookAssetUrl(item.coverUrl || item.localCoverUrl);
   const sourceUrl = getAbsoluteYoBookAssetUrl(item.sourceUrl);
+  const detailUrl = getAbsoluteYoBookAssetUrl(item.detailUrl);
+  const sourceKey = toText(item.source, 'yobook');
+  const sourceLabel = YOBOOK_SOURCE_LABELS[sourceKey] || sourceKey;
+  const category = toText(item.category, subject || 'Educational Resource');
+  const keywords = Array.isArray(item.keywords)
+    ? item.keywords.filter((keyword: unknown): keyword is string => typeof keyword === 'string')
+    : [];
   const subjects = [
     subject,
     grade ? `Class ${grade}` : undefined,
+    item.level ? `Level ${item.level}` : undefined,
+    category,
     curriculum,
+    sourceLabel,
     'Nepali Curriculum',
     'CEHRD',
-    ...(Array.isArray(item.keywords) ? item.keywords : []),
+    'Pustakalaya',
+    ...keywords,
   ].filter((value, index, list): value is string => Boolean(value) && list.indexOf(value as string) === index);
+  const primaryResourceUrl = pdfUrl || audioUrl || readUrl || sourceUrl;
 
   return {
     id: `yobook-${item.id}`,
-    title: toText(item.title, 'Nepali Curriculum Textbook'),
+    title: toText(item.title, 'Nepal Educational Resource'),
     author: toText(item.author, 'Centre for Education and Human Resource Development'),
     authors: [{ name: toText(item.author, 'Centre for Education and Human Resource Development') }],
-    category: subject,
+    category: subject || category,
     description: toText(
       item.description,
-      `${subject}${grade ? ` for Class ${grade}` : ''} from the ${curriculum} curriculum.`
+      `${subject || category}${grade ? ` for Class ${grade}` : ''} from ${sourceLabel}.`
     ),
     coverUrl,
     subjects,
-    bookshelves: [grade ? `Class ${grade}` : '', curriculum, 'Nepali Curriculum'].filter(Boolean),
-    externalUrl: pdfUrl || readUrl || sourceUrl,
-    downloadUrl: pdfUrl,
+    keywords,
+    bookshelves: [grade ? `Class ${grade}` : '', item.level ? `Level ${item.level}` : '', curriculum, sourceLabel, 'Nepali Curriculum'].filter(Boolean),
+    externalUrl: primaryResourceUrl,
+    downloadUrl: pdfUrl || audioUrl,
+    audioUrl,
+    detailUrl,
     sourceUrl,
+    providerSource: sourceKey,
     source: 'YoBook',
     grade,
+    level: typeof item.level === 'number' ? item.level : undefined,
     curriculum,
     language,
     country: toText(item.country, 'np'),
     year: item.scrapedAt ? new Date(item.scrapedAt).getFullYear() : undefined,
-    popularity: grade ? Math.max(50, 100 - Math.abs(grade - 6) * 3) : 70,
+    popularity: grade ? Math.max(50, 100 - Math.abs(grade - 6) * 3) : 75,
     downloads: 0,
   };
 };
@@ -436,18 +479,17 @@ export const fetchBooksFromYoBook = async (page = 1, category?: string, signal?:
   try {
     const params = new URLSearchParams({
       page: String(page),
-      limit: '52',
+      limit: '100',
+      full: 'true',
     });
 
-    const grade = getGradeFromCategory(category);
-    if (grade) {
-      params.set('grade', String(grade));
-    } else if (category && category !== 'All' && category !== 'Nepali Curriculum') {
-      if (YOBOOK_SUBJECTS.has(category)) {
-        params.set('subject', category);
-      } else {
-        params.set('q', category);
-      }
+    const queryType = getYoBookQueryType(category);
+    if (queryType === 'grade') {
+      params.set('grade', String(getGradeFromCategory(category)));
+    } else if (queryType === 'subject' && category) {
+      params.set('subject', category);
+    } else if (queryType === 'query' && category) {
+      params.set('q', category);
     }
 
     const response = await fetch(`${YOBOOK_BASE}/api/books?${params.toString()}`, { signal });
@@ -487,7 +529,7 @@ export const searchYoBookBooks = async (query: string, signal?: AbortSignal): Pr
   }
 
   try {
-    const params = new URLSearchParams({ q: query, limit: '52' });
+    const params = new URLSearchParams({ q: query, limit: '200', full: 'true' });
     const grade = getGradeFromCategory(query);
     if (grade) {
       params.delete('q');
@@ -514,6 +556,69 @@ export const searchYoBookBooks = async (query: string, signal?: AbortSignal): Pr
       console.error('YoBook search failed:', error);
     }
     return [];
+  }
+};
+
+export interface YoBookSourceInfo {
+  source: string;
+  count: number;
+  grades: number[];
+  subjects: string[];
+}
+
+export interface YoBookStats {
+  totalBooks: number;
+  byGrade: Record<string, number>;
+  byLanguage: Record<string, number>;
+  bySource: Record<string, number>;
+  bySubject: Record<string, number>;
+}
+
+export const fetchYoBookSources = async (signal?: AbortSignal): Promise<YoBookSourceInfo[]> => {
+  const cacheKey = 'yobook-sources';
+  const cached = getFromCache<YoBookSourceInfo[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('yobook')) return [];
+
+  try {
+    const response = await fetch(`${YOBOOK_BASE}/api/sources`, { signal });
+    if (!response.ok) {
+      markProviderFailure('yobook', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const result = Array.isArray(data.data) ? data.data : [];
+    setInCache(cacheKey, result);
+    markProviderSuccess('yobook');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) markProviderFailure('yobook');
+    return [];
+  }
+};
+
+export const fetchYoBookStats = async (signal?: AbortSignal): Promise<YoBookStats | null> => {
+  const cacheKey = 'yobook-stats';
+  const cached = getFromCache<YoBookStats>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('yobook')) return null;
+
+  try {
+    const response = await fetch(`${YOBOOK_BASE}/api/stats`, { signal });
+    if (!response.ok) {
+      markProviderFailure('yobook', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const result = data.data || null;
+    if (result) setInCache(cacheKey, result);
+    markProviderSuccess('yobook');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) markProviderFailure('yobook');
+    return null;
   }
 };
 
@@ -666,7 +771,38 @@ export const searchInternetArchive = async (query: string, signal?: AbortSignal)
   }
 };
 
+const LEGACY_SHELF_IDS: Record<string, string> = {
+  'shelf-shakespeare': 'gutenberg-100',
+  'shelf-frankenstein': 'gutenberg-84',
+  'shelf-sherlock': 'gutenberg-1661',
+  'shelf-two-cities': 'gutenberg-98',
+  'shelf-republic': 'gutenberg-1497',
+  'shelf-douglass': 'gutenberg-23',
+  'shelf-origin': 'gutenberg-1228',
+  'shelf-wonderland': 'gutenberg-11',
+  'shelf-treasure-island': 'gutenberg-120',
+  'shelf-pride': 'gutenberg-1342',
+  'shelf-dorian': 'gutenberg-174',
+  'shelf-poe': 'gutenberg-2147',
+};
+
+const resolveLegacyShelfId = (id: string): string => {
+  if (!id.startsWith('shelf-')) return id;
+
+  const direct = LEGACY_SHELF_IDS[id];
+  if (direct) return direct;
+
+  const match = Object.keys(LEGACY_SHELF_IDS).find((legacyId) => (
+    id === legacyId || id.startsWith(`${legacyId}-`)
+  ));
+
+  return match ? LEGACY_SHELF_IDS[match] : id;
+};
+
 export const fetchBookById = async (id: string): Promise<Book | null> => {
+  const resolvedId = resolveLegacyShelfId(id);
+  if (resolvedId !== id) return fetchBookById(resolvedId);
+
   const cacheKey = `book-detail-${id}`;
   const cached = getFromCache<Book>(cacheKey);
   if (cached) return cached;

@@ -62,7 +62,7 @@ const AudiobookCard: React.FC<AudiobookCardProps> = ({ audiobook, onClick, varia
 
         <div className="absolute inset-0 bg-gradient-to-t from-bit-bg/85 via-transparent to-transparent" />
         <div className={`absolute rounded border border-bit-border bg-bit-panel/85 font-mono uppercase tracking-widest text-bit-accent backdrop-blur-md ${isCompact ? 'left-2 top-2 px-1.5 py-0.5 text-[8px]' : 'left-3 top-3 px-2 py-1 text-[9px]'}`}>
-          LibriVox
+          {audiobook.source}
         </div>
         <button
           type="button"

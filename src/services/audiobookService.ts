@@ -1,8 +1,10 @@
-import { Audiobook, AudiobookTrack, Author } from '@/types/index';
+import { Audiobook, AudiobookTrack, Author, Book } from '@/types/index';
+import { fetchBookById, searchYoBookBooks } from '@/services/bookService';
 
 const LIBRIVOX_API_BASE = 'https://librivox.org/api/feed/audiobooks';
 const CACHE_TTL = 6 * 60 * 60 * 1000;
-const CACHE_STORAGE_PREFIX = 'bitlibrary-audiobook-cache-v2';
+const CACHE_STORAGE_PREFIX = 'bitlibrary-audiobook-cache-v3';
+const YOBOOK_AUDIO_ID_PREFIX = 'yobook-audio-';
 const cache: Record<string, { data: unknown; timestamp: number }> = {};
 const inFlightRequests: Record<string, Promise<any[]> | undefined> = {};
 
@@ -227,6 +229,64 @@ const mapAudiobook = (item: any): Audiobook => {
   };
 };
 
+const isYoBookAudioBook = (book: Book) => (
+  Boolean(book.audioUrl)
+  || book.providerSource === 'cehrd-audio'
+  || book.category.toLowerCase().includes('audio')
+  || book.subjects?.some((subject) => /audio|drama|listening/i.test(subject))
+);
+
+const buildYoBookAudioFallbackUrls = (book: Book) => {
+  const urls = new Set<string>();
+  if (book.audioUrl) urls.add(book.audioUrl);
+  if (book.downloadUrl && /\.(mp3|m4a|wav|ogg)(?:$|[?#])/i.test(book.downloadUrl)) urls.add(book.downloadUrl);
+  if (book.externalUrl && /\.(mp3|m4a|wav|ogg)(?:$|[?#])/i.test(book.externalUrl)) urls.add(book.externalUrl);
+  return Array.from(urls);
+};
+
+const mapYoBookAudioToAudiobook = (book: Book): Audiobook | null => {
+  const audioUrls = buildYoBookAudioFallbackUrls(book);
+  if (!audioUrls.length) return null;
+
+  const track: AudiobookTrack = {
+    id: `${book.id}-track-1`,
+    sectionNumber: 1,
+    title: book.title,
+    listenUrl: audioUrls[0],
+    fallbackUrls: audioUrls,
+    readers: [book.author || 'Centre for Education and Human Resource Development'],
+  };
+
+  return {
+    id: `${YOBOOK_AUDIO_ID_PREFIX}${book.id.replace(/^yobook-/, '')}`,
+    title: book.title,
+    author: book.author,
+    authors: book.authors || [{ name: book.author }],
+    description: book.description || 'Educational audio from YoBook.',
+    language: book.language || 'ne',
+    copyrightYear: book.year ? String(book.year) : undefined,
+    coverUrl: book.coverUrl,
+    thumbnailUrl: book.coverUrl,
+    numSections: 1,
+    genres: [book.category, ...(book.subjects || []), ...(book.keywords || [])].filter(Boolean),
+    sourceTextUrl: book.sourceUrl,
+    librivoxUrl: book.sourceUrl || book.externalUrl || audioUrls[0],
+    archiveUrl: book.sourceUrl,
+    zipUrl: book.downloadUrl && book.downloadUrl !== audioUrls[0] ? book.downloadUrl : undefined,
+    tracks: [track],
+    source: 'YoBook',
+  };
+};
+
+const searchYoBookAudiobooks = async (query: string, limit: number, signal?: AbortSignal): Promise<Audiobook[]> => {
+  const books = await searchYoBookBooks(query, signal);
+  return books
+    .filter(isYoBookAudioBook)
+    .map(mapYoBookAudioToAudiobook)
+    .filter((audiobook): audiobook is Audiobook => Boolean(audiobook))
+    .slice(0, limit);
+};
+
 const buildUrl = (query: AudiobookQuery, format: 'json' | 'jsonp', callbackName?: string) => {
   const params = new URLSearchParams({
     format,
@@ -330,16 +390,20 @@ export const searchAudiobooks = async (query: string, limit = 12): Promise<Audio
   const trimmed = query.trim();
   if (!trimmed) return fetchFeaturedAudiobooks(limit);
 
+  const [yoBookResult, ...fallbackResults] = await Promise.allSettled([
+    searchYoBookAudiobooks(trimmed, limit),
+    ...[0, 50, 100, 150].map((pageOffset) => (
+      requestAudiobooks({ limit: 50, offset: pageOffset, extended: true })
+    )),
+  ]);
+  const yoBookAudiobooks = yoBookResult.status === 'fulfilled' ? yoBookResult.value : [];
   const terms = normalizeSearchText(trimmed).split(' ').filter(Boolean);
-  const fallbackResults = await Promise.allSettled([0, 50, 100, 150].map((pageOffset) => (
-    requestAudiobooks({ limit: 50, offset: pageOffset, extended: true })
-  )));
   const fallbackBooks = fallbackResults.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
   const deduped = fallbackBooks.filter((item, index, list) => (
     list.findIndex((entry) => String(entry.id) === String(item.id)) === index
   ));
 
-  return deduped
+  const librivoxMatches = deduped
     .map(mapAudiobook)
     .filter((audiobook) => {
       const haystack = normalizeSearchText([
@@ -351,9 +415,18 @@ export const searchAudiobooks = async (query: string, limit = 12): Promise<Audio
       return terms.every((term) => haystack.includes(term));
     })
     .slice(0, limit);
+
+  return [...yoBookAudiobooks, ...librivoxMatches]
+    .filter((audiobook, index, list) => list.findIndex((entry) => entry.id === audiobook.id) === index)
+    .slice(0, limit);
 };
 
 export const fetchAudiobookById = async (id: string): Promise<Audiobook | null> => {
+  if (id.startsWith(YOBOOK_AUDIO_ID_PREFIX)) {
+    const book = await fetchBookById(`yobook-${id.replace(YOBOOK_AUDIO_ID_PREFIX, '')}`);
+    return book && isYoBookAudioBook(book) ? mapYoBookAudioToAudiobook(book) : null;
+  }
+
   const cleanId = id.replace(/^librivox-/, '');
   try {
     const books = await requestAudiobooks({ id: cleanId, limit: 1, offset: 0, extended: true });

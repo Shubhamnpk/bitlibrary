@@ -18,15 +18,20 @@ export interface Book {
   popularity?: number; // 0-100
   downloads?: number;
   subjects?: string[];
+  keywords?: string[];
   bookshelves?: string[];
   externalUrl?: string;
   downloadUrl?: string;
+  audioUrl?: string;
   gutenbergId?: number;
   grade?: number;
+  level?: number;
   curriculum?: string;
   language?: string;
   country?: string;
+  detailUrl?: string;
   sourceUrl?: string;
+  providerSource?: string;
   source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library' | 'YoBook';
 }
 
@@ -60,7 +65,7 @@ export interface Audiobook {
   rssUrl?: string;
   zipUrl?: string;
   tracks: AudiobookTrack[];
-  source: 'LibriVox' | 'Internet Archive' | 'Project Gutenberg';
+  source: 'LibriVox' | 'Internet Archive' | 'Project Gutenberg' | 'YoBook';
 }
 
 export enum ViewState {

@@ -267,7 +267,7 @@ const AudiobookDetails: React.FC = () => {
         duration: audiobook.totalTime,
         inLanguage: audiobook.language,
         isAccessibleForFree: true,
-        provider: { '@type': 'Organization', name: 'LibriVox', url: 'https://librivox.org' },
+        provider: { '@type': 'Organization', name: audiobook.source, url: audiobook.librivoxUrl },
         sameAs: audiobook.librivoxUrl,
       },
     ];
@@ -301,10 +301,10 @@ const AudiobookDetails: React.FC = () => {
     <div className="animate-fade-in pb-24">
       <Seo
         title={`${audiobook.title} Audiobook | BitLibrary`}
-        description={truncate(`${audiobook.description} Listen to this public-domain LibriVox audiobook on BitLibrary.`, 155)}
+        description={truncate(`${audiobook.description} Listen to this ${audiobook.source} audiobook on BitLibrary.`, 155)}
         canonicalPath={`/audiobook/${audiobook.id}`}
         image={coverUrl}
-        keywords={[audiobook.title, audiobook.author, 'LibriVox', 'public domain audiobook', ...audiobook.genres].filter(Boolean)}
+        keywords={[audiobook.title, audiobook.author, audiobook.source, 'audiobook', ...audiobook.genres].filter(Boolean)}
         structuredData={structuredData}
       />
 
@@ -347,7 +347,7 @@ const AudiobookDetails: React.FC = () => {
               <div className="absolute bottom-6 left-6 right-6">
                 <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/80 px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-bit-accent backdrop-blur-md">
                   <Radio size={12} />
-                  LibriVox public domain
+                  {audiobook.source} audio
                 </p>
                 <h1 className="text-3xl font-display font-bold leading-tight text-white md:text-4xl lg:text-2xl xl:text-3xl">{audiobook.title}</h1>
                 <p className="mt-4 text-lg text-white/70 lg:text-sm xl:text-base">by {audiobook.author}</p>
@@ -811,7 +811,7 @@ const AudiobookDetails: React.FC = () => {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{track.title}</span>
                     <span className="mt-1 block truncate text-[10px] font-mono uppercase tracking-widest opacity-60">
-                      {track.readers.length ? track.readers.join(', ') : 'LibriVox volunteer'}
+                      {track.readers.length ? track.readers.join(', ') : audiobook.source}
                     </span>
                   </span>
                   <span className="shrink-0 text-[10px] font-mono uppercase tracking-widest opacity-60">{formatTrackTime(track.playtimeSeconds)}</span>

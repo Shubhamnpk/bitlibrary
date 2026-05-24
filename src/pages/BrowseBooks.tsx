@@ -19,20 +19,20 @@ const CATEGORY_ROW_SCROLL_STEP = 140;
 const SHELF_PRIMARY_TIMEOUT_MS = 3500;
 const SHELF_FALLBACK_TIMEOUT_MS = 3500;
 const BROWSE_CACHE_TTL = 6 * 60 * 60 * 1000;
-const BROWSE_CACHE_PREFIX = 'bitlibrary-browse-cache-v1';
+const BROWSE_CACHE_PREFIX = 'bitlibrary-browse-cache-v3';
 const SHELF_FALLBACK_BOOKS: Book[] = [
-   { id: 'shelf-shakespeare', title: 'The Complete Works of William Shakespeare', author: 'William Shakespeare', category: 'Poetry', description: 'A public-domain collection of plays and poems.', coverUrl: 'https://www.gutenberg.org/cache/epub/100/pg100.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/100.html.images', subjects: ['Poetry', 'Drama', 'Fiction'] },
-   { id: 'shelf-frankenstein', title: 'Frankenstein; or, The Modern Prometheus', author: 'Mary Wollstonecraft Shelley', category: 'Fiction', description: 'A gothic novel about creation, responsibility, and fear.', coverUrl: 'https://www.gutenberg.org/cache/epub/84/pg84.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/84.html.images', subjects: ['Fiction', 'Science', 'Drama'] },
-   { id: 'shelf-sherlock', title: 'The Adventures of Sherlock Holmes', author: 'Arthur Conan Doyle', category: 'Mystery', description: 'Classic detective stories with Sherlock Holmes and Dr. Watson.', coverUrl: 'https://www.gutenberg.org/cache/epub/1661/pg1661.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1661.html.images', subjects: ['Mystery', 'Short Stories', 'Adventure'] },
-   { id: 'shelf-two-cities', title: 'A Tale of Two Cities', author: 'Charles Dickens', category: 'History', description: 'A historical novel set around the French Revolution.', coverUrl: 'https://www.gutenberg.org/cache/epub/98/pg98.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/98.html.images', subjects: ['History', 'Fiction', 'Drama'] },
-   { id: 'shelf-republic', title: 'The Republic', author: 'Plato', category: 'Philosophy', description: 'A foundational work on justice, politics, and education.', coverUrl: 'https://www.gutenberg.org/cache/epub/1497/pg1497.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1497.html.images', subjects: ['Philosophy', 'History'] },
-   { id: 'shelf-douglass', title: 'Narrative of the Life of Frederick Douglass', author: 'Frederick Douglass', category: 'Biography', description: 'A powerful autobiography by Frederick Douglass.', coverUrl: 'https://www.gutenberg.org/cache/epub/23/pg23.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/23.html.images', subjects: ['Biography', 'History'] },
-   { id: 'shelf-origin', title: 'On the Origin of Species', author: 'Charles Darwin', category: 'Science', description: 'Darwin’s major work on evolution by natural selection.', coverUrl: 'https://www.gutenberg.org/cache/epub/1228/pg1228.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1228.html.images', subjects: ['Science', 'History'] },
-   { id: 'shelf-wonderland', title: "Alice's Adventures in Wonderland", author: 'Lewis Carroll', category: 'Children', description: 'A playful fantasy classic for younger readers.', coverUrl: 'https://www.gutenberg.org/cache/epub/11/pg11.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/11.html.images', subjects: ['Children', 'Adventure', 'Fiction'] },
-   { id: 'shelf-treasure-island', title: 'Treasure Island', author: 'Robert Louis Stevenson', category: 'Adventure', description: 'A sea adventure with pirates, maps, and danger.', coverUrl: 'https://www.gutenberg.org/cache/epub/120/pg120.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/120.html.images', subjects: ['Adventure', 'Children', 'Fiction'] },
-   { id: 'shelf-pride', title: 'Pride and Prejudice', author: 'Jane Austen', category: 'Romance', description: 'A sharp novel about manners, family, pride, and love.', coverUrl: 'https://www.gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1342.html.images', subjects: ['Romance', 'Fiction', 'Drama'] },
-   { id: 'shelf-dorian', title: 'The Picture of Dorian Gray', author: 'Oscar Wilde', category: 'Drama', description: 'A gothic philosophical novel about beauty and consequence.', coverUrl: 'https://www.gutenberg.org/cache/epub/174/pg174.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/174.html.images', subjects: ['Drama', 'Fiction', 'Philosophy'] },
-   { id: 'shelf-poe', title: 'The Works of Edgar Allan Poe, Volume 1', author: 'Edgar Allan Poe', category: 'Short Stories', description: 'Stories and poems from a defining gothic fiction voice.', coverUrl: 'https://www.gutenberg.org/cache/epub/2147/pg2147.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/2147.html.images', subjects: ['Short Stories', 'Mystery', 'Poetry'] },
+   { id: 'gutenberg-100', title: 'The Complete Works of William Shakespeare', author: 'William Shakespeare', category: 'Poetry', description: 'A public-domain collection of plays and poems.', coverUrl: 'https://www.gutenberg.org/cache/epub/100/pg100.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/100.html.images', subjects: ['Poetry', 'Drama', 'Fiction'] },
+   { id: 'gutenberg-84', title: 'Frankenstein; or, The Modern Prometheus', author: 'Mary Wollstonecraft Shelley', category: 'Fiction', description: 'A gothic novel about creation, responsibility, and fear.', coverUrl: 'https://www.gutenberg.org/cache/epub/84/pg84.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/84.html.images', subjects: ['Fiction', 'Science', 'Drama'] },
+   { id: 'gutenberg-1661', title: 'The Adventures of Sherlock Holmes', author: 'Arthur Conan Doyle', category: 'Mystery', description: 'Classic detective stories with Sherlock Holmes and Dr. Watson.', coverUrl: 'https://www.gutenberg.org/cache/epub/1661/pg1661.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1661.html.images', subjects: ['Mystery', 'Short Stories', 'Adventure'] },
+   { id: 'gutenberg-98', title: 'A Tale of Two Cities', author: 'Charles Dickens', category: 'History', description: 'A historical novel set around the French Revolution.', coverUrl: 'https://www.gutenberg.org/cache/epub/98/pg98.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/98.html.images', subjects: ['History', 'Fiction', 'Drama'] },
+   { id: 'gutenberg-1497', title: 'The Republic', author: 'Plato', category: 'Philosophy', description: 'A foundational work on justice, politics, and education.', coverUrl: 'https://www.gutenberg.org/cache/epub/1497/pg1497.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1497.html.images', subjects: ['Philosophy', 'History'] },
+   { id: 'gutenberg-23', title: 'Narrative of the Life of Frederick Douglass', author: 'Frederick Douglass', category: 'Biography', description: 'A powerful autobiography by Frederick Douglass.', coverUrl: 'https://www.gutenberg.org/cache/epub/23/pg23.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/23.html.images', subjects: ['Biography', 'History'] },
+   { id: 'gutenberg-1228', title: 'On the Origin of Species', author: 'Charles Darwin', category: 'Science', description: 'Darwin’s major work on evolution by natural selection.', coverUrl: 'https://www.gutenberg.org/cache/epub/1228/pg1228.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1228.html.images', subjects: ['Science', 'History'] },
+   { id: 'gutenberg-11', title: "Alice's Adventures in Wonderland", author: 'Lewis Carroll', category: 'Children', description: 'A playful fantasy classic for younger readers.', coverUrl: 'https://www.gutenberg.org/cache/epub/11/pg11.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/11.html.images', subjects: ['Children', 'Adventure', 'Fiction'] },
+   { id: 'gutenberg-120', title: 'Treasure Island', author: 'Robert Louis Stevenson', category: 'Adventure', description: 'A sea adventure with pirates, maps, and danger.', coverUrl: 'https://www.gutenberg.org/cache/epub/120/pg120.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/120.html.images', subjects: ['Adventure', 'Children', 'Fiction'] },
+   { id: 'gutenberg-1342', title: 'Pride and Prejudice', author: 'Jane Austen', category: 'Romance', description: 'A sharp novel about manners, family, pride, and love.', coverUrl: 'https://www.gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/1342.html.images', subjects: ['Romance', 'Fiction', 'Drama'] },
+   { id: 'gutenberg-174', title: 'The Picture of Dorian Gray', author: 'Oscar Wilde', category: 'Drama', description: 'A gothic philosophical novel about beauty and consequence.', coverUrl: 'https://www.gutenberg.org/cache/epub/174/pg174.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/174.html.images', subjects: ['Drama', 'Fiction', 'Philosophy'] },
+   { id: 'gutenberg-2147', title: 'The Works of Edgar Allan Poe, Volume 1', author: 'Edgar Allan Poe', category: 'Short Stories', description: 'Stories and poems from a defining gothic fiction voice.', coverUrl: 'https://www.gutenberg.org/cache/epub/2147/pg2147.cover.medium.jpg', source: 'Gutendex', externalUrl: 'https://www.gutenberg.org/ebooks/2147.html.images', subjects: ['Short Stories', 'Mystery', 'Poetry'] },
 ];
 
 interface BrowseBooksProps {
@@ -96,16 +96,24 @@ const dedupeBooks = (books: Book[]) => books.filter((book, index, list) => (
    Boolean(book?.id) && list.findIndex((entry) => entry.id === book.id) === index
 ));
 
+const mergeBooksBySourcePriority = (...collections: Book[][]) => dedupeBooks(collections.flat());
+
 const loadBooksForShelf = async (category: string): Promise<Book[]> => {
    const cached = readCachePayload<ShelfCachePayload>(getShelfCacheKey(category));
    if (cached?.books?.length) return cached.books;
 
    const controller = new AbortController();
    const timeoutId = window.setTimeout(() => controller.abort(), SHELF_PRIMARY_TIMEOUT_MS);
-   const result = await fetchBooksFromGutendex(1, category, controller.signal).finally(() => {
+   const [yoBookResult, gutendexResult] = await Promise.allSettled([
+      fetchBooksFromYoBook(1, category, controller.signal),
+      fetchBooksFromGutendex(1, category, controller.signal),
+   ]).finally(() => {
       window.clearTimeout(timeoutId);
    });
-   let shelfBooks = result.books;
+   let shelfBooks = mergeBooksBySourcePriority(
+      yoBookResult.status === 'fulfilled' ? yoBookResult.value.books : [],
+      gutendexResult.status === 'fulfilled' ? gutendexResult.value.books : []
+   );
 
    if (shelfBooks.length === 0) {
       const fallbackResults = await Promise.race([
@@ -138,11 +146,7 @@ const loadBooksForShelf = async (category: string): Promise<Book[]> => {
       ...SHELF_FALLBACK_BOOKS.filter((book) => !categoryFallbacks.some((entry) => entry.id === book.id)),
    ];
 
-   const fallbackBooks = fallbackPool.slice(0, SHELF_ITEM_LIMIT).map((book) => ({
-      ...book,
-      id: `${book.id}-${category.toLowerCase().replace(/\s+/g, '-')}`,
-      category,
-   }));
+   const fallbackBooks = fallbackPool.slice(0, SHELF_ITEM_LIMIT);
 
    writeCachePayload(getShelfCacheKey(category), { books: fallbackBooks });
    return fallbackBooks;
@@ -340,9 +344,18 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
       try {
          const controller = new AbortController();
          const timeoutId = window.setTimeout(() => controller.abort(), SHELF_PRIMARY_TIMEOUT_MS);
-         const { books: apiBooks, next } = await fetchBooksFromGutendex(1, selectedCategory, controller.signal).finally(() => {
+         const [yoBookResult, gutendexResult] = await Promise.allSettled([
+            fetchBooksFromYoBook(1, selectedCategory, controller.signal),
+            fetchBooksFromGutendex(1, selectedCategory, controller.signal),
+         ]).finally(() => {
             window.clearTimeout(timeoutId);
          });
+         const yoBookBooks = yoBookResult.status === 'fulfilled' ? yoBookResult.value.books : [];
+         const gutendexBooks = gutendexResult.status === 'fulfilled' ? gutendexResult.value.books : [];
+         const apiBooks = mergeBooksBySourcePriority(yoBookBooks, gutendexBooks);
+         const next = yoBookResult.status === 'fulfilled' && yoBookResult.value.next
+            ? yoBookResult.value.next
+            : gutendexResult.status === 'fulfilled' ? gutendexResult.value.next : null;
          
          const results = dedupeBooks(apiBooks.length > 0 ? apiBooks : INITIAL_BOOKS);
          setBooks(results);
@@ -419,7 +432,16 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
       setLoadingMore(true);
       const nextPage = page + 1;
       try {
-         const { books: moreBooks, next } = await fetchBooksFromGutendex(nextPage, selectedCategory);
+         const [yoBookResult, gutendexResult] = await Promise.allSettled([
+            fetchBooksFromYoBook(nextPage, selectedCategory),
+            fetchBooksFromGutendex(nextPage, selectedCategory),
+         ]);
+         const yoBookBooks = yoBookResult.status === 'fulfilled' ? yoBookResult.value.books : [];
+         const gutendexBooks = gutendexResult.status === 'fulfilled' ? gutendexResult.value.books : [];
+         const moreBooks = mergeBooksBySourcePriority(yoBookBooks, gutendexBooks);
+         const next = yoBookResult.status === 'fulfilled' && yoBookResult.value.next
+            ? yoBookResult.value.next
+            : gutendexResult.status === 'fulfilled' ? gutendexResult.value.next : null;
          if (moreBooks.length > 0) {
             setBooks(prev => {
                const filtered = prev.filter(b => !moreBooks.some(m => m.id === b.id));

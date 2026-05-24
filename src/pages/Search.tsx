@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Audiobook, Book } from '@/types/index';
-import { searchBooksInGutendex, searchGoogleBooks, searchITBooks, searchOpenLibrary, searchInternetArchive, searchYoBookBooks } from '@/services/bookService';
+import { fetchBooksFromYoBook, searchBooksInGutendex, searchGoogleBooks, searchITBooks, searchOpenLibrary, searchInternetArchive, searchYoBookBooks } from '@/services/bookService';
 import { searchAudiobooks } from '@/services/audiobookService';
 import BookCard from '@/components/BookCard';
 import AudiobookCard from '@/components/AudiobookCard';
@@ -9,9 +9,73 @@ import { useSearchParams } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Search, SlidersHorizontal, Sparkles, Zap } from 'lucide-react';
 
 export const SEARCH_MIN_QUERY_LENGTH = 2;
-const SEARCH_CACHE_KEY = 'bitlibrary-search-cache-v1';
+const SEARCH_CACHE_KEY = 'bitlibrary-search-cache-v4';
 const SEARCH_CACHE_TTL = 15 * 60 * 1000;
 const SEARCH_CACHE_MAX_ENTRIES = 20;
+
+const SUBJECT_ALIASES: Record<string, string> = {
+  algebra: 'mathematics',
+  arithmetic: 'mathematics',
+  biology: 'science',
+  chemistry: 'science',
+  englishs: 'english',
+  environment: 'science',
+  gk: 'social studies',
+  hamro: 'hamro serofero',
+  mathematic: 'mathematics',
+  mathematics: 'mathematics',
+  math: 'mathematics',
+  maths: 'mathematics',
+  english: 'english',
+  nepali: 'nepali',
+  neplai: 'nepali',
+  physics: 'science',
+  sciece: 'science',
+  scince: 'science',
+  science: 'science',
+  sience: 'science',
+  social: 'social studies',
+  socials: 'social studies',
+  society: 'social studies',
+  health: 'health',
+  serofero: 'hamro serofero',
+};
+
+const NUMBER_WORDS: Record<string, string> = {
+  one: '1',
+  two: '2',
+  three: '3',
+  four: '4',
+  five: '5',
+  six: '6',
+  seven: '7',
+  eight: '8',
+  nine: '9',
+  ten: '10',
+  tin: '10',
+  eleven: '11',
+  twelve: '12',
+};
+
+const SEARCH_STOP_WORDS = new Set([
+  'book',
+  'books',
+  'textbook',
+  'textbooks',
+  'subject',
+  'subjects',
+  'the',
+  'a',
+  'an',
+  'of',
+  'for',
+  'in',
+  'and',
+  'only',
+]);
+
+const GRADE_HINT_WORDS = new Set(['class', 'grade', 'standard', 'std', 'clas', 'clss', 'klass', 'grad', 'garde']);
+const SUBJECT_CANONICALS = Array.from(new Set(Object.values(SUBJECT_ALIASES)));
 
 interface SearchCacheEntry {
   results: Book[];
@@ -31,43 +95,247 @@ const mergeUniqueBooks = (...collections: Book[][]): Book[] => {
   return merged;
 };
 
-const rankBooks = (books: Book[], query: string): Book[] => {
-  const normalizedQuery = query.trim().toLowerCase();
-  const toSearchableText = (value: unknown): string => {
-    if (typeof value === 'string') return value;
-    if (value == null) return '';
-    if (Array.isArray(value)) return value.map((item) => toSearchableText(item)).join(' ');
-    if (typeof value === 'object') {
-      const maybeText = (value as { text?: unknown }).text;
-      if (typeof maybeText === 'string') return maybeText;
-      return '';
+const toSearchableText = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (value == null) return '';
+  if (Array.isArray(value)) return value.map((item) => toSearchableText(item)).join(' ');
+  if (typeof value === 'object') {
+    const maybeText = (value as { text?: unknown }).text;
+    if (typeof maybeText === 'string') return maybeText;
+    return '';
+  }
+  return String(value);
+};
+
+const normalizeForSearch = (value: string) => (
+  value
+    .toLowerCase()
+    .replace(/\b(clas|clss|klass)\b/g, 'class')
+    .replace(/\b(grad|garde)\b/g, 'grade')
+    .replace(/\b(class|grade|standard|std)\s+(one|two|three|four|five|six|seven|eight|nine|ten|tin|eleven|twelve)\b/g, (_, prefix, word) => `${prefix} ${NUMBER_WORDS[word]}`)
+    .replace(/\b(1st|2nd|3rd|([4-9]|1[0-2])th)\b/g, (match) => match.replace(/\D/g, ''))
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\bmaths?\b/g, 'mathematics')
+    .replace(/\b(sciece|scince|sience)\b/g, 'science')
+    .replace(/\bsocial\b(?!\s+studies)/g, 'social studies')
+    .replace(/\s+/g, ' ')
+    .trim()
+);
+
+const tokenizeSearch = (value: string) => normalizeForSearch(value).split(' ').filter(Boolean);
+
+const levenshteinDistance = (a: string, b: string): number => {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = Array.from({ length: b.length + 1 }, () => 0);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + cost
+      );
     }
-    return String(value);
+    previous.splice(0, previous.length, ...current);
+  }
+
+  return previous[b.length];
+};
+
+const isFuzzyTokenMatch = (queryToken: string, candidateToken: string) => {
+  if (queryToken === candidateToken) return true;
+  if (queryToken.length <= 2 || candidateToken.length <= 2) return false;
+  if (candidateToken.includes(queryToken) || queryToken.includes(candidateToken)) return true;
+
+  const distance = levenshteinDistance(queryToken, candidateToken);
+  const maxDistance = queryToken.length >= 8 || candidateToken.length >= 8 ? 2 : 1;
+  return distance <= maxDistance;
+};
+
+const countFuzzyTokenMatches = (queryTokens: string[], candidateText: string) => {
+  const candidateTokens = tokenizeSearch(candidateText);
+  const usefulQueryTokens = queryTokens.filter((token) => !SEARCH_STOP_WORDS.has(token));
+
+  return usefulQueryTokens.filter((queryToken) => {
+    const canonicalToken = SUBJECT_ALIASES[queryToken] || queryToken;
+    return candidateTokens.some((candidateToken) => isFuzzyTokenMatch(canonicalToken, SUBJECT_ALIASES[candidateToken] || candidateToken));
+  }).length;
+};
+
+const findSubjectIntent = (tokens: string[], normalized: string) => {
+  const direct = Object.entries(SUBJECT_ALIASES).find(([alias, canonical]) => (
+    tokens.includes(alias) || normalized.includes(canonical)
+  ))?.[1];
+  if (direct) return direct;
+
+  return SUBJECT_CANONICALS.find((subject) => (
+    subject.split(' ').every((subjectToken) => tokens.some((token) => isFuzzyTokenMatch(token, subjectToken)))
+  ));
+};
+
+const findGradeIntent = (tokens: string[], normalized: string) => {
+  const explicitGradeMatch = normalized.match(/\b(?:class|grade|standard|std)\s*(\d{1,2})\b/);
+  if (explicitGradeMatch) return Number(explicitGradeMatch[1]);
+
+  const hintedNumber = tokens.find((token, index) => (
+    /^\d{1,2}$/.test(token)
+    && (
+      GRADE_HINT_WORDS.has(tokens[index - 1])
+      || GRADE_HINT_WORDS.has(tokens[index + 1])
+      || tokens.some((candidate) => GRADE_HINT_WORDS.has(candidate))
+    )
+  ));
+  if (hintedNumber) return Number(hintedNumber);
+
+  return undefined;
+};
+
+const getSearchIntent = (query: string) => {
+  const normalized = normalizeForSearch(query);
+  const tokens = normalized.split(' ').filter(Boolean);
+  const subject = findSubjectIntent(tokens, normalized);
+  const grade = findGradeIntent(tokens, normalized);
+  const canonicalQuery = [grade ? `grade ${grade}` : '', subject || '', tokens.filter((token) => !GRADE_HINT_WORDS.has(token) && token !== String(grade) && !SEARCH_STOP_WORDS.has(token)).join(' ')]
+    .filter(Boolean)
+    .join(' ');
+
+  return {
+    normalized,
+    tokens,
+    grade: grade && grade >= 1 && grade <= 12 ? grade : undefined,
+    subject,
+    canonicalQuery: normalizeForSearch(canonicalQuery || query),
   };
+};
 
-  const getWeight = (book: Book) => {
-    const title = toSearchableText(book.title).toLowerCase();
-    const desc = toSearchableText(book.description).toLowerCase();
-    const author = toSearchableText(book.author).toLowerCase();
-    const category = toSearchableText(book.category).toLowerCase();
-    const subjects = (book.subjects || []).map((subject) => toSearchableText(subject)).join(' ').toLowerCase();
+const buildYoBookSearchVariants = (query: string): string[] => {
+  const intent = getSearchIntent(query);
+  const variants = new Set([query, intent.normalized, intent.canonicalQuery]);
 
-    let weight = 0;
+  if (intent.grade) {
+    variants.add(`Class ${intent.grade}`);
+    variants.add(`Grade ${intent.grade}`);
+  }
 
-    if (title === normalizedQuery) weight += 10000;
-    if (title.startsWith(normalizedQuery)) weight += 5000;
-    if (title.includes(normalizedQuery)) weight += 2000;
-    if (author.includes(normalizedQuery)) weight += 800;
-    if (category.includes(normalizedQuery)) weight += 400;
-    if (subjects.includes(normalizedQuery)) weight += 300;
-    if (desc.includes(normalizedQuery)) weight += 200;
-    weight += Math.min(book.downloads || 0, 5000) / 25;
-    weight += book.source === 'neural' ? 150 : 0;
+  if (intent.subject) {
+    variants.add(intent.subject);
+    if (intent.grade) {
+      variants.add(`Class ${intent.grade} ${intent.subject}`);
+      variants.add(`${intent.subject} Grade ${intent.grade}`);
+    }
+  }
 
-    return weight;
-  };
+  intent.tokens.forEach((token) => {
+    const alias = SUBJECT_ALIASES[token];
+    if (alias) variants.add(alias);
+  });
 
-  return [...books].sort((a, b) => getWeight(b) - getWeight(a));
+  return Array.from(variants).map((item) => item.trim()).filter(Boolean);
+};
+
+const searchYoBookBooksSmart = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const intent = getSearchIntent(query);
+  const variantSearches = buildYoBookSearchVariants(query).slice(0, 6).map((variant) => searchYoBookBooks(variant, signal));
+  const gradeSearch = intent.grade ? [fetchBooksFromYoBook(1, `Class ${intent.grade}`, signal).then((result) => result.books)] : [];
+  const results = await Promise.allSettled([...variantSearches, ...gradeSearch]);
+
+  return mergeUniqueBooks(...results.map((result) => result.status === 'fulfilled' ? result.value : []));
+};
+
+const isAudioBookResource = (book: Book) => (
+  Boolean(book.audioUrl)
+  || book.providerSource === 'cehrd-audio'
+  || /audio/i.test(book.category)
+  || book.subjects?.some((subject) => /audio|drama|listening/i.test(subject))
+);
+
+const getBookSearchScore = (book: Book, query: string): number => {
+  const intent = getSearchIntent(query);
+  const title = normalizeForSearch(toSearchableText(book.title));
+  const desc = normalizeForSearch(toSearchableText(book.description));
+  const author = normalizeForSearch(toSearchableText(book.author));
+  const category = normalizeForSearch(toSearchableText(book.category));
+  const subjects = normalizeForSearch((book.subjects || []).map((subject) => toSearchableText(subject)).join(' '));
+  const keywords = normalizeForSearch((book.keywords || []).join(' '));
+  const shelves = normalizeForSearch((book.bookshelves || []).join(' '));
+  const haystack = normalizeForSearch([title, author, category, subjects, keywords, shelves, desc, book.grade ? `class ${book.grade} grade ${book.grade}` : ''].join(' '));
+
+  let weight = 0;
+
+  if (title === intent.normalized || title === intent.canonicalQuery) weight += 20000;
+  if (title.startsWith(intent.normalized) || title.startsWith(intent.canonicalQuery)) weight += 9000;
+  if (title.includes(intent.normalized) || title.includes(intent.canonicalQuery)) weight += 4500;
+  if (intent.subject && [title, category, subjects, keywords, shelves].some((field) => field.includes(intent.subject!))) weight += 9000;
+  if (intent.grade && book.grade === intent.grade) weight += 6000;
+  if (intent.grade && haystack.includes(`grade ${intent.grade}`)) weight += 2000;
+  if (intent.grade && haystack.includes(`class ${intent.grade}`)) weight += 2000;
+  if (intent.grade && book.source === 'YoBook' && !book.grade && !haystack.includes(`grade ${intent.grade}`) && !haystack.includes(`class ${intent.grade}`)) weight -= 9000;
+  if (author.includes(intent.normalized)) weight += 800;
+  if (category.includes(intent.normalized)) weight += 400;
+  if (subjects.includes(intent.normalized)) weight += 300;
+  if (keywords.includes(intent.normalized) || keywords.includes(intent.canonicalQuery)) weight += 4200;
+  if (desc.includes(intent.normalized)) weight += 200;
+
+  const tokens = Array.from(new Set([...intent.tokens, ...tokenizeSearch(intent.subject || '')])).filter((token) => !GRADE_HINT_WORDS.has(token) && !SEARCH_STOP_WORDS.has(token));
+  const matchedTokens = tokens.filter((token) => haystack.includes(SUBJECT_ALIASES[token] || token));
+  const fuzzyMatches = countFuzzyTokenMatches(tokens, haystack);
+  const keywordFuzzyMatches = countFuzzyTokenMatches(tokens, keywords);
+  weight += matchedTokens.length * 350;
+  weight += fuzzyMatches * 450;
+  weight += keywordFuzzyMatches * 900;
+  if (tokens.length > 0 && matchedTokens.length === tokens.length) weight += 1200;
+  if (tokens.length > 0 && fuzzyMatches === tokens.length) weight += 900;
+
+  weight += Math.min(book.downloads || 0, 5000) / 25;
+  weight += book.source === 'YoBook' ? 12000 : 0;
+  weight += book.audioUrl ? 1500 : 0;
+  weight += book.source === 'neural' ? 150 : 0;
+
+  return weight;
+};
+
+const getAudiobookSearchScore = (audiobook: Audiobook, query: string): number => {
+  const intent = getSearchIntent(query);
+  const title = normalizeForSearch(audiobook.title);
+  const author = normalizeForSearch(audiobook.author);
+  const description = normalizeForSearch(audiobook.description);
+  const genres = normalizeForSearch(audiobook.genres.join(' '));
+  const haystack = normalizeForSearch([title, author, description, genres].join(' '));
+
+  let weight = 0;
+  if (title === intent.normalized || title === intent.canonicalQuery) weight += 24000;
+  if (title.startsWith(intent.normalized) || title.startsWith(intent.canonicalQuery)) weight += 10000;
+  if (title.includes(intent.normalized) || title.includes(intent.canonicalQuery)) weight += 6000;
+  if (intent.subject && [title, genres, description].some((field) => field.includes(intent.subject!))) weight += 8000;
+  if (intent.grade && haystack.includes(`grade ${intent.grade}`)) weight += 5000;
+  if (intent.grade && haystack.includes(`class ${intent.grade}`)) weight += 5000;
+  if (author.includes(intent.normalized)) weight += 900;
+
+  const tokens = Array.from(new Set([...intent.tokens, ...tokenizeSearch(intent.subject || '')])).filter((token) => !GRADE_HINT_WORDS.has(token) && !SEARCH_STOP_WORDS.has(token));
+  const matchedTokens = tokens.filter((token) => haystack.includes(SUBJECT_ALIASES[token] || token));
+  const fuzzyMatches = countFuzzyTokenMatches(tokens, haystack);
+  weight += matchedTokens.length * 400;
+  weight += fuzzyMatches * 500;
+  if (tokens.length > 0 && matchedTokens.length === tokens.length) weight += 1200;
+  if (tokens.length > 0 && fuzzyMatches === tokens.length) weight += 900;
+  weight += audiobook.source === 'YoBook' ? 50000 : 0;
+  weight += Math.min(audiobook.numSections || 0, 50);
+
+  return weight;
+};
+
+const rankBooks = (books: Book[], query: string): Book[] => {
+  return [...books].sort((a, b) => getBookSearchScore(b, query) - getBookSearchScore(a, query));
+};
+
+const rankAudiobooks = (audiobooks: Audiobook[], query: string): Audiobook[] => {
+  return [...audiobooks].sort((a, b) => getAudiobookSearchScore(b, query) - getAudiobookSearchScore(a, query));
 };
 
 const readSearchCacheState = (): Record<string, SearchCacheEntry> => {
@@ -151,7 +419,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
   const [searchResults, setSearchResults] = useState<Book[]>([]);
   const [audiobookResults, setAudiobookResults] = useState<Audiobook[]>([]);
   const [activeType, setActiveType] = useState<'all' | 'books' | 'audiobooks'>('all');
-  const [activeSource, setActiveSource] = useState<'all' | Book['source'] | 'LibriVox'>('all');
+  const [activeSource, setActiveSource] = useState<'all' | Book['source'] | Audiobook['source']>('all');
   const [activeCategory, setActiveCategory] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
   const activeSearchRequestRef = useRef(0);
@@ -199,7 +467,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
         }
 
         setSearchResults((prev) => {
-          const merged = mergeUniqueBooks(prev, newBooks);
+          const merged = mergeUniqueBooks(prev, newBooks.filter((book) => !isAudioBookResource(book)));
           return rankBooks(merged, query);
         });
       };
@@ -208,20 +476,20 @@ const SearchPage: React.FC<SearchPageProps> = ({
           return;
         }
 
-        setAudiobookResults(newAudiobooks);
+        setAudiobookResults(rankAudiobooks(newAudiobooks, query));
       };
 
       // 1. Concurrent Independent Streaming Fetches
       setAudiobookResults([]);
       const searchTasks = [
-        searchYoBookBooks(query, controller.signal).then(updateResults),
+        searchYoBookBooksSmart(query, controller.signal).then(updateResults),
         searchBooksInGutendex(query, controller.signal).then(updateResults),
         searchGoogleBooks(query, controller.signal).then(updateResults),
         searchOpenLibrary(query, controller.signal).then(updateResults),
         // Secondary sources
         searchITBooks(query, controller.signal).then(updateResults),
         searchInternetArchive(query, controller.signal).then(updateResults),
-        searchAudiobooks(query, 8).then(updateAudiobookResults),
+        searchAudiobooks(query, 16).then(updateAudiobookResults),
       ];
 
       try {
@@ -253,8 +521,8 @@ const SearchPage: React.FC<SearchPageProps> = ({
   const isQueryReady = currentQuery.length >= SEARCH_MIN_QUERY_LENGTH;
   const availableSources = Array.from(new Set([
     ...searchResults.map((book) => book.source).filter(Boolean),
-    ...(audiobookResults.length ? ['LibriVox'] : []),
-  ])) as Array<Book['source'] | 'LibriVox'>;
+    ...audiobookResults.map((audiobook) => audiobook.source).filter(Boolean),
+  ])) as Array<Book['source'] | Audiobook['source']>;
   const availableCategories = Array.from(new Set([
     ...searchResults.map((book) => book.category).filter(Boolean),
     ...audiobookResults.flatMap((audiobook) => audiobook.genres).filter(Boolean),
@@ -265,25 +533,28 @@ const SearchPage: React.FC<SearchPageProps> = ({
     return matchesSource && matchesCategory;
   });
   const filteredAudiobooks = audiobookResults.filter((audiobook) => {
-    const matchesSource = activeSource === 'all' || activeSource === 'LibriVox';
+    const matchesSource = activeSource === 'all' || audiobook.source === activeSource;
     const matchesCategory = activeCategory === 'all' || audiobook.genres.includes(activeCategory);
     return matchesSource && matchesCategory;
   });
   const mixedResults = [
-    ...(activeType === 'all' || activeType === 'audiobooks'
-      ? filteredAudiobooks.map((audiobook) => ({ type: 'audiobook' as const, id: `audio-${audiobook.id}`, item: audiobook }))
-      : []),
     ...(activeType === 'all' || activeType === 'books'
       ? filteredResults.map((book) => ({ type: 'book' as const, id: `book-${book.id}`, item: book }))
       : []),
-  ];
+    ...(activeType === 'all' || activeType === 'audiobooks'
+      ? filteredAudiobooks.map((audiobook) => ({ type: 'audiobook' as const, id: `audio-${audiobook.id}`, item: audiobook }))
+      : []),
+  ].sort((a, b) => {
+    const scoreA = a.type === 'book' ? getBookSearchScore(a.item, currentQuery) : getAudiobookSearchScore(a.item, currentQuery);
+    const scoreB = b.type === 'book' ? getBookSearchScore(b.item, currentQuery) : getAudiobookSearchScore(b.item, currentQuery);
+    return scoreB - scoreA;
+  });
   const sourceCounts = availableSources.map((source) => ({
     source,
-    count: source === 'LibriVox'
-      ? audiobookResults.length
-      : searchResults.filter((book) => book.source === source).length,
+    count: searchResults.filter((book) => book.source === source).length
+      + audiobookResults.filter((audiobook) => audiobook.source === source).length,
   }));
-  const quickTopics = Array.from(new Set([...recentSearches, 'Philosophy', 'History', 'Science Fiction', 'Machine Learning'])).slice(0, 6);
+  const quickTopics = Array.from(new Set([...recentSearches, 'Mathematics', 'Grade 10', 'Nepali Stories', 'Science', 'Philosophy', 'Machine Learning'])).slice(0, 6);
 
   useEffect(() => {
     setActiveType('all');
@@ -419,7 +690,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
               </div>
               <h3 className="text-2xl font-display font-bold text-bit-text mb-3 tracking-tight">Search by title, author, or topic.</h3>
               <p className="text-bit-muted leading-relaxed mb-6 text-sm">
-                BitLibrary works best when the query has at least {SEARCH_MIN_QUERY_LENGTH} characters. Try a broad topic first, then narrow the results with filters.
+                BitLibrary checks the YoBook catalog first, then widens to open archives when needed. Try a title, grade, subject, source, or language.
               </p>
               <div className="flex flex-wrap gap-3">
                 {recentSearches.slice(0, 4).map(q => (
@@ -436,9 +707,9 @@ const SearchPage: React.FC<SearchPageProps> = ({
                 <p className="text-[10px] font-mono uppercase tracking-[0.24em] font-bold">Suggested searches</p>
               </div>
               <div className="space-y-3 text-sm text-bit-muted font-mono uppercase tracking-widest text-[11px]">
-                <p className="flex items-center gap-2"><ChevronRight size={12} className="text-bit-accent" /> "Jane Austen"</p>
-                <p className="flex items-center gap-2"><ChevronRight size={12} className="text-bit-accent" /> "Modern Philosophy"</p>
-                <p className="flex items-center gap-2"><ChevronRight size={12} className="text-bit-accent" /> "Quantum Theory"</p>
+                <p className="flex items-center gap-2"><ChevronRight size={12} className="text-bit-accent" /> "Mathematics"</p>
+                <p className="flex items-center gap-2"><ChevronRight size={12} className="text-bit-accent" /> "Grade 8 Science"</p>
+                <p className="flex items-center gap-2"><ChevronRight size={12} className="text-bit-accent" /> "Nepali Stories"</p>
               </div>
             </div>
           </section>
