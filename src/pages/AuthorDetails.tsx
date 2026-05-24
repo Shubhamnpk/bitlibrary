@@ -1,12 +1,56 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Book, Author } from '@/types/index';
-import { searchBooksInGutendex } from '@/services/bookService';
+import { searchBooksInGutendex, searchYoBookBooks } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { ArrowLeft, User, Calendar, MapPin, Zap, Info, ChevronRight, Library } from 'lucide-react';
 import Seo from '@/components/Seo';
 import { createItemListSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
+
+const normalizeAuthor = (value: string) => value
+  .toLowerCase()
+  .replace(/&/g, 'and')
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const getAuthorSearchTerms = (authorName: string) => {
+  const normalized = normalizeAuthor(authorName);
+  const terms = [authorName];
+
+  if (
+    normalized.includes('centre for education and human resource development') ||
+    normalized.includes('center for education and human resource development')
+  ) {
+    terms.push('CEHRD');
+  }
+
+  return terms.filter((term, index, list) => term && list.indexOf(term) === index);
+};
+
+const bookMatchesAuthor = (book: Book, authorName: string) => {
+  const target = normalizeAuthor(authorName);
+  const aliases = getAuthorSearchTerms(authorName).map(normalizeAuthor);
+  const authorFields = [
+    book.author,
+    ...(book.authors || []).map((author) => author.name),
+  ].filter(Boolean).map((value) => normalizeAuthor(String(value)));
+
+  return authorFields.some((author) => (
+    author.includes(target) ||
+    target.includes(author) ||
+    aliases.some((alias) => alias && (author.includes(alias) || alias.includes(author)))
+  ));
+};
+
+const dedupeBooks = (books: Book[]) => books.filter((book, index, list) => (
+  index === list.findIndex((entry) => entry.id === book.id)
+));
+
+const getFirstMatchingAuthor = (books: Book[], authorName: string) => {
+  const firstMatch = books.find((book) => book.authors?.some((author) => bookMatchesAuthor({ ...book, author: author.name, authors: [author] }, authorName)));
+  return firstMatch?.authors?.find((author) => bookMatchesAuthor({ ...firstMatch, author: author.name, authors: [author] }, authorName)) || null;
+};
 
 const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookClick }) => {
   const { name } = useParams();
@@ -18,27 +62,44 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
 
   useEffect(() => {
     if (!name) return;
+    let cancelled = false;
 
     const loadAuthorData = async () => {
       setLoading(true);
+      setBooks([]);
+      setAuthorInfo(null);
+
       try {
-        // Targeted Author-Node Discovery
-        const results = await searchBooksInGutendex(name);
+        const searchTerms = getAuthorSearchTerms(authorName);
+        const yoBookResults = await Promise.all(searchTerms.map((term) => searchYoBookBooks(term)));
+        if (cancelled) return;
+        const matchedYoBookResults = yoBookResults
+          .flat()
+          .filter((book) => bookMatchesAuthor(book, authorName));
+
+        setBooks(dedupeBooks(matchedYoBookResults));
+        setAuthorInfo(getFirstMatchingAuthor(matchedYoBookResults, authorName));
+        if (matchedYoBookResults.length > 0) setLoading(false);
+
+        const gutendexResults = await searchBooksInGutendex(authorName);
+        if (cancelled) return;
+        const matchedGutendexResults = gutendexResults.filter((book) => bookMatchesAuthor(book, authorName));
+        const results = dedupeBooks([...matchedYoBookResults, ...matchedGutendexResults]);
+
         setBooks(results);
-        
-        // Attempt to extract structured lifespans from the first found volume
-        if (results.length > 0 && results[0].authors) {
-          const match = results[0].authors.find(a => a.name.includes(name));
-          if (match) setAuthorInfo(match);
-        }
+        setAuthorInfo(getFirstMatchingAuthor(results, authorName));
+        setLoading(false);
       } catch (err) {
         console.error("[Author Sync] Error:", err);
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     };
 
     loadAuthorData();
-  }, [name]);
+    return () => {
+      cancelled = true;
+    };
+  }, [name, authorName]);
 
   return (
     <div className="animate-fade-in pb-20 max-w-7xl mx-auto px-6 pt-10">
@@ -135,7 +196,7 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
           <h3 className="text-xl font-display font-semibold text-bit-text flex items-center gap-3">
             <Library size={20} className="text-bit-accent" /> Archived Volumes
           </h3>
-          <p className="font-mono text-[10px] text-bit-muted uppercase tracking-[0.2em] font-bold">Decentralized Results from Gutendex</p>
+          <p className="font-mono text-[10px] text-bit-muted uppercase tracking-[0.2em] font-bold">Decentralized Results from YoBook + Gutendex</p>
         </div>
 
         {loading ? (

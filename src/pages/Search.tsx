@@ -278,6 +278,65 @@ const SearchPage: React.FC<SearchPageProps> = ({
     }
   }, [currentPage, totalPages]);
 
+  const renderResultCard = (
+    result: typeof mixedResults[number],
+    index: number,
+    options: { bestMatch?: boolean } = {},
+  ) => (
+    result.type === 'audiobook' ? (
+      <div
+        key={result.id}
+        className="relative h-full animate-fade-in-up"
+        style={{ animationDelay: `${(index % 8) * 40}ms` }}
+      >
+        <div className="absolute -top-3 left-3 z-20 rounded-full bg-bit-accent px-2 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-white shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.28)]">
+          Audio
+        </div>
+        {options.bestMatch && (
+          <div className="absolute -top-3 right-2 z-30 inline-flex items-center gap-1 rounded-full border border-bit-accent/30 bg-bit-panel/95 px-2.5 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-bit-accent shadow-sm backdrop-blur">
+            <Sparkles size={10} />
+            Best
+          </div>
+        )}
+        <AudiobookCard
+          audiobook={result.item}
+          onClick={onAudiobookClick}
+          variant="compact"
+          searchQuery={currentQuery}
+        />
+      </div>
+    ) : (
+      <div
+        key={result.id}
+        className="relative h-full animate-fade-in-up group"
+        style={{ animationDelay: `${(index % 8) * 40}ms` }}
+      >
+        <div className="absolute -top-3 left-3 z-20 rounded-full bg-bit-panel px-2 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-bit-accent shadow-sm border border-bit-border">
+          Book
+        </div>
+        {options.bestMatch && (
+          <div className="absolute -top-3 right-2 z-30 inline-flex items-center gap-1 rounded-full border border-bit-accent/30 bg-bit-panel/95 px-2.5 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-bit-accent shadow-sm backdrop-blur">
+            <Sparkles size={10} />
+            Best
+          </div>
+        )}
+        {result.item.source === 'neural' && (
+          <div className="absolute -top-3 -right-3 z-20 px-2 py-1 bg-bit-accent text-white text-[8px] font-bold font-mono rounded rounded-bl-none shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.4)] transition-transform group-hover:scale-110">
+            NEURAL
+          </div>
+        )}
+        <BookCard
+          variant="compact"
+          book={result.item}
+          onClick={onBookClick}
+          onRead={onRead}
+          onAuthorClick={onAuthorClick}
+          searchQuery={currentQuery}
+        />
+      </div>
+    )
+  );
+
   return (
     <div className="animate-fade-in">
       <div className="mb-12 space-y-8">
@@ -441,7 +500,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
                   <h2 className="mt-2 text-2xl font-display font-bold text-bit-text">Books and audiobooks</h2>
                 </div>
                 {featuredResult && (
-                  <div className="mb-10">
+                  <div className="mb-10 hidden sm:block">
                     {featuredResult.type === 'audiobook' ? (
                       <div className="relative h-full w-full max-w-[12rem] animate-fade-in-up">
                         <div className="pointer-events-none absolute -inset-2 rounded-2xl border border-bit-accent/20 bg-bit-accent/[0.035]" />
@@ -486,49 +545,11 @@ const SearchPage: React.FC<SearchPageProps> = ({
                     )}
                   </div>
                 )}
-                <div className="bit-card-grid">
-                  {regularResults.map((result, index) => (
-                    result.type === 'audiobook' ? (
-                      <div
-                        key={result.id}
-                        className="relative h-full animate-fade-in-up"
-                        style={{ animationDelay: `${(index % 8) * 40}ms` }}
-                      >
-                        <div className="absolute -top-3 left-3 z-20 rounded-full bg-bit-accent px-2 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-white shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.28)]">
-                          Audio
-                        </div>
-                        <AudiobookCard
-                          audiobook={result.item}
-                          onClick={onAudiobookClick}
-                          variant="compact"
-                          searchQuery={currentQuery}
-                        />
-                      </div>
-                    ) : (
-                      <div
-                        key={result.id}
-                        className="relative h-full animate-fade-in-up group"
-                        style={{ animationDelay: `${(index % 8) * 40}ms` }}
-                      >
-                        <div className="absolute -top-3 left-3 z-20 rounded-full bg-bit-panel px-2 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-bit-accent shadow-sm border border-bit-border">
-                          Book
-                        </div>
-                        {result.item.source === 'neural' && (
-                          <div className="absolute -top-3 -right-3 z-20 px-2 py-1 bg-bit-accent text-white text-[8px] font-bold font-mono rounded rounded-bl-none shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.4)] transition-transform group-hover:scale-110">
-                            NEURAL
-                          </div>
-                        )}
-                        <BookCard
-                          variant="compact"
-                          book={result.item}
-                          onClick={onBookClick}
-                          onRead={onRead}
-                          onAuthorClick={onAuthorClick}
-                          searchQuery={currentQuery}
-                        />
-                      </div>
-                    )
-                  ))}
+                <div className="bit-card-grid sm:hidden">
+                  {paginatedResults.map((result, index) => renderResultCard(result, index, { bestMatch: safeCurrentPage === 1 && index === 0 }))}
+                </div>
+                <div className="hidden sm:grid bit-card-grid">
+                  {regularResults.map((result, index) => renderResultCard(result, index))}
                 </div>
                 {totalFilteredCount > SEARCH_PAGE_SIZE && (
                   <div className="mt-10 flex flex-col gap-4 border-t border-bit-border pt-6 sm:flex-row sm:items-center sm:justify-between">

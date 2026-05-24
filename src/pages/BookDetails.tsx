@@ -362,7 +362,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               <section className="mb-12">
                 <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <h3 className="flex items-center gap-2 text-xl font-display font-semibold text-bit-text">
-                    <Info size={18} className="text-bit-accent" /> Summary Registry
+                    <Info size={18} className="text-bit-accent" /> Summary
                   </h3>
                   <div className="grid grid-cols-2 gap-3 sm:flex">
                     {book.downloadUrl && (
@@ -370,7 +370,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                         <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
                       </a>
                     )}
-                    <button onClick={() => onRead()} className={`${book.downloadUrl ? '' : 'col-span-2'} flex items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
+                    <button onClick={() => onRead()} className={`${book.downloadUrl ? 'hidden sm:flex' : 'col-span-2 hidden sm:flex'} items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
                       <BookOpen size={16} /> read
                     </button>
                   </div>

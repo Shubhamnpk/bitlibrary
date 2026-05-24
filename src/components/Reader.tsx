@@ -47,6 +47,13 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const isSavedBook = localUserState.savedBooks.some((entry) => entry.id === book.id);
 
   useEffect(() => {
+    if (!isExternal || isPdfReader) return;
+    setIframeLoading(true);
+    const fallbackTimer = window.setTimeout(() => setIframeLoading(false), 6000);
+    return () => window.clearTimeout(fallbackTimer);
+  }, [isExternal, isPdfReader, readerUrl]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (settingsOpen) {
@@ -435,14 +442,11 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
             <iframe
               src={readerUrl}
-              onLoad={() => {
-                // Ensure the loading state is cleared even if some content is blocked
-                setTimeout(() => setIframeLoading(false), 2000);
-              }}
+              onLoad={() => setIframeLoading(false)}
               className="w-full h-full border-none bg-white"
               title={book.title}
               sandbox={isPdfReader ? undefined : 'allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock allow-modals'}
-              loading="lazy"
+              loading="eager"
             ></iframe>
 
             {isImmersive && (
