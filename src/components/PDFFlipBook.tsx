@@ -443,7 +443,11 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 }) => {
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [dimensions, setDimensions] = useState<FlipDimensions>({ width: 840, height: 594, display: 'double' });
+  const [dimensions, setDimensions] = useState<FlipDimensions>(() => (
+    typeof window === 'undefined'
+      ? { width: 840, height: 594, display: 'double' }
+      : getDimensions(window.innerWidth, Math.max(420, window.innerHeight - 120))
+  ));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -539,7 +543,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     observer.observe(shell);
 
     return () => observer.disconnect();
-  }, []);
+  }, [document]);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -663,7 +667,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
         width: dimensions.width,
         height: dimensions.height,
         display: dimensions.display,
-        autoCenter: true,
+        autoCenter: dimensions.display !== 'single',
         gradients: !isTurnTouchDevice(),
         elevation: 80,
         duration: 900,
@@ -724,6 +728,12 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   }, [isZoomed, zoom]);
 
   const goPrevious = useCallback(() => {
+    if (dimensions.display === 'single') {
+      setCurrentPage((page) => Math.max(1, page - 1));
+      if (soundEnabledRef.current && currentPageRef.current > 1) playPageTurnSound();
+      return;
+    }
+
     const book = getBook();
     if (!book || currentPageRef.current <= 1) return;
     try {
@@ -731,9 +741,15 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     } catch (turnError) {
       console.warn('[PDF Turn.js] Previous page skipped:', turnError);
     }
-  }, [getBook]);
+  }, [dimensions.display, getBook]);
 
   const goNext = useCallback(() => {
+    if (dimensions.display === 'single') {
+      setCurrentPage((page) => Math.min(pageCount, page + 1));
+      if (soundEnabledRef.current && currentPageRef.current < pageCount) playPageTurnSound();
+      return;
+    }
+
     const book = getBook();
     if (!book || currentPageRef.current >= pageCount) return;
     try {
@@ -741,9 +757,15 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     } catch (turnError) {
       console.warn('[PDF Turn.js] Next page skipped:', turnError);
     }
-  }, [getBook, pageCount]);
+  }, [dimensions.display, getBook, pageCount]);
 
   const goToPage = useCallback((page: number) => {
+    if (dimensions.display === 'single') {
+      if (page < 1 || page > pageCount) return;
+      setCurrentPage(page);
+      return;
+    }
+
     const book = getBook();
     if (!book || page < 1 || page > pageCount) return;
 
@@ -752,7 +774,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     } catch (turnError) {
       console.warn('[PDF Turn.js] Page jump skipped:', turnError);
     }
-  }, [getBook, pageCount]);
+  }, [dimensions.display, getBook, pageCount]);
 
   const handlePageSliderChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     goToPage(Number(event.target.value));
@@ -932,7 +954,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           onClick={goPrevious}
           onMouseDown={(event) => event.stopPropagation()}
           disabled={!canGoPrevious}
-          className="absolute left-2 top-1/2 z-[10060] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-bit-border bg-bit-bg/85 text-bit-muted shadow-xl backdrop-blur transition-all hover:border-bit-accent/40 hover:text-bit-accent disabled:cursor-not-allowed disabled:opacity-25 md:left-6"
+          className="fixed left-0 top-1/2 z-[10060] flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-r-full border-y border-r border-white/10 bg-black/20 text-white/45 shadow-none backdrop-blur-md transition-all hover:border-bit-accent/25 hover:bg-black/35 hover:text-bit-accent/80 disabled:pointer-events-none disabled:opacity-0 md:absolute md:left-6 md:h-11 md:w-11 md:rounded-full md:border md:border-bit-border/45 md:bg-bit-bg/45 md:text-bit-muted/55 md:shadow-lg md:hover:border-bit-accent/35 md:hover:bg-bit-bg/70 md:hover:text-bit-accent/80 md:disabled:pointer-events-auto md:disabled:cursor-not-allowed md:disabled:opacity-20"
           aria-label="Previous page"
         >
           <ChevronLeft size={22} />
@@ -969,30 +991,48 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
               transformOrigin: 'top left',
             }}
           >
-            <div ref={bookRef} className="bit-turn-book">
-              {Array.from({ length: pageCount }, (_, index) => {
-                const pageNumber = index + 1;
-                const shouldRender = Math.abs(pageNumber - currentPage) <= renderWindow;
-                const shouldRenderTextLayer = studyPanelOpen && Math.abs(pageNumber - currentPage) <= textLayerWindow;
-                return (
-                  <div key={pageNumber} className="bit-turn-page bg-white">
-                    <PDFPageCanvas
-                      document={document}
-                      pageNumber={pageNumber}
-                      renderScale={renderScale}
-                      shouldRender={shouldRender}
-                      shouldRenderTextLayer={shouldRenderTextLayer}
-                      targetWidth={pageRenderWidth}
-                      targetHeight={pageRenderHeight}
-                      isBookmarked={studyState.bookmarks.includes(pageNumber)}
-                      isHighlighted={studyState.highlights.includes(pageNumber)}
-                      textHighlights={studyState.textHighlights.filter((highlight) => highlight.page === pageNumber)}
-                      onTextSelection={addTextHighlight}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+            {dimensions.display === 'single' ? (
+              <div className="h-full w-full overflow-hidden rounded-sm bg-white shadow-2xl">
+                <PDFPageCanvas
+                  document={document}
+                  pageNumber={currentPage}
+                  renderScale={renderScale}
+                  shouldRender
+                  shouldRenderTextLayer={studyPanelOpen}
+                  targetWidth={pageRenderWidth}
+                  targetHeight={pageRenderHeight}
+                  isBookmarked={currentPageBookmarked}
+                  isHighlighted={currentPageHighlighted}
+                  textHighlights={currentPageTextHighlights}
+                  onTextSelection={addTextHighlight}
+                />
+              </div>
+            ) : (
+              <div ref={bookRef} className="bit-turn-book">
+                {Array.from({ length: pageCount }, (_, index) => {
+                  const pageNumber = index + 1;
+                  const shouldRender = Math.abs(pageNumber - currentPage) <= renderWindow;
+                  const shouldRenderTextLayer = studyPanelOpen && Math.abs(pageNumber - currentPage) <= textLayerWindow;
+                  return (
+                    <div key={pageNumber} className="bit-turn-page bg-white">
+                      <PDFPageCanvas
+                        document={document}
+                        pageNumber={pageNumber}
+                        renderScale={renderScale}
+                        shouldRender={shouldRender}
+                        shouldRenderTextLayer={shouldRenderTextLayer}
+                        targetWidth={pageRenderWidth}
+                        targetHeight={pageRenderHeight}
+                        isBookmarked={studyState.bookmarks.includes(pageNumber)}
+                        isHighlighted={studyState.highlights.includes(pageNumber)}
+                        textHighlights={studyState.textHighlights.filter((highlight) => highlight.page === pageNumber)}
+                        onTextSelection={addTextHighlight}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
           </div>
         </div>
@@ -1012,7 +1052,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           onClick={goNext}
           onMouseDown={(event) => event.stopPropagation()}
           disabled={!canGoNext}
-          className="absolute right-2 top-1/2 z-[10060] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-bit-border bg-bit-bg/85 text-bit-muted shadow-xl backdrop-blur transition-all hover:border-bit-accent/40 hover:text-bit-accent disabled:cursor-not-allowed disabled:opacity-25 md:right-6"
+          className="fixed right-0 top-1/2 z-[10060] flex h-16 w-8 -translate-y-1/2 items-center justify-center rounded-l-full border-y border-l border-white/10 bg-black/20 text-white/45 shadow-none backdrop-blur-md transition-all hover:border-bit-accent/25 hover:bg-black/35 hover:text-bit-accent/80 disabled:pointer-events-none disabled:opacity-0 md:absolute md:right-6 md:h-11 md:w-11 md:rounded-full md:border md:border-bit-border/45 md:bg-bit-bg/45 md:text-bit-muted/55 md:shadow-lg md:hover:border-bit-accent/35 md:hover:bg-bit-bg/70 md:hover:text-bit-accent/80 md:disabled:pointer-events-auto md:disabled:cursor-not-allowed md:disabled:opacity-20"
           aria-label="Next page"
         >
           <ChevronRight size={22} />
@@ -1161,11 +1201,11 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
         )}
       </div>
 
-      <div className="relative z-[10050] flex flex-col gap-3 border-t border-bit-border bg-bit-panel/55 px-4 py-3 backdrop-blur lg:flex-row lg:items-center lg:justify-between md:px-6">
-        <p className="min-w-0 line-clamp-1 text-[10px] font-mono uppercase tracking-[0.22em] text-bit-muted">
+      <div className="relative z-[10050] flex flex-col gap-2 border-t border-bit-border bg-bit-panel/55 px-3 py-2.5 backdrop-blur sm:grid sm:grid-cols-[1fr_auto] sm:items-center sm:gap-3 md:px-6 lg:flex lg:flex-row lg:items-center lg:justify-between">
+        <p className="hidden min-w-0 text-[10px] font-mono uppercase tracking-[0.22em] text-bit-muted lg:line-clamp-1 lg:block">
           {title}
         </p>
-        <label className="flex min-w-0 flex-1 items-center gap-3 lg:max-w-2xl">
+        <label className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 lg:max-w-2xl">
           <span className="shrink-0 text-[10px] font-mono font-bold text-bit-muted">1</span>
           <span className="sr-only">Navigate PDF page</span>
           <input
@@ -1182,7 +1222,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           />
           <span className="shrink-0 text-[10px] font-mono font-bold text-bit-muted">{pageCount}</span>
         </label>
-        <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-3">
+        <div className="flex min-w-0 shrink-0 items-center justify-between gap-2 sm:justify-start sm:gap-3">
           <button
             type="button"
             onClick={() => setStudyPanelOpen((open) => !open)}
@@ -1203,7 +1243,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
             >
               <ZoomOut size={14} />
             </button>
-            <span className="min-w-10 text-center text-[10px] font-mono font-bold text-bit-muted">
+            <span className="min-w-9 text-center text-[10px] font-mono font-bold text-bit-muted sm:min-w-10">
               {Math.round(zoom * 100)}%
             </span>
             <button
@@ -1226,8 +1266,9 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           >
             {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
           </button>
-          <div className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">
-            Page {currentPage} / {pageCount}
+          <div className="whitespace-nowrap text-[10px] font-mono font-bold uppercase tracking-[0.16em] text-bit-accent sm:tracking-[0.22em]">
+            <span className="sm:hidden">{currentPage}/{pageCount}</span>
+            <span className="hidden sm:inline">Page {currentPage} / {pageCount}</span>
           </div>
         </div>
       </div>

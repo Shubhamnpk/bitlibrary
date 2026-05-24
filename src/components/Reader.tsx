@@ -154,27 +154,28 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   return (
     <div className={`fixed inset-0 z-[1000] bg-bit-bg flex flex-col animate-fade-in overflow-hidden shadow-2xl transition-all duration-700`}>
       {/* Smart Reveal Header */}
-      <header className={`h-16 border-b border-bit-border bg-bit-panel/80 backdrop-blur-2xl flex items-center justify-between px-6 z-[10001] transition-all duration-300 ${isImmersive ? 'absolute top-0 left-0 right-0 -translate-y-full hover:translate-y-0 opacity-0 hover:opacity-100' : 'relative'}`}>
-        <div className="flex items-center gap-4">
+      <header className={`h-14 sm:h-16 border-b border-bit-border bg-bit-panel/80 backdrop-blur-2xl flex items-center justify-between gap-3 px-3 sm:px-6 z-[10001] transition-all duration-300 ${isImmersive ? 'absolute top-0 left-0 right-0 -translate-y-full hover:translate-y-0 opacity-0 hover:opacity-100' : 'relative'}`}>
+        <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
           <button
             onClick={onClose}
-            className="flex items-center gap-2 pr-6 border-r border-bit-border group transition-all"
+            className="flex shrink-0 items-center gap-2 pr-2 transition-all group sm:border-r sm:border-bit-border sm:pr-6"
+            aria-label="Close reader"
           >
-            <div className="p-2 bg-bit-panel/50 rounded-full text-bit-accent border border-bit-border group-hover:bg-bit-accent group-hover:text-white transition-all shadow-sm">
-              <ArrowLeft size={18} />
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-bit-border bg-bit-panel/50 text-bit-accent shadow-sm transition-all group-hover:bg-bit-accent group-hover:text-white">
+              <ArrowLeft size={17} />
             </div>
             <span className="hidden sm:block text-[10px] font-mono font-bold text-bit-text tracking-widest uppercase">close</span>
           </button>
-          <div>
-            <h2 className="font-display font-semibold text-bit-text tracking-tight line-clamp-1 max-w-[200px] md:max-w-md">{book.title}</h2>
+          <div className="hidden min-w-0 sm:block">
+            <h2 className="max-w-[200px] line-clamp-1 font-display font-semibold tracking-tight text-bit-text md:max-w-md">{book.title}</h2>
             <div className="flex items-center gap-2">
               <Zap size={10} className="text-bit-accent" />
-              <p className="text-[9px] text-bit-accent/60 font-mono uppercase tracking-widest font-bold">Sector_ID: {book.id.substring(0, 8)}</p>
+              <p className="text-[9px] font-mono font-bold uppercase tracking-widest text-bit-accent/60">Sector_ID: {book.id.substring(0, 8)}</p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-6">
           {!isExternal && (
             <div className="hidden lg:flex items-center bg-bit-panel/50 rounded-lg border border-bit-border p-1 shadow-sm">
               <button
@@ -193,16 +194,17 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             </div>
           )}
 
-          <div className="flex items-center gap-1 bg-bit-panel/50 rounded-xl border border-bit-border p-1 shadow-sm">
+          <div className="flex items-center gap-1 rounded-xl border border-bit-border bg-bit-panel/50 p-1 shadow-sm">
             {isExternal && (
               <a 
                 href={readerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-3 hover:bg-bit-panel rounded-lg text-bit-accent hover:text-bit-text transition-all group border-r border-bit-border"
+                className="rounded-lg p-2.5 text-bit-accent transition-all hover:bg-bit-panel hover:text-bit-text sm:border-r sm:border-bit-border sm:p-3 group"
                 title={isPdfReader ? 'Open PDF in new tab' : 'Open External Archive'}
+                aria-label={isPdfReader ? 'Open PDF in new tab' : 'Open external archive'}
               >
-                <ExternalLink size={18} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                <ExternalLink size={17} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 sm:size-[18px]" />
               </a>
             )}
             {book.downloadUrl && (
@@ -211,25 +213,26 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 download={book.title}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-3 hover:bg-bit-panel rounded-lg text-bit-accent hover:text-bit-text transition-all group border-r border-bit-border"
+                className="rounded-lg p-2.5 text-bit-accent transition-all hover:bg-bit-panel hover:text-bit-text sm:border-r sm:border-bit-border sm:p-3 group"
                 title="Download Archival Volume"
+                aria-label="Download book"
               >
-                <Download size={18} className="group-hover:translate-y-0.5 transition-transform" />
+                <Download size={17} className="transition-transform group-hover:translate-y-0.5 sm:size-[18px]" />
               </a>
             )}
             <button
               onClick={toggleMinimized}
-              className="p-3 hover:bg-bit-panel rounded-lg text-bit-muted hover:text-bit-accent transition-all group"
+              className="rounded-lg p-2.5 text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-accent sm:p-3 group"
               title="Minimize stream (PiP)"
             >
-              <Layout size={18} className="group-hover:scale-110" />
+              <Layout size={17} className="group-hover:scale-110 sm:size-[18px]" />
             </button>
             <button
               onClick={() => setIsImmersive(true)}
-              className="p-3 hover:bg-bit-panel rounded-lg text-bit-muted hover:text-bit-accent transition-all group"
+              className="rounded-lg p-2.5 text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-accent sm:p-3 group"
               title="Immersive Protocol"
             >
-              <Maximize2 size={18} className="group-hover:scale-110" />
+              <Maximize2 size={17} className="group-hover:scale-110 sm:size-[18px]" />
             </button>
             <button
               onClick={toggleFullscreen}
@@ -239,12 +242,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             </button>
             <button
               onClick={() => setSettingsOpen((open) => !open)}
-              className={`p-3 rounded-lg transition-all group ${settingsOpen ? 'bg-bit-accent text-white' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-accent'}`}
+              className={`rounded-lg p-2.5 transition-all sm:p-3 group ${settingsOpen ? 'bg-bit-accent text-white' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-accent'}`}
               title="Reader settings"
               aria-label="Open reader settings"
               aria-expanded={settingsOpen}
             >
-              <Settings size={18} className="group-hover:rotate-45 transition-transform" />
+              <Settings size={17} className="transition-transform group-hover:rotate-45 sm:size-[18px]" />
             </button>
           </div>
         </div>
@@ -254,11 +257,11 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         <>
           <button
             type="button"
-            className="fixed inset-0 top-16 z-[10100] bg-bit-bg/35 backdrop-blur-[1px]"
+            className="fixed inset-0 top-14 z-[10100] bg-bit-bg/35 backdrop-blur-[1px] sm:top-16"
             aria-label="Close reader settings"
             onClick={() => setSettingsOpen(false)}
           />
-          <aside className="fixed right-0 top-16 bottom-0 z-[10110] flex w-[min(24rem,100vw)] flex-col border-l border-bit-border bg-bit-bg/96 shadow-2xl backdrop-blur-xl animate-fade-in">
+          <aside className="fixed right-0 top-14 bottom-0 z-[10110] flex w-full flex-col border-l border-bit-border bg-bit-bg/96 shadow-2xl backdrop-blur-xl animate-fade-in sm:top-16 sm:w-[min(24rem,100vw)]">
             <div className="flex items-center justify-between border-b border-bit-border px-5 py-4">
               <div>
                 <p className="text-[10px] font-mono font-bold uppercase tracking-[0.24em] text-bit-accent">Reader</p>
