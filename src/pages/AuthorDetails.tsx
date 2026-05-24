@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Book, Author } from '@/types/index';
-import { searchBooksInGutendex, searchYoBookBooks } from '@/services/bookService';
+import {
+  searchBooksInGutendex,
+  searchGoogleBooks,
+  searchInternetArchive,
+  searchITBooks,
+  searchOpenLibrary,
+  searchYoBookBooks,
+} from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
-import { ArrowLeft, User, Calendar, MapPin, Zap, Info, ChevronRight, Library } from 'lucide-react';
+import { ArrowLeft, User, Calendar, Zap, Info, Library } from 'lucide-react';
 import Seo from '@/components/Seo';
 import { createItemListSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
+
+const AUTHOR_PROVIDER_TIMEOUT_MS = 5500;
 
 const normalizeAuthor = (value: string) => value
   .toLowerCase()
@@ -47,9 +56,38 @@ const dedupeBooks = (books: Book[]) => books.filter((book, index, list) => (
   index === list.findIndex((entry) => entry.id === book.id)
 ));
 
+const getSourcePriority = (book: Book) => {
+  if (book.source === 'YoBook') return 0;
+  if (book.source === 'Gutendex') return 1;
+  if (book.source === 'Google Books') return 2;
+  if (book.source === 'Open Library') return 3;
+  if (book.source === 'IT Bookstore') return 4;
+  return 5;
+};
+
+const rankAuthorBooks = (books: Book[]) => [...books].sort((a, b) => (
+  getSourcePriority(a) - getSourcePriority(b) ||
+  (b.downloads || b.popularity || 0) - (a.downloads || a.popularity || 0) ||
+  a.title.localeCompare(b.title)
+));
+
 const getFirstMatchingAuthor = (books: Book[], authorName: string) => {
   const firstMatch = books.find((book) => book.authors?.some((author) => bookMatchesAuthor({ ...book, author: author.name, authors: [author] }, authorName)));
   return firstMatch?.authors?.find((author) => bookMatchesAuthor({ ...firstMatch, author: author.name, authors: [author] }, authorName)) || null;
+};
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
+  let timeoutId: number | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeoutId = window.setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
 };
 
 const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookClick }) => {
@@ -63,41 +101,59 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
   useEffect(() => {
     if (!name) return;
     let cancelled = false;
+    const controller = new AbortController();
 
-    const loadAuthorData = async () => {
-      setLoading(true);
-      setBooks([]);
-      setAuthorInfo(null);
+    setLoading(true);
+    setBooks([]);
+    setAuthorInfo(null);
 
-      try {
-        const searchTerms = getAuthorSearchTerms(authorName);
-        const yoBookResults = await Promise.all(searchTerms.map((term) => searchYoBookBooks(term)));
-        if (cancelled) return;
-        const matchedYoBookResults = yoBookResults
-          .flat()
-          .filter((book) => bookMatchesAuthor(book, authorName));
+    const searchTerms = getAuthorSearchTerms(authorName);
+    const archiveSearchTerms = [authorName];
+    const searchAllTerms = (searcher: (query: string, signal?: AbortSignal) => Promise<Book[]>, terms = archiveSearchTerms) => (
+      Promise.all(terms.map((term) => searcher(term, controller.signal))).then((results) => results.flat())
+    );
+    const providers = [
+      { label: 'YoBook', run: () => searchAllTerms(searchYoBookBooks, searchTerms), timeout: 3500 },
+      { label: 'Gutendex', run: () => searchAllTerms(searchBooksInGutendex), timeout: AUTHOR_PROVIDER_TIMEOUT_MS },
+      { label: 'Google Books', run: () => searchAllTerms(searchGoogleBooks), timeout: AUTHOR_PROVIDER_TIMEOUT_MS },
+      { label: 'Open Library', run: () => searchAllTerms(searchOpenLibrary), timeout: AUTHOR_PROVIDER_TIMEOUT_MS },
+      { label: 'Internet Archive', run: () => searchAllTerms(searchInternetArchive), timeout: AUTHOR_PROVIDER_TIMEOUT_MS },
+      { label: 'IT Bookstore', run: () => searchAllTerms(searchITBooks), timeout: AUTHOR_PROVIDER_TIMEOUT_MS },
+    ];
 
-        setBooks(dedupeBooks(matchedYoBookResults));
-        setAuthorInfo(getFirstMatchingAuthor(matchedYoBookResults, authorName));
-        if (matchedYoBookResults.length > 0) setLoading(false);
+    let completedProviders = 0;
+    let foundAnyResults = false;
+    let collectedBooks: Book[] = [];
 
-        const gutendexResults = await searchBooksInGutendex(authorName);
-        if (cancelled) return;
-        const matchedGutendexResults = gutendexResults.filter((book) => bookMatchesAuthor(book, authorName));
-        const results = dedupeBooks([...matchedYoBookResults, ...matchedGutendexResults]);
-
-        setBooks(results);
-        setAuthorInfo(getFirstMatchingAuthor(results, authorName));
+    const finishProvider = () => {
+      completedProviders += 1;
+      if (!cancelled && completedProviders === providers.length && !foundAnyResults) {
         setLoading(false);
-      } catch (err) {
-        console.error("[Author Sync] Error:", err);
-        if (!cancelled) setLoading(false);
       }
     };
 
-    loadAuthorData();
+    providers.forEach((provider) => {
+      void withTimeout(provider.run(), provider.timeout, [])
+        .then((results) => {
+          if (cancelled) return;
+          const matchedResults = results.filter((book) => bookMatchesAuthor(book, authorName));
+          if (matchedResults.length === 0) return;
+
+          foundAnyResults = true;
+          collectedBooks = rankAuthorBooks(dedupeBooks([...collectedBooks, ...matchedResults]));
+          setBooks(collectedBooks);
+          setAuthorInfo(getFirstMatchingAuthor(collectedBooks, authorName));
+          setLoading(false);
+        })
+        .catch((error) => {
+          if (!cancelled) console.warn(`[Author Sync] ${provider.label} skipped:`, error);
+        })
+        .finally(finishProvider);
+    });
+
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [name, authorName]);
 
@@ -196,7 +252,7 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
           <h3 className="text-xl font-display font-semibold text-bit-text flex items-center gap-3">
             <Library size={20} className="text-bit-accent" /> Archived Volumes
           </h3>
-          <p className="font-mono text-[10px] text-bit-muted uppercase tracking-[0.2em] font-bold">Decentralized Results from YoBook + Gutendex</p>
+          <p className="font-mono text-[10px] text-bit-muted uppercase tracking-[0.2em] font-bold">Live results from all connected APIs</p>
         </div>
 
         {loading ? (
