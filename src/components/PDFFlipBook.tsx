@@ -9,6 +9,8 @@ import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const PDFJS_WASM_URL = 'https://unpkg.com/pdfjs-dist@5.7.284/wasm/';
+const MIN_PDF_RENDER_RATIO = 3;
+const MAX_PDF_RENDER_RATIO = 4.5;
 const isTurnTouchDevice = () => Boolean(($ as unknown as { isTouch?: boolean }).isTouch);
 
 interface PDFFlipBookProps {
@@ -236,8 +238,8 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
         const baseViewport = page.getViewport({ scale: 1 });
         const fitScale = Math.min(targetWidth / baseViewport.width, targetHeight / baseViewport.height);
         const viewport = page.getViewport({ scale: fitScale });
-        const zoomQuality = Math.max(1, renderScale / 1.45);
-        const pixelRatio = Math.min((window.devicePixelRatio || 1) * zoomQuality, 3);
+        const zoomQuality = Math.max(MIN_PDF_RENDER_RATIO, renderScale * 1.35);
+        const pixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1) * zoomQuality, MAX_PDF_RENDER_RATIO);
 
         content.style.width = `${viewport.width}px`;
         content.style.height = `${viewport.height}px`;
@@ -245,11 +247,14 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
         canvas.height = Math.floor(viewport.height * pixelRatio);
         canvas.style.width = `${viewport.width}px`;
         canvas.style.height = `${viewport.height}px`;
+        canvas.style.imageRendering = 'auto';
         textLayer.style.width = `${viewport.width}px`;
         textLayer.style.height = `${viewport.height}px`;
         textLayer.style.setProperty('--scale-factor', String(fitScale));
         textLayer.style.setProperty('--total-scale-factor', String(fitScale));
         context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
 
       renderTask = page.render({
           canvas,
