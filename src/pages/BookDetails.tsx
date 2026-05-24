@@ -206,34 +206,35 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
           },
         ]}
       />
-      <div className="flex items-center justify-between mb-8 opacity-60 hover:opacity-100 transition-opacity">
+      <div className="mb-6 flex items-center justify-between gap-4 opacity-80 transition-opacity hover:opacity-100 sm:mb-8">
         <button
           onClick={onClose}
-          className="flex items-center gap-2 text-sm font-mono text-bit-text hover:text-bit-accent transition-colors"
+          className="flex min-w-0 items-center gap-2 text-xs font-mono text-bit-text transition-colors hover:text-bit-accent sm:text-sm"
         >
-          <ArrowLeft size={16} /> Back to Library
+          <ArrowLeft size={16} className="shrink-0" /> <span className="truncate">Back to Library</span>
         </button>
-        <div className="flex items-center gap-6">
+        <div className="flex shrink-0 items-center gap-4 sm:gap-6">
           {book.source && (
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-bit-panel/50 border border-bit-border text-[9px] font-mono text-bit-muted/70 tracking-widest uppercase backdrop-blur-sm">
               <div className="w-1 h-1 rounded-full bg-bit-accent animate-pulse" />
               {book.source}
             </div>
           )}
-          <div className="flex gap-4">
+          <div className="flex gap-3 sm:gap-4">
             <button
               onClick={() => toggleSavedBook(book)}
               className={`transition-colors ${isSaved ? 'text-bit-accent' : 'text-bit-muted hover:text-bit-text'}`}
+              aria-label={isSaved ? 'Remove bookmark' : 'Save bookmark'}
             >
               <Bookmark size={18} className={isSaved ? 'fill-current' : ''} />
             </button>
-            <button className="text-bit-muted hover:text-bit-text transition-colors"><Share2 size={18} /></button>
-            <button className="text-bit-muted hover:text-bit-text transition-colors"><Zap size={18} /></button>
+            <button className="text-bit-muted hover:text-bit-text transition-colors" aria-label="Share book"><Share2 size={18} /></button>
+            <button className="text-bit-muted hover:text-bit-text transition-colors" aria-label="Book tools"><Zap size={18} /></button>
           </div>
         </div>
       </div>
 
-      <nav className="mb-10 flex items-center gap-3 overflow-x-auto pb-4 no-scrollbar whitespace-nowrap border-b border-bit-border">
+      <nav className="mb-8 flex items-center gap-3 overflow-x-auto border-b border-bit-border pb-4 no-scrollbar whitespace-nowrap sm:mb-10">
         <button
           onClick={onClose}
           className="text-[10px] font-mono text-bit-muted hover:text-bit-text uppercase tracking-[0.2em] transition-colors flex items-center gap-2 group/bc"
@@ -259,29 +260,29 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
         </span>
       </nav>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-        <div className="lg:col-span-4 sticky top-24 h-fit">
-          <div className={`aspect-[2/3] w-full rounded-2xl bg-gradient-to-br ${book.coverGradient || 'from-orange-500/20 to-purple-900/40'} shadow-2xl border border-bit-border overflow-hidden relative group`}>
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-12">
+        <div className="h-fit lg:sticky lg:top-24 lg:col-span-4">
+          <div className={`relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-bit-border bg-gradient-to-br shadow-2xl sm:aspect-[2/3] ${book.coverGradient || 'from-orange-500/20 to-purple-900/40'} group`}>
             {book.coverUrl && (
               <img
                 src={book.coverUrl}
-                className="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:opacity-60 transition-opacity duration-700"
+                className="absolute inset-0 h-full w-full object-cover opacity-45 transition-opacity duration-700 sm:group-hover:opacity-60"
                 alt=""
               />
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent group-hover:via-black/20 transition-all duration-500" />
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-700 backdrop-blur-[4px] z-10">
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent transition-all duration-500 sm:group-hover:via-black/20" />
+            <div className="absolute inset-0 z-10 hidden items-center justify-center opacity-0 backdrop-blur-[4px] transition-all duration-700 sm:flex sm:group-hover:opacity-100">
               <button
                 onClick={(e) => { e.stopPropagation(); onRead(); }}
                 className="px-8 py-4 bg-bit-accent text-white flex items-center gap-4 rounded-full shadow-[0_0_60px_rgba(var(--bit-accent-rgb),0.6)] transform scale-75 group-hover:scale-100 transition-all duration-700 hover:scale-105 active:scale-95 border-4 border-black/10 group/btn relative overflow-hidden"
               >
                 <div className="absolute inset-0 bg-white opacity-0 group-hover/btn:opacity-20 transition-opacity" />
                 <BookOpen size={24} className="relative z-10" />
-                <span className="text-xs font-mono font-bold tracking-[0.2em] relative z-10 uppercase">READ_VOLUME</span>
+                <span className="text-xs font-mono font-bold tracking-[0.2em] relative z-10 uppercase">READ</span>
               </button>
             </div>
-            <div className="absolute inset-0 flex flex-col justify-end p-8">
-              <div className="flex flex-wrap items-center gap-2 mb-4">
+            <div className="absolute inset-0 flex flex-col justify-end p-5 sm:p-8">
+              <div className="mb-3 flex flex-wrap items-center gap-2 sm:mb-4">
                 <button
                   onClick={() => onCategoryClick?.(book.category)}
                   className="inline-block px-3 py-1 rounded bg-bit-accent text-white text-[10px] font-bold uppercase tracking-widest w-fit shadow-lg shadow-bit-accent/40 hover:bg-white hover:text-black transition-all active:scale-95"
@@ -289,9 +290,9 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                   {book.category}
                 </button>
               </div>
-              <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-6 leading-[1.1] tracking-tight group-hover:text-bit-accent transition-colors duration-500">{book.title}</h1>
-              <div className="flex flex-wrap gap-x-4 gap-y-6 mb-10 border-l-2 border-bit-accent/30 pl-4 py-1 italic">
-                <span className="text-xl text-white/70 font-sans">by</span>
+              <h1 className="mb-4 line-clamp-3 text-2xl font-display font-bold leading-tight tracking-tight text-white transition-colors duration-500 group-hover:text-bit-accent sm:mb-6 sm:text-4xl md:text-5xl">{book.title}</h1>
+              <div className="mb-5 flex flex-wrap gap-x-3 gap-y-3 border-l-2 border-bit-accent/30 py-1 pl-4 italic sm:mb-10 sm:gap-x-4 sm:gap-y-6">
+                <span className="text-base text-white/70 font-sans sm:text-xl">by</span>
                 {book.authors && book.authors.length > 0 ? (
                   book.authors.map((author, idx) => (
                     <button
@@ -299,7 +300,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                       onClick={() => onAuthorClick?.(author.name)}
                       className="group/author text-left flex flex-col"
                     >
-                      <span className="text-xl text-white hover:text-bit-accent transition-colors font-sans">
+                      <span className="text-base text-white transition-colors hover:text-bit-accent sm:text-xl">
                         {author.name}{idx < book.authors!.length - 1 ? ',' : ''}
                       </span>
                       {author.birth_year && (
@@ -310,38 +311,45 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                     </button>
                   ))
                 ) : (
-                  <span className="text-xl text-white/70 font-sans">{book.author}</span>
+                  <span className="text-base text-white/70 font-sans sm:text-xl">{book.author}</span>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-xs text-white/40 font-mono">
+              <div className="flex items-center gap-2 text-[10px] text-white/45 font-mono sm:text-xs">
                 <span className="flex items-center gap-1"><Calendar size={12} /> {book.year || 'N/A'}</span>
                 <span className="mx-2">•</span>
                 <span className="flex items-center gap-1"><BookOpen size={12} /> {book.pages || 'INF'} Pages</span>
               </div>
             </div>
           </div>
+          <button
+            onClick={() => onRead()}
+            className="mt-4 flex w-full items-center justify-center gap-3 rounded-xl bg-bit-accent px-5 py-3 text-xs font-mono font-bold uppercase tracking-widest text-white shadow-lg shadow-bit-accent/20 transition-all active:scale-95 sm:hidden"
+          >
+            <BookOpen size={17} /> Read
+          </button>
         </div>
 
         <div className="lg:col-span-8">
-          <div className="flex gap-8 border-b border-bit-border mb-8">
+          <div className="mb-8 flex gap-6 overflow-x-auto border-b border-bit-border no-scrollbar sm:gap-8">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`pb-4 text-sm font-mono font-bold tracking-wider transition-colors relative ${activeTab === 'overview' ? 'text-bit-accent' : 'text-bit-muted hover:text-bit-text'}`}
+              className={`relative shrink-0 pb-4 text-xs font-mono font-bold tracking-wider transition-colors sm:text-sm ${activeTab === 'overview' ? 'text-bit-accent' : 'text-bit-muted hover:text-bit-text'}`}
             >
               OVERVIEW
               {activeTab === 'overview' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-bit-accent" />}
             </button>
             <button
               onClick={() => setActiveTab('read')}
-              className={`pb-4 text-sm font-mono font-bold tracking-wider transition-colors relative ${activeTab === 'read' ? 'text-bit-accent' : 'text-bit-muted hover:text-bit-text'}`}
+              className={`relative shrink-0 pb-4 text-xs font-mono font-bold tracking-wider transition-colors sm:text-sm ${activeTab === 'read' ? 'text-bit-accent' : 'text-bit-muted hover:text-bit-text'}`}
             >
-              AI_CHAPTER_EXTRACT
+              <span className="sm:hidden">AI_EXTRACT</span>
+              <span className="hidden sm:inline">AI_CHAPTER_EXTRACT</span>
               {activeTab === 'read' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-bit-accent" />}
             </button>
             {book.authors && book.authors.length > 1 && (
               <button
                 onClick={() => setActiveTab('authors')}
-                className={`pb-4 text-sm font-mono font-bold tracking-wider transition-colors relative ${activeTab === 'authors' ? 'text-bit-accent' : 'text-bit-muted hover:text-bit-text'}`}
+                className={`relative shrink-0 pb-4 text-xs font-mono font-bold tracking-wider transition-colors sm:text-sm ${activeTab === 'authors' ? 'text-bit-accent' : 'text-bit-muted hover:text-bit-text'}`}
               >
                 CONTRIBUTORS
                 {activeTab === 'authors' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-bit-accent" />}
@@ -352,22 +360,22 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
           {activeTab === 'overview' && (
             <div className="animate-fade-in">
               <section className="mb-12">
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-xl font-display font-semibold text-bit-text flex items-center gap-2">
+                <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="flex items-center gap-2 text-xl font-display font-semibold text-bit-text">
                     <Info size={18} className="text-bit-accent" /> Summary Registry
                   </h3>
-                  <div className="flex gap-3">
+                  <div className="grid grid-cols-2 gap-3 sm:flex">
                     {book.downloadUrl && (
-                      <a href={book.downloadUrl} download={book.title} target="_blank" rel="noopener noreferrer" className="px-6 py-2.5 bg-bit-panel/50 text-bit-accent border border-bit-accent/30 rounded-lg flex items-center gap-2 font-mono text-[10px] font-bold uppercase transition-all hover:bg-bit-accent hover:text-white hover:border-bit-accent shadow-sm active:scale-95 group/dl">
+                      <a href={book.downloadUrl} download={book.title} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent shadow-sm transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white active:scale-95 sm:px-6 group/dl">
                         <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
                       </a>
                     )}
-                    <button onClick={() => onRead()} className="px-6 py-2.5 bg-bit-accent text-white rounded-lg shadow-lg shadow-bit-accent/20 flex items-center gap-2 font-mono text-[10px] font-bold uppercase transition-all hover:scale-105 active:scale-95">
-                      <BookOpen size={16} /> Open Volume
+                    <button onClick={() => onRead()} className={`${book.downloadUrl ? '' : 'col-span-2'} flex items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
+                      <BookOpen size={16} /> read
                     </button>
                   </div>
                 </div>
-                <div className="text-lg text-bit-muted leading-relaxed max-w-3xl">
+                <div className="max-w-3xl text-base leading-8 text-bit-muted sm:text-lg sm:leading-relaxed">
                   {descLoading ? (
                     <div className="flex flex-col gap-4">
                       <div className="h-4 bg-bit-panel/50 rounded animate-pulse w-full" />
@@ -404,7 +412,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
 
               <section className="mb-12">
                 <h3 className="text-xl font-display font-semibold text-bit-text mb-6">Metadata Archive</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
                   <div className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 shadow-sm">
                     <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 font-bold">Impact Score</p>
                     <p className="text-2xl font-display font-bold text-bit-text">{book.popularity || 0}%</p>
@@ -415,7 +423,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                   </div>
                   <button onClick={() => onAuthorClick?.(book.author)} className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 text-left hover:border-bit-accent/50 transition-colors group/meta shadow-sm">
                     <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 group-hover/meta:text-bit-accent transition-colors font-bold">{book.source === 'YoBook' ? 'By Publisher' : 'By Author'}</p>
-                    <p className="text-xl font-display font-bold text-bit-text truncate group-hover/meta:text-bit-accent transition-colors">{book.author}</p>
+                    <p className="line-clamp-2 text-base font-display font-bold text-bit-text transition-colors group-hover/meta:text-bit-accent sm:text-xl">{book.author}</p>
                   </button>
                   <div className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 shadow-sm">
                     <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 font-bold">Language</p>

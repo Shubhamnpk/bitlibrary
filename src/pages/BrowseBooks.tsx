@@ -691,7 +691,7 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
          {!shouldShowShelves && loading && books.length === 0 ? (
             <BookGridSkeleton count={8} />
          ) : !shouldShowShelves && viewMode === 'grid' ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
+            <div className="bit-card-grid">
                {books.map((book, idx) => (
                   <div key={`${book.id}-${idx}`} className="animate-fade-in-up" style={{ animationDelay: `${(idx % 8) * 40}ms` }}>
                      <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} />

@@ -20,7 +20,7 @@ const BookCard: React.FC<BookCardProps> = ({
   onRead, 
   onAuthorClick, 
   variant = 'full',
-  searchQuery 
+  searchQuery,
 }) => {
   const navigate = useNavigate();
   const { state } = useLocalUserState();
@@ -44,7 +44,7 @@ const BookCard: React.FC<BookCardProps> = ({
   return (
     <div
       onClick={() => onClick(book)}
-      className={`group relative flex h-full flex-col overflow-hidden rounded-xl border border-bit-border bg-bit-panel/30 hover:bg-bit-panel/50 transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:border-bit-accent/30 ${variant === 'compact' ? 'p-0' : 'shadow-sm'}`}
+      className={`group relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-bit-border bg-bit-panel/30 hover:bg-bit-panel/50 transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:border-bit-accent/30 ${variant === 'compact' ? 'p-0' : 'shadow-sm'}`}
     >
       <div className={`absolute inset-0 bg-gradient-to-br ${bgGradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
 
@@ -56,7 +56,7 @@ const BookCard: React.FC<BookCardProps> = ({
 
       <div className="relative z-10 flex flex-col h-full">
         {/* Cover Aspect Ratio container */}
-        <div className={`aspect-[4/5] w-full bg-gradient-to-b from-bit-panel/40 to-transparent flex items-center justify-center border-b border-bit-border shadow-md overflow-hidden group-hover:scale-[1.01] transition-transform duration-500 relative`}>
+        <div className="aspect-[4/5] w-full bg-gradient-to-b from-bit-panel/40 to-transparent flex items-center justify-center border-b border-bit-border shadow-md overflow-hidden group-hover:scale-[1.01] transition-transform duration-500 relative">
 
           {proxiedCoverUrl ? (
             <img

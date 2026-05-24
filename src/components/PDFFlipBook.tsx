@@ -14,6 +14,9 @@ const isTurnTouchDevice = () => Boolean(($ as unknown as { isTouch?: boolean }).
 interface PDFFlipBookProps {
   pdfUrl: string;
   title: string;
+  backgroundPreset?: PdfBackgroundPresetId;
+  studyPanelOpen?: boolean;
+  onStudyPanelOpenChange?: (open: boolean) => void;
 }
 
 interface FlipDimensions {
@@ -58,9 +61,51 @@ interface PdfStudyState {
   textHighlights: PdfTextHighlight[];
 }
 
+export type PdfBackgroundPresetId = 'default' | 'wood' | 'paper' | 'sage' | 'night';
+
 type TurnBook = JQuery & {
   turn: (commandOrOptions?: unknown, value?: unknown) => unknown;
 };
+
+const PDF_BACKGROUND_STORAGE_KEY = 'bitlibrary-pdf-background-v1';
+
+export const PDF_BACKGROUND_PRESETS: Array<{
+  id: PdfBackgroundPresetId;
+  label: string;
+  className: string;
+  swatch: string;
+}> = [
+  {
+    id: 'default',
+    label: 'Default',
+    className: 'bit-pdf-reader-bg-default',
+    swatch: 'linear-gradient(135deg, rgb(var(--bit-bg)), rgba(var(--bit-accent-rgb), 0.34))',
+  },
+  {
+    id: 'wood',
+    label: 'Wood',
+    className: 'bit-pdf-reader-bg-wood',
+    swatch: 'linear-gradient(135deg, #5f351f, #b8753e 52%, #3b2116)',
+  },
+  {
+    id: 'paper',
+    label: 'Paper',
+    className: 'bit-pdf-reader-bg-paper',
+    swatch: 'linear-gradient(135deg, #f4dfb8, #fff5dc 58%, #d7b47b)',
+  },
+  {
+    id: 'sage',
+    label: 'Sage',
+    className: 'bit-pdf-reader-bg-sage',
+    swatch: 'linear-gradient(135deg, #425143, #8fa085 55%, #1f2c26)',
+  },
+  {
+    id: 'night',
+    label: 'Night',
+    className: 'bit-pdf-reader-bg-night',
+    swatch: 'linear-gradient(135deg, #131821, #334055 55%, #090b10)',
+  },
+];
 
 const isTurnBookReady = (book: TurnBook) => {
   try {
@@ -78,6 +123,25 @@ const getProxyPdfUrl = (url: string) => {
 const getStudyStorageKey = (pdfUrl: string) => `bitlibrary-pdf-study-v1:${encodeURIComponent(pdfUrl).slice(0, 180)}`;
 
 const clampZoom = (value: number) => Math.min(1.75, Math.max(1, Number(value.toFixed(2))));
+
+export const readPdfBackgroundPreset = (): PdfBackgroundPresetId => {
+  if (typeof window === 'undefined') return 'default';
+
+  try {
+    const value = window.localStorage.getItem(PDF_BACKGROUND_STORAGE_KEY);
+    return PDF_BACKGROUND_PRESETS.some((preset) => preset.id === value) ? value as PdfBackgroundPresetId : 'default';
+  } catch {
+    return 'default';
+  }
+};
+
+export const writePdfBackgroundPreset = (preset: PdfBackgroundPresetId) => {
+  try {
+    window.localStorage.setItem(PDF_BACKGROUND_STORAGE_KEY, preset);
+  } catch {
+    // Reading backgrounds are cosmetic, so storage failures should not block the reader.
+  }
+};
 
 const readStudyState = (pdfUrl: string): PdfStudyState => {
   if (typeof window === 'undefined') return { bookmarks: [], highlights: [], notes: {}, textHighlights: [] };
@@ -370,7 +434,13 @@ const getDimensions = (containerWidth: number, containerHeight: number): FlipDim
   };
 };
 
-const PDFFlipBook: React.FC<PDFFlipBookProps> = ({ pdfUrl, title }) => {
+const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
+  pdfUrl,
+  title,
+  backgroundPreset: controlledBackgroundPreset,
+  studyPanelOpen: controlledStudyPanelOpen,
+  onStudyPanelOpenChange,
+}) => {
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [dimensions, setDimensions] = useState<FlipDimensions>({ width: 840, height: 594, display: 'double' });
@@ -378,7 +448,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({ pdfUrl, title }) => {
   const [error, setError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [zoom, setZoom] = useState(1);
-  const [studyPanelOpen, setStudyPanelOpen] = useState(false);
+  const [internalStudyPanelOpen, setInternalStudyPanelOpen] = useState(false);
+  const [internalBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
   const [studyState, setStudyState] = useState<PdfStudyState>(() => readStudyState(pdfUrl));
   const shellRef = useRef<HTMLDivElement | null>(null);
   const bookRef = useRef<HTMLDivElement | null>(null);
@@ -392,6 +463,12 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({ pdfUrl, title }) => {
   const sortedBookmarks = useMemo(() => [...studyState.bookmarks].sort((a, b) => a - b), [studyState.bookmarks]);
   const sortedHighlights = useMemo(() => [...studyState.highlights].sort((a, b) => a - b), [studyState.highlights]);
   const sortedTextHighlights = useMemo(() => [...studyState.textHighlights].sort((a, b) => b.createdAt - a.createdAt), [studyState.textHighlights]);
+  const studyPanelOpen = controlledStudyPanelOpen ?? internalStudyPanelOpen;
+  const backgroundPreset = controlledBackgroundPreset ?? internalBackgroundPreset;
+  const activeBackgroundPreset = useMemo(
+    () => PDF_BACKGROUND_PRESETS.find((preset) => preset.id === backgroundPreset) || PDF_BACKGROUND_PRESETS[0],
+    [backgroundPreset]
+  );
   const currentPageNote = studyState.notes[String(currentPage)] || '';
   const currentPageBookmarked = studyState.bookmarks.includes(currentPage);
   const currentPageHighlighted = studyState.highlights.includes(currentPage);
@@ -402,6 +479,15 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({ pdfUrl, title }) => {
     const book = $(bookRef.current) as unknown as TurnBook;
     return isTurnBookReady(book) ? book : null;
   }, []);
+
+  const setStudyPanelOpen = useCallback((value: boolean | ((open: boolean) => boolean)) => {
+    const nextValue = typeof value === 'function' ? value(studyPanelOpen) : value;
+    if (onStudyPanelOpenChange) {
+      onStudyPanelOpenChange(nextValue);
+    } else {
+      setInternalStudyPanelOpen(nextValue);
+    }
+  }, [onStudyPanelOpenChange, studyPanelOpen]);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
@@ -415,6 +501,10 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({ pdfUrl, title }) => {
   useEffect(() => {
     writeStudyState(pdfUrl, studyState);
   }, [pdfUrl, studyState]);
+
+  useEffect(() => {
+    writePdfBackgroundPreset(backgroundPreset);
+  }, [backgroundPreset]);
 
   useEffect(() => {
     currentPageRef.current = currentPage;
@@ -664,6 +754,10 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({ pdfUrl, title }) => {
     }
   }, [getBook, pageCount]);
 
+  const handlePageSliderChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    goToPage(Number(event.target.value));
+  }, [goToPage]);
+
   const goToBookmark = useCallback((page: number) => {
     const returnTarget = bookmarkReturnRef.current;
     const current = currentPageRef.current;
@@ -827,7 +921,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({ pdfUrl, title }) => {
   }
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_top,rgba(var(--bit-accent-rgb),0.08),transparent_42%),linear-gradient(180deg,rgba(var(--bit-panel),0.3),rgba(var(--bit-bg),1))]">
+    <div className={`relative flex h-full w-full flex-col overflow-hidden ${activeBackgroundPreset.className}`}>
       <div
         ref={shellRef}
         data-pdf-reader-shell
@@ -1067,11 +1161,28 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({ pdfUrl, title }) => {
         )}
       </div>
 
-      <div className="relative z-[10050] flex items-center justify-between gap-4 border-t border-bit-border bg-bit-panel/55 px-4 py-3 backdrop-blur md:px-6">
+      <div className="relative z-[10050] flex flex-col gap-3 border-t border-bit-border bg-bit-panel/55 px-4 py-3 backdrop-blur lg:flex-row lg:items-center lg:justify-between md:px-6">
         <p className="min-w-0 line-clamp-1 text-[10px] font-mono uppercase tracking-[0.22em] text-bit-muted">
           {title}
         </p>
-        <div className="flex shrink-0 items-center gap-3">
+        <label className="flex min-w-0 flex-1 items-center gap-3 lg:max-w-2xl">
+          <span className="shrink-0 text-[10px] font-mono font-bold text-bit-muted">1</span>
+          <span className="sr-only">Navigate PDF page</span>
+          <input
+            type="range"
+            min={1}
+            max={pageCount}
+            step={1}
+            value={currentPage}
+            onChange={handlePageSliderChange}
+            disabled={pageCount <= 1}
+            className="h-2 min-w-0 flex-1 cursor-pointer accent-bit-accent disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Navigate PDF page"
+            aria-valuetext={`Page ${currentPage} of ${pageCount}`}
+          />
+          <span className="shrink-0 text-[10px] font-mono font-bold text-bit-muted">{pageCount}</span>
+        </label>
+        <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={() => setStudyPanelOpen((open) => !open)}

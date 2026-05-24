@@ -21,7 +21,6 @@ import AudiobooksPage from '@/pages/AudiobooksPage';
 import AudiobookDetails from '@/pages/AudiobookDetails';
 import CurriculumPage from '@/pages/CurriculumPage';
 import { recordRecentSearch, useLocalUserState } from '@/lib/local-user';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams, matchPath } from 'react-router-dom';
 
@@ -472,7 +471,7 @@ const App: React.FC = () => {
                   </Link>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
+                <div className="bit-card-grid">
                   {isFeaturedLoading && featuredBooks.length === 0 ? (
                     // Logic for "One Row" using CSS grid visibility
                     // We render 4 to ensure a full row on all screens
@@ -522,6 +521,7 @@ const App: React.FC = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <CurriculumPage
                 onBookClick={(book) => navigate(`/book/${book.id}`)}
+                onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
                 onRead={handleReadBook}
               />
             </div>

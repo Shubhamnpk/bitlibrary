@@ -529,7 +529,7 @@ export const searchYoBookBooks = async (query: string, signal?: AbortSignal): Pr
   }
 
   try {
-    const params = new URLSearchParams({ q: query, limit: '200', full: 'true' });
+    const params = new URLSearchParams({ q: query, limit: '100', full: 'true' });
     const grade = getGradeFromCategory(query);
     if (grade) {
       params.delete('q');

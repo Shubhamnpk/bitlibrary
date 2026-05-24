@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Audiobook, AudiobookTrack } from '@/types/index';
 import { fetchAudiobookById, fetchFeaturedAudiobooks, searchAudiobooks } from '@/services/audiobookService';
 import AudiobookCard from '@/components/AudiobookCard';
@@ -25,6 +25,7 @@ const getProgressKey = (audiobookId: string) => `${PROGRESS_KEY_PREFIX}-${audiob
 const AudiobookDetails: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audiobook, setAudiobook] = useState<Audiobook | null>(null);
   const [loading, setLoading] = useState(true);
@@ -249,6 +250,22 @@ const AudiobookDetails: React.FC = () => {
     toggleLocalSavedAudiobook(audiobook);
   };
 
+  const goBack = () => {
+    const from = (location.state as { from?: string } | null)?.from;
+    if (from && !from.startsWith(`/audiobook/${id}`)) {
+      navigate(from);
+      return;
+    }
+
+    const historyState = window.history.state as { idx?: number } | null;
+    if (historyState && typeof historyState.idx === 'number' && historyState.idx > 0) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/audiobooks');
+  };
+
   const structuredData = useMemo(() => {
     if (!audiobook) return [];
     return [
@@ -285,8 +302,8 @@ const AudiobookDetails: React.FC = () => {
     return (
       <div className="py-24 text-center">
         <p className="font-mono text-sm uppercase tracking-[0.2em] text-bit-muted">Audiobook node not found.</p>
-        <button onClick={() => navigate('/audiobooks')} className="mt-6 rounded-full bg-bit-accent px-6 py-3 text-[10px] font-mono uppercase tracking-widest text-white">
-          Back to audiobooks
+        <button onClick={goBack} className="mt-6 rounded-full bg-bit-accent px-6 py-3 text-[10px] font-mono uppercase tracking-widest text-white">
+          Back
         </button>
       </div>
     );
@@ -310,11 +327,11 @@ const AudiobookDetails: React.FC = () => {
 
       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <button
-          onClick={() => navigate('/audiobooks')}
+          onClick={goBack}
           className="inline-flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/30 px-6 py-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-muted shadow-sm transition-all hover:border-bit-accent/30 hover:text-bit-accent"
         >
           <ArrowLeft size={14} />
-          Back to Audiobooks
+          Back
         </button>
 
         <button
@@ -832,13 +849,15 @@ const AudiobookDetails: React.FC = () => {
             </div>
 
             {suggestedAudiobooks.length > 0 ? (
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.25rem),1fr))] gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fit,minmax(10.25rem,1fr))] lg:grid-cols-4 lg:gap-x-5">
+              <div className="bit-card-grid">
                 {suggestedAudiobooks.map((item) => (
                   <AudiobookCard
                     key={item.id}
                     audiobook={item}
                     variant="compact"
-                    onClick={(nextAudiobook) => navigate(`/audiobook/${nextAudiobook.id}`)}
+                    onClick={(nextAudiobook) => navigate(`/audiobook/${nextAudiobook.id}`, {
+                      state: { from: `${location.pathname}${location.search}${location.hash}` },
+                    })}
                   />
                 ))}
               </div>

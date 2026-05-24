@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Book } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, BookOpen, Settings, ExternalLink, Download, ChevronLeft, ChevronRight, Loader2, Maximize2, X, Layout, Monitor, Minimize2, Zap } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Loader2, Maximize2, X, Layout, Monitor, Minimize2, Moon, Palette, PanelRight, Settings, Sun, Type, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import PDFFlipBook from './PDFFlipBook';
+import PDFFlipBook, { PDF_BACKGROUND_PRESETS, readPdfBackgroundPreset, type PdfBackgroundPresetId } from './PDFFlipBook';
+import { useLocalUserState } from '@/lib/local-user';
 
 interface ReaderProps {
   book: Book;
@@ -20,6 +21,10 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [isImmersive, setIsImmersive] = useState(false);
   const [localIsMinimized, setLocalIsMinimized] = useState(isMinimized);
   const [iframeLoading, setIframeLoading] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pdfStudyPanelOpen, setPdfStudyPanelOpen] = useState(false);
+  const [pdfBackgroundPreset, setPdfBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
+  const { state: localUserState, setThemeMode, toggleSavedBook } = useLocalUserState();
 
   useEffect(() => {
     setLocalIsMinimized(isMinimized);
@@ -38,11 +43,15 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const externalReaderUrl = book.externalUrl || book.downloadUrl || '';
   const isPdfReader = /\.pdf(?:$|[?#])/i.test(externalReaderUrl) || /\.pdf(?:$|[?#])/i.test(book.downloadUrl || '');
   const readerUrl = isPdfReader && book.downloadUrl ? book.downloadUrl : externalReaderUrl;
+  const isLightTheme = localUserState.settings.theme === 'light';
+  const isSavedBook = localUserState.savedBooks.some((entry) => entry.id === book.id);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isImmersive) {
+        if (settingsOpen) {
+          setSettingsOpen(false);
+        } else if (isImmersive) {
           setIsImmersive(false);
         } else if (!isMinimized) {
         }
@@ -50,7 +59,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isImmersive, isMinimized]);
+  }, [isImmersive, isMinimized, settingsOpen]);
 
   useEffect(() => {
     if (isExternal) {
@@ -154,7 +163,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             <div className="p-2 bg-bit-panel/50 rounded-full text-bit-accent border border-bit-border group-hover:bg-bit-accent group-hover:text-white transition-all shadow-sm">
               <ArrowLeft size={18} />
             </div>
-            <span className="hidden sm:block text-[10px] font-mono font-bold text-bit-text tracking-widest uppercase">END_SESSION</span>
+            <span className="hidden sm:block text-[10px] font-mono font-bold text-bit-text tracking-widest uppercase">close</span>
           </button>
           <div>
             <h2 className="font-display font-semibold text-bit-text tracking-tight line-clamp-1 max-w-[200px] md:max-w-md">{book.title}</h2>
@@ -228,14 +237,185 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             >
               <Monitor size={18} className="group-hover:scale-110" />
             </button>
+            <button
+              onClick={() => setSettingsOpen((open) => !open)}
+              className={`p-3 rounded-lg transition-all group ${settingsOpen ? 'bg-bit-accent text-white' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-accent'}`}
+              title="Reader settings"
+              aria-label="Open reader settings"
+              aria-expanded={settingsOpen}
+            >
+              <Settings size={18} className="group-hover:rotate-45 transition-transform" />
+            </button>
           </div>
         </div>
       </header>
 
+      {settingsOpen && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 top-16 z-[10100] bg-bit-bg/35 backdrop-blur-[1px]"
+            aria-label="Close reader settings"
+            onClick={() => setSettingsOpen(false)}
+          />
+          <aside className="fixed right-0 top-16 bottom-0 z-[10110] flex w-[min(24rem,100vw)] flex-col border-l border-bit-border bg-bit-bg/96 shadow-2xl backdrop-blur-xl animate-fade-in">
+            <div className="flex items-center justify-between border-b border-bit-border px-5 py-4">
+              <div>
+                <p className="text-[10px] font-mono font-bold uppercase tracking-[0.24em] text-bit-accent">Reader</p>
+                <h3 className="mt-1 font-display text-xl font-bold text-bit-text">Settings</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                className="rounded-full border border-bit-border p-2 text-bit-muted transition-colors hover:border-bit-accent/40 hover:text-bit-accent"
+                aria-label="Close reader settings"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
+              <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                  {isSavedBook ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Bookmarks</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleSavedBook(book)}
+                  className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${isSavedBook ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-bg/50 text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent'}`}
+                >
+                  {isSavedBook ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
+                  {isSavedBook ? 'Saved to library' : 'Save this book'}
+                </button>
+                <div className="mt-4 space-y-2">
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-bit-muted">Saved books</p>
+                  {localUserState.savedBooks.slice(0, 6).length ? localUserState.savedBooks.slice(0, 6).map((savedBook) => (
+                    <div key={savedBook.id} className="rounded-lg border border-bit-border bg-bit-bg/35 px-3 py-2">
+                      <p className="line-clamp-1 text-xs font-semibold text-bit-text">{savedBook.title}</p>
+                      <p className="mt-1 line-clamp-1 text-[9px] font-mono uppercase tracking-widest text-bit-muted">{savedBook.author}</p>
+                    </div>
+                  )) : (
+                    <p className="text-xs leading-5 text-bit-muted">Saved books will appear here.</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                  {isLightTheme ? <Sun size={16} /> : <Moon size={16} />}
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Theme</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setThemeMode('dark')}
+                    className={`rounded-lg border px-3 py-3 text-left transition-all ${!isLightTheme ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:text-bit-text'}`}
+                  >
+                    <Moon size={15} />
+                    <span className="mt-2 block text-[10px] font-mono font-bold uppercase tracking-widest">Dark</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setThemeMode('light')}
+                    className={`rounded-lg border px-3 py-3 text-left transition-all ${isLightTheme ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:text-bit-text'}`}
+                  >
+                    <Sun size={15} />
+                    <span className="mt-2 block text-[10px] font-mono font-bold uppercase tracking-widest">Light</span>
+                  </button>
+                </div>
+              </section>
+
+              {!isExternal && (
+                <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                  <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                    <Type size={16} />
+                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Text size</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFontSize(Math.max(12, fontSize - 2))}
+                      className="h-10 flex-1 rounded-lg border border-bit-border bg-bit-bg/40 text-sm font-bold text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent"
+                    >
+                      A-
+                    </button>
+                    <span className="min-w-14 text-center text-[10px] font-mono font-bold text-bit-accent">{fontSize}px</span>
+                    <button
+                      type="button"
+                      onClick={() => setFontSize(Math.min(32, fontSize + 2))}
+                      className="h-10 flex-1 rounded-lg border border-bit-border bg-bit-bg/40 text-sm font-bold text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent"
+                    >
+                      A+
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              {isPdfReader && (
+                <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                  <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                    <Palette size={16} />
+                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">PDF background</p>
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {PDF_BACKGROUND_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setPdfBackgroundPreset(preset.id)}
+                        className={`h-11 rounded-lg border transition-all ${pdfBackgroundPreset === preset.id ? 'border-bit-accent ring-2 ring-bit-accent/25' : 'border-bit-border hover:border-bit-accent/50'}`}
+                        style={{ background: preset.swatch }}
+                        aria-label={`Use ${preset.label} PDF background`}
+                        title={`${preset.label} background`}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPdfStudyPanelOpen(true)}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-bit-border bg-bit-bg/40 px-3 py-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-colors hover:border-bit-accent/40 hover:text-bit-accent"
+                  >
+                    <PanelRight size={14} />
+                    Open PDF bookmarks and notes
+                  </button>
+                </section>
+              )}
+
+              <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                <p className="mb-3 text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Session</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleMinimized}
+                    className="rounded-lg border border-bit-border bg-bit-bg/40 px-3 py-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-colors hover:border-bit-accent/40 hover:text-bit-accent"
+                  >
+                    Minimize
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsImmersive(true)}
+                    className="rounded-lg border border-bit-border bg-bit-bg/40 px-3 py-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-colors hover:border-bit-accent/40 hover:text-bit-accent"
+                  >
+                    Immersive
+                  </button>
+                </div>
+              </section>
+            </div>
+          </aside>
+        </>
+      )}
+
       {/* Main Content Area - Optimized Strip Layout */}
       <main className="flex-1 overflow-y-auto relative scrollbar-hide bg-bit-bg flex flex-col items-center">
         {isExternal && isPdfReader ? (
-          <PDFFlipBook pdfUrl={readerUrl} title={book.title} />
+          <PDFFlipBook
+            pdfUrl={readerUrl}
+            title={book.title}
+            backgroundPreset={pdfBackgroundPreset}
+            studyPanelOpen={pdfStudyPanelOpen}
+            onStudyPanelOpenChange={setPdfStudyPanelOpen}
+          />
         ) : isExternal ? (
           <div className="w-full max-w-[1000px] h-full bg-white relative shadow-2xl border-x border-bit-border overflow-hidden">
             {iframeLoading && (

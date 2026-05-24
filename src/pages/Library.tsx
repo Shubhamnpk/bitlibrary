@@ -168,7 +168,7 @@ const Library: React.FC<LibraryProps> = ({
           {hasDisplayedItems ? (
             <div className="space-y-10">
               {displayedBooks.length > 0 && (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-8">
+                <div className="bit-card-grid">
                   {displayedBooks.map((book) => (
                     <BookCard key={book.id} variant="compact" book={book} onClick={onBookClick} onRead={onRead} />
                   ))}
@@ -184,7 +184,7 @@ const Library: React.FC<LibraryProps> = ({
                     </div>
                     <Headphones size={24} className="text-bit-muted" />
                   </div>
-                  <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.25rem),1fr))] gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fit,minmax(10.25rem,1fr))] lg:grid-cols-3">
+                  <div className="bit-card-grid">
                     {displayedAudiobooks.map((audiobook) => (
                       <AudiobookCard key={audiobook.id} variant="compact" audiobook={audiobook} onClick={onAudiobookClick} />
                     ))}

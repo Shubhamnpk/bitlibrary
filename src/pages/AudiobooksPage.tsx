@@ -4,7 +4,8 @@ import { Audiobook } from '@/types/index';
 import {
   AUDIOBOOK_CATEGORIES,
   fetchAudiobooksByGenre,
-  fetchFeaturedAudiobooks,
+  fetchPopularAudiobooks,
+  fetchYoBookAudiobooks,
   getAudiobookCategoryById,
   searchAudiobooks,
 } from '@/services/audiobookService';
@@ -23,6 +24,7 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
   const { categoryId } = useParams();
   const selectedCategory = getAudiobookCategoryById(categoryId);
   const isCategoryPage = Boolean(categoryId);
+  const [yoBookAudiobooks, setYoBookAudiobooks] = useState<Audiobook[]>([]);
   const [featuredAudiobooks, setFeaturedAudiobooks] = useState<Audiobook[]>([]);
   const [categoryRows, setCategoryRows] = useState<CategoryRows>({});
   const [categoryAudiobooks, setCategoryAudiobooks] = useState<Audiobook[]>([]);
@@ -39,6 +41,7 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
     setHasSearched(false);
 
     if (selectedCategory) {
+      setYoBookAudiobooks([]);
       fetchAudiobooksByGenre(selectedCategory.genre, 20)
         .then((items) => {
           if (active) setCategoryAudiobooks(items);
@@ -52,12 +55,16 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
     }
 
     Promise.allSettled([
-      fetchFeaturedAudiobooks(8),
+      fetchYoBookAudiobooks(12),
+      fetchPopularAudiobooks(8),
       ...AUDIOBOOK_CATEGORIES.map((category) => fetchAudiobooksByGenre(category.genre, 8)),
     ])
-      .then(([featuredResult, ...rowResults]) => {
+      .then(([yoBookResult, featuredResult, ...rowResults]) => {
         if (!active) return;
-        setFeaturedAudiobooks(featuredResult.status === 'fulfilled' ? featuredResult.value : []);
+        const yoBookItems = yoBookResult.status === 'fulfilled' ? yoBookResult.value : [];
+        const featuredItems = featuredResult.status === 'fulfilled' ? featuredResult.value : [];
+        setYoBookAudiobooks(yoBookItems);
+        setFeaturedAudiobooks(featuredItems);
         const nextRows = AUDIOBOOK_CATEGORIES.reduce<CategoryRows>((rows, category, index) => {
           const result = rowResults[index];
           rows[category.id] = result?.status === 'fulfilled' ? result.value : [];
@@ -92,7 +99,7 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
 
   const schemaItems = isCategoryPage
     ? categoryAudiobooks
-    : [...featuredAudiobooks, ...Object.values(categoryRows).flat()];
+    : [...yoBookAudiobooks, ...featuredAudiobooks, ...Object.values(categoryRows).flat()];
   const schema = useMemo(
     () => createItemListSchema(
       schemaItems.slice(0, 24).map((item) => ({
@@ -200,7 +207,7 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
           <CategoryQuickLinks />
           <AudiobookShelf
             title="Popular listening"
-            description="A quick starting point from the public-domain catalog."
+            description="Well-known classics and public-domain recordings people return to often."
             audiobooks={featuredAudiobooks}
             loading={loading}
             onAudiobookClick={onAudiobookClick}
@@ -216,6 +223,13 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
               onAudiobookClick={onAudiobookClick}
             />
           ))}
+          <AudiobookShelf
+            title="YoBook education audio"
+            description="Fast local-service learning audio from the YoBook education catalog."
+            audiobooks={yoBookAudiobooks}
+            loading={loading}
+            onAudiobookClick={onAudiobookClick}
+          />
         </section>
       )}
     </div>
@@ -266,7 +280,7 @@ const AudiobookShelf: React.FC<AudiobookShelfProps> = ({ title, description, aud
     {loading ? (
       <AudiobookSkeletonRow />
     ) : audiobooks.length > 0 ? (
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.5rem),1fr))] gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] lg:grid-cols-4">
+      <div className="bit-card-grid">
         {audiobooks.slice(0, 4).map((audiobook) => (
           <AudiobookCard key={audiobook.id} audiobook={audiobook} onClick={onAudiobookClick} variant="compact" />
         ))}
@@ -285,7 +299,7 @@ interface AudiobookGridProps {
 }
 
 const AudiobookGrid: React.FC<AudiobookGridProps> = ({ audiobooks, onAudiobookClick }) => (
-  <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.5rem),1fr))] gap-x-3 gap-y-6 sm:grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] lg:grid-cols-4">
+  <div className="bit-card-grid">
     {audiobooks.map((audiobook) => (
       <AudiobookCard key={audiobook.id} audiobook={audiobook} onClick={onAudiobookClick} variant="compact" />
     ))}

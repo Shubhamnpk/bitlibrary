@@ -141,7 +141,7 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
         {loading ? (
           <BookGridSkeleton count={8} />
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
+          <div className="bit-card-grid">
             {books.map((book, idx) => (
               <div 
                 key={book.id} 

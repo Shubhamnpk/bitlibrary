@@ -1,5 +1,5 @@
 import { Audiobook, AudiobookTrack, Author, Book } from '@/types/index';
-import { fetchBookById, searchYoBookBooks } from '@/services/bookService';
+import { fetchBookById, fetchBooksFromYoBook, searchYoBookBooks } from '@/services/bookService';
 
 const LIBRIVOX_API_BASE = 'https://librivox.org/api/feed/audiobooks';
 const CACHE_TTL = 6 * 60 * 60 * 1000;
@@ -229,7 +229,7 @@ const mapAudiobook = (item: any): Audiobook => {
   };
 };
 
-const isYoBookAudioBook = (book: Book) => (
+export const isYoBookAudioBook = (book: Book) => (
   Boolean(book.audioUrl)
   || book.providerSource === 'cehrd-audio'
   || book.category.toLowerCase().includes('audio')
@@ -244,7 +244,7 @@ const buildYoBookAudioFallbackUrls = (book: Book) => {
   return Array.from(urls);
 };
 
-const mapYoBookAudioToAudiobook = (book: Book): Audiobook | null => {
+export const mapYoBookAudioToAudiobook = (book: Book): Audiobook | null => {
   const audioUrls = buildYoBookAudioFallbackUrls(book);
   if (!audioUrls.length) return null;
 
@@ -285,6 +285,22 @@ const searchYoBookAudiobooks = async (query: string, limit: number, signal?: Abo
     .map(mapYoBookAudioToAudiobook)
     .filter((audiobook): audiobook is Audiobook => Boolean(audiobook))
     .slice(0, limit);
+};
+
+export const fetchYoBookAudiobooks = async (limit = 12, signal?: AbortSignal): Promise<Audiobook[]> => {
+  const cacheKey = `yobook-audio-featured:${limit}`;
+  const cached = getCached<Audiobook[]>(cacheKey);
+  if (cached) return cached;
+
+  const { books } = await fetchBooksFromYoBook(1, 'Audio Drama', signal);
+  const audiobooks = books
+    .filter(isYoBookAudioBook)
+    .map(mapYoBookAudioToAudiobook)
+    .filter((audiobook): audiobook is Audiobook => Boolean(audiobook))
+    .slice(0, limit);
+
+  setCached(cacheKey, audiobooks);
+  return audiobooks;
 };
 
 const buildUrl = (query: AudiobookQuery, format: 'json' | 'jsonp', callbackName?: string) => {
@@ -360,6 +376,37 @@ const requestAudiobooks = async (query: AudiobookQuery): Promise<any[]> => {
 export const fetchFeaturedAudiobooks = async (limit = 8): Promise<Audiobook[]> => {
   const books = await requestAudiobooks({ limit, offset: 0, extended: true });
   return books.map(mapAudiobook);
+};
+
+export const fetchPopularAudiobooks = async (limit = 8): Promise<Audiobook[]> => {
+  const cacheKey = `popular-audiobooks:${limit}`;
+  const cached = getCached<Audiobook[]>(cacheKey);
+  if (cached) return cached;
+
+  const popularTitles = [
+    'Adventures of Sherlock Holmes',
+    'Pride and Prejudice',
+    'Alice in Wonderland',
+    'Frankenstein',
+    'Dracula',
+    'A Christmas Carol',
+    'Secret Garden',
+    'Moby Dick',
+    'Jane Eyre',
+    'Treasure Island',
+  ];
+
+  const results = await Promise.allSettled(
+    popularTitles.map((title) => requestAudiobooks({ title, limit: 3, offset: 0, extended: true }))
+  );
+  const audiobooks = results
+    .flatMap((result) => result.status === 'fulfilled' ? result.value : [])
+    .map(mapAudiobook)
+    .filter((audiobook, index, list) => list.findIndex((entry) => entry.id === audiobook.id) === index)
+    .slice(0, limit);
+
+  setCached(cacheKey, audiobooks);
+  return audiobooks;
 };
 
 export const fetchAudiobooksByGenre = async (genre: string, limit = 8, offset = 0): Promise<Audiobook[]> => {
