@@ -76,6 +76,66 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  .pdf-page-slider {
+    appearance: none;
+    border-radius: 999px;
+    background: transparent;
+    outline: none;
+    touch-action: none;
+  }
+
+  .pdf-page-slider::-webkit-slider-runnable-track {
+    height: 2rem;
+    border-radius: 999px;
+    background: transparent;
+  }
+
+  .pdf-page-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 1.35rem;
+    height: 1.35rem;
+    margin-top: 0.325rem;
+    border: 3px solid rgb(var(--bit-bg));
+    border-radius: 999px;
+    background: rgb(var(--bit-accent));
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.4), 0 8px 22px rgba(var(--bit-accent-rgb), 0.28);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+
+  .pdf-page-slider:active::-webkit-slider-thumb {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.55), 0 0 0 8px rgba(var(--bit-accent-rgb), 0.14), 0 10px 28px rgba(var(--bit-accent-rgb), 0.34);
+  }
+
+  .pdf-page-slider::-moz-range-track {
+    height: 2rem;
+    border-radius: 999px;
+    background: transparent;
+  }
+
+  .pdf-page-slider::-moz-range-thumb {
+    width: 1.1rem;
+    height: 1.1rem;
+    border: 3px solid rgb(var(--bit-bg));
+    border-radius: 999px;
+    background: rgb(var(--bit-accent));
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.4), 0 8px 22px rgba(var(--bit-accent-rgb), 0.28);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+
+  .pdf-page-slider:active::-moz-range-thumb {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.55), 0 0 0 8px rgba(var(--bit-accent-rgb), 0.14), 0 10px 28px rgba(var(--bit-accent-rgb), 0.34);
+  }
+
+  .pdf-page-slider:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.4), 0 0 0 5px rgba(var(--bit-accent-rgb), 0.18);
+  }
+
+  .pdf-page-slider:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.4), 0 0 0 5px rgba(var(--bit-accent-rgb), 0.18);
+  }
 }
 
 /* Custom Registry Scrollbar - Bit-Accent Identity Protocol */

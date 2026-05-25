@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Book } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Loader2, Maximize2, X, Layout, Monitor, Minimize2, Moon, Palette, PanelRight, Settings, Sun, Type, Zap } from 'lucide-react';
+import { ArrowLeft, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Monitor, Minimize2, Palette, PanelRight, Type, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import PDFFlipBook, { PDF_BACKGROUND_PRESETS, readPdfBackgroundPreset, type PdfBackgroundPresetId } from './PDFFlipBook';
-import { useLocalUserState } from '@/lib/local-user';
+import PDFFlipBook, { PDF_BACKGROUND_PRESETS, readPdfBackgroundPreset, type PdfBackgroundPresetId, type PdfStudyAction, type PdfStudySnapshot } from './PDFFlipBook';
 
 interface ReaderProps {
   book: Book;
@@ -21,10 +20,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [isImmersive, setIsImmersive] = useState(false);
   const [localIsMinimized, setLocalIsMinimized] = useState(isMinimized);
   const [iframeLoading, setIframeLoading] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [pdfStudyPanelOpen, setPdfStudyPanelOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<'saved' | 'look'>('saved');
   const [pdfBackgroundPreset, setPdfBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
-  const { state: localUserState, setThemeMode, toggleSavedBook } = useLocalUserState();
+  const [pdfStudySnapshot, setPdfStudySnapshot] = useState<PdfStudySnapshot | null>(null);
+  const [pdfStudyAction, setPdfStudyAction] = useState<PdfStudyAction | null>(null);
+  const [pdfHighlightMode, setPdfHighlightMode] = useState(false);
 
   useEffect(() => {
     setLocalIsMinimized(isMinimized);
@@ -43,9 +44,6 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const externalReaderUrl = book.externalUrl || book.downloadUrl || '';
   const isPdfReader = /\.pdf(?:$|[?#])/i.test(externalReaderUrl) || /\.pdf(?:$|[?#])/i.test(book.downloadUrl || '');
   const readerUrl = isPdfReader && book.downloadUrl ? book.downloadUrl : externalReaderUrl;
-  const isLightTheme = localUserState.settings.theme === 'light';
-  const isSavedBook = localUserState.savedBooks.some((entry) => entry.id === book.id);
-
   useEffect(() => {
     if (!isExternal || isPdfReader) return;
     setIframeLoading(true);
@@ -56,8 +54,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (settingsOpen) {
-          setSettingsOpen(false);
+        if (sidebarOpen) {
+          setSidebarOpen(false);
         } else if (isImmersive) {
           setIsImmersive(false);
         } else if (!isMinimized) {
@@ -66,7 +64,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isImmersive, isMinimized, settingsOpen]);
+  }, [isImmersive, isMinimized, sidebarOpen]);
 
   useEffect(() => {
     if (isExternal) {
@@ -117,6 +115,10 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     } else {
       document.exitFullscreen();
     }
+  };
+
+  const triggerPdfStudyAction = (type: PdfStudyAction['type'], page?: number) => {
+    setPdfStudyAction({ id: Date.now(), type, page });
   };
 
   // If minimized, render as a compact floating node (PiP)
@@ -248,172 +250,200 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               <Monitor size={18} className="group-hover:scale-110" />
             </button>
             <button
-              onClick={() => setSettingsOpen((open) => !open)}
-              className={`rounded-lg p-2.5 transition-all sm:p-3 group ${settingsOpen ? 'bg-bit-accent text-white' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-accent'}`}
-              title="Reader settings"
-              aria-label="Open reader settings"
-              aria-expanded={settingsOpen}
+              onClick={() => {
+                setSidebarOpen((open) => {
+                  const nextOpen = !open;
+                  if (nextOpen && isPdfReader) {
+                    setPdfHighlightMode(true);
+                  }
+                  return nextOpen;
+                });
+              }}
+              className={`rounded-lg p-2.5 transition-all sm:p-3 group ${sidebarOpen ? 'bg-bit-accent text-white' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-accent'}`}
+              title="Reader sidebar"
+              aria-label="Open reader sidebar"
+              aria-expanded={sidebarOpen}
             >
-              <Settings size={17} className="transition-transform group-hover:rotate-45 sm:size-[18px]" />
+              <PanelRight size={17} className="transition-transform group-hover:translate-x-0.5 sm:size-[18px]" />
             </button>
           </div>
         </div>
       </header>
 
-      {settingsOpen && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 top-14 z-[10100] bg-bit-bg/35 backdrop-blur-[1px] sm:top-16"
-            aria-label="Close reader settings"
-            onClick={() => setSettingsOpen(false)}
-          />
-          <aside className="fixed right-0 top-14 bottom-0 z-[10110] flex w-full flex-col border-l border-bit-border bg-bit-bg/96 shadow-2xl backdrop-blur-xl animate-fade-in sm:top-16 sm:w-[min(24rem,100vw)]">
-            <div className="flex items-center justify-between border-b border-bit-border px-5 py-4">
-              <div>
-                <p className="text-[10px] font-mono font-bold uppercase tracking-[0.24em] text-bit-accent">Reader</p>
-                <h3 className="mt-1 font-display text-xl font-bold text-bit-text">Settings</h3>
-              </div>
+      {sidebarOpen && (
+        <aside className="fixed bottom-0 right-0 top-14 z-[10120] isolate flex w-full flex-col overflow-hidden border-l border-bit-border bg-bit-bg shadow-[-18px_0_60px_rgba(0,0,0,0.42),0_0_0_1px_rgba(255,255,255,0.05)] ring-1 ring-white/5 animate-fade-in sm:top-16 sm:w-[min(23rem,100vw)]">
+          <div className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.015)_35%,rgba(0,0,0,0.08))]" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-px bg-gradient-to-b from-bit-accent/60 via-bit-border to-transparent" />
+          <div className="border-b border-bit-border/70 bg-bit-bg px-5 py-3">
+            <div className="flex rounded-full border border-bit-border bg-bit-panel/50 p-1">
               <button
                 type="button"
-                onClick={() => setSettingsOpen(false)}
-                className="rounded-full border border-bit-border p-2 text-bit-muted transition-colors hover:border-bit-accent/40 hover:text-bit-accent"
-                aria-label="Close reader settings"
+                onClick={() => setSidebarTab('saved')}
+                className={`h-9 flex-1 rounded-full text-xs font-semibold transition-all ${sidebarTab === 'saved' ? 'bg-bit-accent text-white shadow-sm shadow-bit-accent/20' : 'text-bit-muted hover:text-bit-text'}`}
               >
-                <X size={16} />
+                Saved
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarTab('look')}
+                className={`h-9 flex-1 rounded-full text-xs font-semibold transition-all ${sidebarTab === 'look' ? 'bg-bit-accent text-white shadow-sm shadow-bit-accent/20' : 'text-bit-muted hover:text-bit-text'}`}
+              >
+                Look
               </button>
             </div>
+          </div>
 
-            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
-              <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
-                <div className="mb-3 flex items-center gap-2 text-bit-accent">
-                  {isSavedBook ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Bookmarks</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => toggleSavedBook(book)}
-                  className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${isSavedBook ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-bg/50 text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent'}`}
-                >
-                  {isSavedBook ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
-                  {isSavedBook ? 'Saved to library' : 'Save this book'}
-                </button>
-                <div className="mt-4 space-y-2">
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-bit-muted">Saved books</p>
-                  {localUserState.savedBooks.slice(0, 6).length ? localUserState.savedBooks.slice(0, 6).map((savedBook) => (
-                    <div key={savedBook.id} className="rounded-lg border border-bit-border bg-bit-bg/35 px-3 py-2">
-                      <p className="line-clamp-1 text-xs font-semibold text-bit-text">{savedBook.title}</p>
-                      <p className="mt-1 line-clamp-1 text-[9px] font-mono uppercase tracking-widest text-bit-muted">{savedBook.author}</p>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-bit-bg p-5">
+            {sidebarTab === 'saved' ? (
+              <>
+                {isPdfReader ? (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-bit-accent">
+                        <BookmarkCheck size={16} />
+                        <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Bookmarks</p>
+                      </div>
+                      {pdfStudySnapshot && (
+                        <span className="text-[10px] font-mono font-bold text-bit-muted tabular-nums">
+                          {pdfStudySnapshot.bookmarkCount}
+                        </span>
+                      )}
                     </div>
-                  )) : (
-                    <p className="text-xs leading-5 text-bit-muted">Saved books will appear here.</p>
-                  )}
-                </div>
-              </section>
 
-              <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
-                <div className="mb-3 flex items-center gap-2 text-bit-accent">
-                  {isLightTheme ? <Sun size={16} /> : <Moon size={16} />}
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Theme</p>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setThemeMode('dark')}
-                    className={`rounded-lg border px-3 py-3 text-left transition-all ${!isLightTheme ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:text-bit-text'}`}
-                  >
-                    <Moon size={15} />
-                    <span className="mt-2 block text-[10px] font-mono font-bold uppercase tracking-widest">Dark</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setThemeMode('light')}
-                    className={`rounded-lg border px-3 py-3 text-left transition-all ${isLightTheme ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:text-bit-text'}`}
-                  >
-                    <Sun size={15} />
-                    <span className="mt-2 block text-[10px] font-mono font-bold uppercase tracking-widest">Light</span>
-                  </button>
-                </div>
-              </section>
-
-              {!isExternal && (
-                <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
-                  <div className="mb-3 flex items-center gap-2 text-bit-accent">
-                    <Type size={16} />
-                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Text size</p>
-                  </div>
-                  <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => setFontSize(Math.max(12, fontSize - 2))}
-                      className="h-10 flex-1 rounded-lg border border-bit-border bg-bit-bg/40 text-sm font-bold text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent"
+                      onClick={() => triggerPdfStudyAction('toggle-bookmark')}
+                      className={`inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-all ${pdfStudySnapshot?.currentPageBookmarked || pdfStudySnapshot?.currentPageHighlighted ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent'}`}
                     >
-                      A-
+                      {pdfStudySnapshot?.currentPageBookmarked || pdfStudySnapshot?.currentPageHighlighted ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+                      {pdfStudySnapshot?.currentPageBookmarked || pdfStudySnapshot?.currentPageHighlighted ? 'Saved current page' : 'Save current page'}
                     </button>
-                    <span className="min-w-14 text-center text-[10px] font-mono font-bold text-bit-accent">{fontSize}px</span>
+
+                    <div className="mt-4 space-y-2">
+                      {pdfStudySnapshot?.bookmarkedPages.length ? pdfStudySnapshot.bookmarkedPages.map((page) => (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => triggerPdfStudyAction('go-to-page', page)}
+                          className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-all ${pdfStudySnapshot.currentPage === page ? 'border-bit-accent bg-bit-accent/10 text-bit-accent' : 'border-bit-border bg-bit-bg/35 text-bit-muted hover:border-bit-accent/40 hover:text-bit-text'}`}
+                        >
+                          <span className="inline-flex items-center gap-2 text-sm font-semibold">
+                            <BookmarkCheck size={15} />
+                            Page {page}
+                          </span>
+                          {pdfStudySnapshot.currentPage === page && (
+                            <span className="text-[9px] font-mono uppercase tracking-widest">Current</span>
+                          )}
+                        </button>
+                      )) : (
+                        <p className="rounded-lg border border-dashed border-bit-border bg-bit-bg/25 px-3 py-6 text-center text-sm leading-6 text-bit-muted">
+                          Save pages while reading and they will appear here.
+                        </p>
+                      )}
+                    </div>
+                  </section>
+                ) : (
+                  <p className="rounded-xl border border-dashed border-bit-border bg-bit-panel/25 px-4 py-8 text-center text-sm leading-6 text-bit-muted">
+                    Bookmarks and highlights are available for PDF books.
+                  </p>
+                )}
+
+                {isPdfReader && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-bit-accent">
+                        <Highlighter size={16} />
+                        <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Highlights</p>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-bit-muted tabular-nums">
+                        {pdfStudySnapshot?.highlightCount ?? 0}
+                      </span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setFontSize(Math.min(32, fontSize + 2))}
-                      className="h-10 flex-1 rounded-lg border border-bit-border bg-bit-bg/40 text-sm font-bold text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent"
+                      onClick={() => setPdfHighlightMode((enabled) => !enabled)}
+                      className={`mb-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-all ${pdfHighlightMode ? 'border-yellow-300 bg-yellow-300 text-zinc-950' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:border-yellow-300/50 hover:text-yellow-200'}`}
                     >
-                      A+
+                      <Highlighter size={16} />
+                      {pdfHighlightMode ? 'Highlight mode on' : 'Enable text highlight'}
                     </button>
-                  </div>
-                </section>
-              )}
+                    <div className="space-y-2">
+                      {pdfStudySnapshot?.textHighlights.length ? pdfStudySnapshot.textHighlights.slice(0, 20).map((highlight) => (
+                        <button
+                          key={highlight.id}
+                          type="button"
+                          onClick={() => triggerPdfStudyAction('go-to-page', highlight.page)}
+                          className="w-full rounded-lg border border-bit-border bg-bit-bg/35 p-3 text-left transition-colors hover:border-bit-accent/40"
+                        >
+                          <span className="mb-1 block text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent">Page {highlight.page}</span>
+                          <span className="line-clamp-3 text-xs leading-5 text-bit-muted">{highlight.text}</span>
+                        </button>
+                      )) : (
+                        <p className="rounded-lg border border-dashed border-bit-border bg-bit-bg/25 px-3 py-6 text-center text-sm leading-6 text-bit-muted">
+                          No text highlights yet.
+                        </p>
+                      )}
+                    </div>
+                  </section>
+                )}
+              </>
+            ) : (
+              <>
+                {isPdfReader && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <Palette size={16} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Background</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {PDF_BACKGROUND_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setPdfBackgroundPreset(preset.id)}
+                          className={`flex items-center gap-3 rounded-lg border p-2 text-left transition-all ${pdfBackgroundPreset === preset.id ? 'border-bit-accent bg-bit-accent/10 ring-2 ring-bit-accent/25' : 'border-bit-border bg-bit-bg/40 hover:border-bit-accent/50'}`}
+                          aria-label={`Use ${preset.label} PDF background`}
+                        >
+                          <span
+                            className="h-8 w-11 shrink-0 rounded-md border border-white/20 shadow-inner"
+                            style={{ background: preset.swatch }}
+                          />
+                          <span className="text-sm font-semibold text-bit-text">{preset.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
 
-              {isPdfReader && (
-                <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
-                  <div className="mb-3 flex items-center gap-2 text-bit-accent">
-                    <Palette size={16} />
-                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">PDF background</p>
-                  </div>
-                  <div className="grid grid-cols-5 gap-2">
-                    {PDF_BACKGROUND_PRESETS.map((preset) => (
+                {!isExternal && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <Type size={16} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Text size</p>
+                    </div>
+                    <div className="flex items-center gap-3">
                       <button
-                        key={preset.id}
                         type="button"
-                        onClick={() => setPdfBackgroundPreset(preset.id)}
-                        className={`h-11 rounded-lg border transition-all ${pdfBackgroundPreset === preset.id ? 'border-bit-accent ring-2 ring-bit-accent/25' : 'border-bit-border hover:border-bit-accent/50'}`}
-                        style={{ background: preset.swatch }}
-                        aria-label={`Use ${preset.label} PDF background`}
-                        title={`${preset.label} background`}
-                      />
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setPdfStudyPanelOpen(true)}
-                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-bit-border bg-bit-bg/40 px-3 py-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-colors hover:border-bit-accent/40 hover:text-bit-accent"
-                  >
-                    <PanelRight size={14} />
-                    Open PDF bookmarks and notes
-                  </button>
-                </section>
-              )}
-
-              <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
-                <p className="mb-3 text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Session</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={toggleMinimized}
-                    className="rounded-lg border border-bit-border bg-bit-bg/40 px-3 py-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-colors hover:border-bit-accent/40 hover:text-bit-accent"
-                  >
-                    Minimize
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsImmersive(true)}
-                    className="rounded-lg border border-bit-border bg-bit-bg/40 px-3 py-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-colors hover:border-bit-accent/40 hover:text-bit-accent"
-                  >
-                    Immersive
-                  </button>
-                </div>
-              </section>
-            </div>
-          </aside>
-        </>
+                        onClick={() => setFontSize(Math.max(12, fontSize - 2))}
+                        className="h-10 flex-1 rounded-lg border border-bit-border bg-bit-bg/40 text-sm font-bold text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent"
+                      >
+                        A-
+                      </button>
+                      <span className="min-w-14 text-center text-[10px] font-mono font-bold text-bit-accent">{fontSize}px</span>
+                      <button
+                        type="button"
+                        onClick={() => setFontSize(Math.min(32, fontSize + 2))}
+                        className="h-10 flex-1 rounded-lg border border-bit-border bg-bit-bg/40 text-sm font-bold text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent"
+                      >
+                        A+
+                      </button>
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
+          </div>
+        </aside>
       )}
 
       {/* Main Content Area - Optimized Strip Layout */}
@@ -423,8 +453,10 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             pdfUrl={readerUrl}
             title={book.title}
             backgroundPreset={pdfBackgroundPreset}
-            studyPanelOpen={pdfStudyPanelOpen}
-            onStudyPanelOpenChange={setPdfStudyPanelOpen}
+            studyPanelOpen={pdfHighlightMode}
+            studyAction={pdfStudyAction}
+            onStudyPanelOpenChange={setPdfHighlightMode}
+            onStudySnapshotChange={setPdfStudySnapshot}
           />
         ) : isExternal ? (
           <div className="w-full max-w-[1000px] h-full bg-white relative shadow-2xl border-x border-bit-border overflow-hidden">
