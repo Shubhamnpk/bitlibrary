@@ -18,6 +18,7 @@ interface PDFFlipBookProps {
   pdfUrl: string;
   title: string;
   backgroundPreset?: PdfBackgroundPresetId;
+  highlightColor?: PdfHighlightColorId;
   studyPanelOpen?: boolean;
   studyAction?: PdfStudyAction | null;
   onStudyPanelOpenChange?: (open: boolean) => void;
@@ -41,6 +42,7 @@ interface PDFPageCanvasProps {
   isBookmarked: boolean;
   isHighlighted: boolean;
   textHighlights: PdfTextHighlight[];
+  currentHighlightColor: PdfHighlightColorId;
   onTextSelection: (highlight: Omit<PdfTextHighlight, 'id' | 'createdAt'>) => void;
 }
 
@@ -56,6 +58,7 @@ export interface PdfTextHighlight {
   page: number;
   text: string;
   rects: PdfHighlightRect[];
+  color?: PdfHighlightColorId;
   createdAt: number;
 }
 
@@ -69,6 +72,7 @@ interface PdfStudyState {
 const EMPTY_TEXT_HIGHLIGHTS: PdfTextHighlight[] = [];
 
 export type PdfBackgroundPresetId = 'default' | 'wood' | 'paper' | 'sage' | 'night';
+export type PdfHighlightColorId = 'yellow' | 'mint' | 'sky' | 'rose' | 'violet';
 
 export interface PdfStudySnapshot {
   currentPage: number;
@@ -84,8 +88,9 @@ export interface PdfStudySnapshot {
 
 export type PdfStudyAction = {
   id: number;
-  type: 'toggle-bookmark' | 'open-panel' | 'go-to-page';
+  type: 'toggle-bookmark' | 'open-panel' | 'go-to-page' | 'remove-text-highlight';
   page?: number;
+  highlightId?: string;
 };
 
 type TurnBook = JQuery & {
@@ -97,6 +102,7 @@ type GestureEventLike = Event & {
 };
 
 const PDF_BACKGROUND_STORAGE_KEY = 'bitlibrary-pdf-background-v1';
+const PDF_HIGHLIGHT_COLOR_STORAGE_KEY = 'bitlibrary-pdf-highlight-color-v1';
 
 export const PDF_BACKGROUND_PRESETS: Array<{
   id: PdfBackgroundPresetId;
@@ -136,6 +142,19 @@ export const PDF_BACKGROUND_PRESETS: Array<{
   },
 ];
 
+export const PDF_HIGHLIGHT_COLOR_PRESETS: Array<{
+  id: PdfHighlightColorId;
+  label: string;
+  swatch: string;
+  overlay: string;
+}> = [
+  { id: 'yellow', label: 'Yellow', swatch: '#fde047', overlay: 'rgba(253, 224, 71, 0.48)' },
+  { id: 'mint', label: 'Mint', swatch: '#86efac', overlay: 'rgba(134, 239, 172, 0.46)' },
+  { id: 'sky', label: 'Sky', swatch: '#7dd3fc', overlay: 'rgba(125, 211, 252, 0.44)' },
+  { id: 'rose', label: 'Rose', swatch: '#fda4af', overlay: 'rgba(253, 164, 175, 0.46)' },
+  { id: 'violet', label: 'Violet', swatch: '#c4b5fd', overlay: 'rgba(196, 181, 253, 0.44)' },
+];
+
 const isTurnBookReady = (book: TurnBook) => {
   try {
     return Boolean(book.turn('is'));
@@ -152,6 +171,10 @@ const getProxyPdfUrl = (url: string) => {
 const getStudyStorageKey = (pdfUrl: string) => `bitlibrary-pdf-study-v1:${encodeURIComponent(pdfUrl).slice(0, 180)}`;
 
 const clampZoom = (value: number) => Math.min(1.75, Math.max(1, Number(value.toFixed(3))));
+
+const getHighlightOverlay = (color?: PdfHighlightColorId) => (
+  PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === color)?.overlay || PDF_HIGHLIGHT_COLOR_PRESETS[0].overlay
+);
 
 export const readPdfBackgroundPreset = (): PdfBackgroundPresetId => {
   if (typeof window === 'undefined') return 'default';
@@ -172,6 +195,25 @@ export const writePdfBackgroundPreset = (preset: PdfBackgroundPresetId) => {
   }
 };
 
+export const readPdfHighlightColor = (): PdfHighlightColorId => {
+  if (typeof window === 'undefined') return 'yellow';
+
+  try {
+    const value = window.localStorage.getItem(PDF_HIGHLIGHT_COLOR_STORAGE_KEY);
+    return PDF_HIGHLIGHT_COLOR_PRESETS.some((preset) => preset.id === value) ? value as PdfHighlightColorId : 'yellow';
+  } catch {
+    return 'yellow';
+  }
+};
+
+export const writePdfHighlightColor = (color: PdfHighlightColorId) => {
+  try {
+    window.localStorage.setItem(PDF_HIGHLIGHT_COLOR_STORAGE_KEY, color);
+  } catch {
+    // Highlight color is cosmetic, so storage failures should not block reading.
+  }
+};
+
 const readStudyState = (pdfUrl: string): PdfStudyState => {
   if (typeof window === 'undefined') return { bookmarks: [], highlights: [], notes: {}, textHighlights: [] };
 
@@ -185,7 +227,8 @@ const readStudyState = (pdfUrl: string): PdfStudyState => {
         typeof highlight?.id === 'string' &&
         Number.isFinite(highlight.page) &&
         typeof highlight.text === 'string' &&
-        Array.isArray(highlight.rects)
+        Array.isArray(highlight.rects) &&
+        (highlight.color === undefined || PDF_HIGHLIGHT_COLOR_PRESETS.some((preset) => preset.id === highlight.color))
       )) as PdfTextHighlight[] : [],
     };
   } catch {
@@ -237,13 +280,33 @@ const playPageTurnSound = () => {
   source.onended = () => void audioContext.close();
 };
 
-const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, shouldRender, shouldRenderTextLayer, renderScale, targetWidth, targetHeight, isBookmarked, isHighlighted, textHighlights, onTextSelection }) => {
+const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, shouldRender, shouldRenderTextLayer, renderScale, targetWidth, targetHeight, isBookmarked, isHighlighted, textHighlights, currentHighlightColor, onTextSelection }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const textLayerRef = useRef<HTMLDivElement | null>(null);
+  const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasRenderedCanvas, setHasRenderedCanvas] = useState(false);
+
+  const clearTextLayerSelection = () => {
+    const selection = window.getSelection();
+    const textLayer = textLayerRef.current;
+    if (!selection || selection.rangeCount === 0 || !textLayer) return;
+
+    const touchesTextLayer = Array.from({ length: selection.rangeCount }).some((_, index) => {
+      const range = selection.getRangeAt(index);
+      return (
+        textLayer.contains(range.commonAncestorContainer) ||
+        Boolean(selection.anchorNode && textLayer.contains(selection.anchorNode)) ||
+        Boolean(selection.focusNode && textLayer.contains(selection.focusNode))
+      );
+    });
+
+    if (touchesTextLayer) {
+      selection.removeAllRanges();
+    }
+  };
 
   useEffect(() => {
     if (!shouldRender) return;
@@ -316,6 +379,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
 
   useEffect(() => {
     if (!shouldRender || !shouldRenderTextLayer) {
+      clearTextLayerSelection();
       textLayerRef.current?.replaceChildren();
       return;
     }
@@ -335,6 +399,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
         const fitScale = Math.min(targetWidth / baseViewport.width, targetHeight / baseViewport.height);
         const viewport = page.getViewport({ scale: fitScale });
 
+        clearTextLayerSelection();
         textLayer.replaceChildren();
         textLayer.style.width = `${viewport.width}px`;
         textLayer.style.height = `${viewport.height}px`;
@@ -351,6 +416,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
         });
 
         await pdfTextLayer.render();
+        clearTextLayerSelection();
       } catch (textLayerError) {
         if ((textLayerError as { name?: string })?.name !== 'AbortException') {
           console.warn(`[PDF Turn.js] Page ${pageNumber} text layer failed:`, textLayerError);
@@ -364,18 +430,45 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
       cancelled = true;
       window.clearTimeout(handle);
       pdfTextLayer?.cancel();
+      clearTextLayerSelection();
     };
   }, [document, pageNumber, shouldRender, shouldRenderTextLayer, targetHeight, targetWidth]);
 
-  const handleTextMouseUp = () => {
+  const handleTextPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!event.isPrimary) return;
+    selectionStartRef.current = { x: event.clientX, y: event.clientY };
+    clearTextLayerSelection();
+  };
+
+  const handleTextPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = selectionStartRef.current;
+    selectionStartRef.current = null;
+
+    if (start) {
+      const dragDistance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+      if (dragDistance < 4) {
+        clearTextLayerSelection();
+        return;
+      }
+    }
+
     const selection = window.getSelection();
     const pageElement = contentRef.current;
     const textLayer = textLayerRef.current;
-    if (!selection || selection.isCollapsed || !pageElement || !textLayer || selection.rangeCount === 0) return;
-    if (!textLayer.contains(selection.anchorNode) || !textLayer.contains(selection.focusNode)) return;
+    if (!selection || selection.isCollapsed || !pageElement || !textLayer || selection.rangeCount === 0) {
+      clearTextLayerSelection();
+      return;
+    }
+    if (!textLayer.contains(selection.anchorNode) || !textLayer.contains(selection.focusNode)) {
+      clearTextLayerSelection();
+      return;
+    }
 
     const selectedText = selection.toString().replace(/\s+/g, ' ').trim();
-    if (selectedText.length < 2) return;
+    if (selectedText.length < 2) {
+      clearTextLayerSelection();
+      return;
+    }
 
     const pageBounds = pageElement.getBoundingClientRect();
     const rects = Array.from(selection.getRangeAt(0).getClientRects())
@@ -394,9 +487,12 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
       })
       .filter((rect) => rect.width > 0.2 && rect.height > 0.2);
 
-    if (!rects.length) return;
+    if (!rects.length) {
+      clearTextLayerSelection();
+      return;
+    }
     onTextSelection({ page: pageNumber, text: selectedText, rects });
-    selection.removeAllRanges();
+    clearTextLayerSelection();
   };
 
   return (
@@ -413,20 +509,26 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
             <div
               ref={textLayerRef}
               className="textLayer bit-pdf-text-layer"
-              onMouseUp={handleTextMouseUp}
-              onTouchEnd={handleTextMouseUp}
+              style={{ '--bit-pdf-selection-color': getHighlightOverlay(currentHighlightColor) } as React.CSSProperties}
+              onPointerDown={handleTextPointerDown}
+              onPointerUp={handleTextPointerUp}
+              onPointerCancel={() => {
+                selectionStartRef.current = null;
+                clearTextLayerSelection();
+              }}
             />
             {textHighlights.map((highlight) => (
               <div key={highlight.id} className="pointer-events-none absolute inset-0 z-[3]">
                 {highlight.rects.map((rect, index) => (
                   <span
                     key={`${highlight.id}-${index}`}
-                    className="absolute rounded-[3px] bg-yellow-300/45 mix-blend-multiply"
+                    className="absolute rounded-[3px] mix-blend-multiply"
                     style={{
                       left: `${rect.x}%`,
                       top: `${rect.y}%`,
                       width: `${rect.width}%`,
                       height: `${rect.height}%`,
+                      backgroundColor: getHighlightOverlay(highlight.color),
                     }}
                   />
                 ))}
@@ -478,6 +580,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   pdfUrl,
   title,
   backgroundPreset: controlledBackgroundPreset,
+  highlightColor: controlledHighlightColor,
   studyPanelOpen: controlledStudyPanelOpen,
   studyAction,
   onStudyPanelOpenChange,
@@ -497,6 +600,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const [isPageSliderActive, setIsPageSliderActive] = useState(false);
   const [internalStudyPanelOpen, setInternalStudyPanelOpen] = useState(false);
   const [internalBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
+  const [internalHighlightColor] = useState<PdfHighlightColorId>(() => readPdfHighlightColor());
   const [studyState, setStudyState] = useState<PdfStudyState>(() => readStudyState(pdfUrl));
   const shellRef = useRef<HTMLDivElement | null>(null);
   const bookRef = useRef<HTMLDivElement | null>(null);
@@ -517,6 +621,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const sortedBookmarks = useMemo(() => [...studyState.bookmarks].sort((a, b) => a - b), [studyState.bookmarks]);
   const studyPanelOpen = controlledStudyPanelOpen ?? internalStudyPanelOpen;
   const backgroundPreset = controlledBackgroundPreset ?? internalBackgroundPreset;
+  const highlightColor = controlledHighlightColor ?? internalHighlightColor;
   const activeBackgroundPreset = useMemo(
     () => PDF_BACKGROUND_PRESETS.find((preset) => preset.id === backgroundPreset) || PDF_BACKGROUND_PRESETS[0],
     [backgroundPreset]
@@ -584,6 +689,10 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   useEffect(() => {
     writePdfBackgroundPreset(backgroundPreset);
   }, [backgroundPreset]);
+
+  useEffect(() => {
+    writePdfHighlightColor(highlightColor);
+  }, [highlightColor]);
 
   useEffect(() => {
     currentPageRef.current = currentPage;
@@ -1005,11 +1114,19 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       textHighlights: [
         {
           ...highlight,
+          color: highlight.color ?? highlightColor,
           id: `${highlight.page}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           createdAt: Date.now(),
         },
         ...current.textHighlights,
       ].slice(0, 250),
+    }));
+  }, [highlightColor]);
+
+  const removeTextHighlight = useCallback((highlightId: string) => {
+    setStudyState((current) => ({
+      ...current,
+      textHighlights: current.textHighlights.filter((highlight) => highlight.id !== highlightId),
     }));
   }, []);
 
@@ -1047,10 +1164,12 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       toggleSavedPage(currentPage);
     } else if (studyAction.type === 'go-to-page' && studyAction.page) {
       goToPage(studyAction.page);
+    } else if (studyAction.type === 'remove-text-highlight' && studyAction.highlightId) {
+      removeTextHighlight(studyAction.highlightId);
     } else {
       setStudyPanelOpen(true);
     }
-  }, [currentPage, goToPage, setStudyPanelOpen, studyAction, toggleSavedPage]);
+  }, [currentPage, goToPage, removeTextHighlight, setStudyPanelOpen, studyAction, toggleSavedPage]);
 
   const adjustZoom = useCallback((direction: 'in' | 'out') => {
     setZoom((currentZoom) => {
@@ -1200,6 +1319,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                   isBookmarked={currentPageBookmarked}
                   isHighlighted={currentPageHighlighted}
                   textHighlights={currentPageTextHighlights}
+                  currentHighlightColor={highlightColor}
                   onTextSelection={addTextHighlight}
                 />
               </div>
@@ -1222,6 +1342,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                         isBookmarked={studyState.bookmarks.includes(pageNumber)}
                         isHighlighted={studyState.highlights.includes(pageNumber)}
                         textHighlights={textHighlightsByPage.get(pageNumber) ?? EMPTY_TEXT_HIGHLIGHTS}
+                        currentHighlightColor={highlightColor}
                         onTextSelection={addTextHighlight}
                       />
                     </div>

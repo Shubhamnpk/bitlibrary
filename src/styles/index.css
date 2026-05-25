@@ -395,7 +395,7 @@
 }
 
 .bit-pdf-page .textLayer ::selection {
-  background: rgba(250, 204, 21, 0.38);
+  background: var(--bit-pdf-selection-color, rgba(250, 204, 21, 0.38));
 }
 
 .bit-pdf-page .textLayer .endOfContent {

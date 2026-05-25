@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Book } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Monitor, Minimize2, Palette, PanelRight, Type, Zap } from 'lucide-react';
+import { ArrowLeft, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import PDFFlipBook, { PDF_BACKGROUND_PRESETS, readPdfBackgroundPreset, type PdfBackgroundPresetId, type PdfStudyAction, type PdfStudySnapshot } from './PDFFlipBook';
+import PDFFlipBook, { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS, readPdfBackgroundPreset, readPdfHighlightColor, type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot } from './PDFFlipBook';
 
 interface ReaderProps {
   book: Book;
@@ -23,9 +23,11 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'saved' | 'look'>('saved');
   const [pdfBackgroundPreset, setPdfBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
+  const [pdfHighlightColor, setPdfHighlightColor] = useState<PdfHighlightColorId>(() => readPdfHighlightColor());
   const [pdfStudySnapshot, setPdfStudySnapshot] = useState<PdfStudySnapshot | null>(null);
   const [pdfStudyAction, setPdfStudyAction] = useState<PdfStudyAction | null>(null);
   const [pdfHighlightMode, setPdfHighlightMode] = useState(false);
+  const [expandedHighlightPages, setExpandedHighlightPages] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     setLocalIsMinimized(isMinimized);
@@ -57,7 +59,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         if (sidebarOpen) {
           setSidebarOpen(false);
         } else if (isImmersive) {
-          setIsImmersive(false);
+          exitFocusMode();
         } else if (!isMinimized) {
         }
       }
@@ -65,6 +67,17 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isImmersive, isMinimized, sidebarOpen]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setIsImmersive(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   useEffect(() => {
     if (isExternal) {
@@ -107,19 +120,47 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     return () => { mounted = false; };
   }, [book, chapter, isExternal]);
 
-  const toggleFullscreen = () => {
+  const enterFocusMode = () => {
+    setIsImmersive(true);
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(err => {
         console.error(`Error attempting to enable full-screen mode: ${err.message}`);
       });
-    } else {
-      document.exitFullscreen();
     }
   };
 
-  const triggerPdfStudyAction = (type: PdfStudyAction['type'], page?: number) => {
-    setPdfStudyAction({ id: Date.now(), type, page });
+  const exitFocusMode = () => {
+    setIsImmersive(false);
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(err => {
+        console.error(`Error attempting to exit full-screen mode: ${err.message}`);
+      });
+    }
   };
+
+  const triggerPdfStudyAction = (type: PdfStudyAction['type'], page?: number, highlightId?: string) => {
+    setPdfStudyAction({ id: Date.now(), type, page, highlightId });
+  };
+
+  const toggleHighlightPage = (page: number) => {
+    setExpandedHighlightPages((current) => ({
+      ...current,
+      [page]: !current[page],
+    }));
+  };
+
+  const groupedTextHighlights = useMemo(() => {
+    const groups = new Map<number, NonNullable<PdfStudySnapshot['textHighlights']>>();
+    pdfStudySnapshot?.textHighlights.forEach((highlight) => {
+      const pageHighlights = groups.get(highlight.page) ?? [];
+      pageHighlights.push(highlight);
+      groups.set(highlight.page, pageHighlights);
+    });
+
+    return Array.from(groups.entries())
+      .sort(([pageA], [pageB]) => pageA - pageB)
+      .map(([page, highlights]) => ({ page, highlights }));
+  }, [pdfStudySnapshot?.textHighlights]);
 
   // If minimized, render as a compact floating node (PiP)
   if (localIsMinimized) {
@@ -237,17 +278,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               <Layout size={17} className="group-hover:scale-110 sm:size-[18px]" />
             </button>
             <button
-              onClick={() => setIsImmersive(true)}
+              onClick={enterFocusMode}
               className="rounded-lg p-2.5 text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-accent sm:p-3 group"
-              title="Immersive Protocol"
+              title="Focus mode"
+              aria-label="Enter focus mode"
             >
               <Maximize2 size={17} className="group-hover:scale-110 sm:size-[18px]" />
-            </button>
-            <button
-              onClick={toggleFullscreen}
-              className="p-3 hover:bg-bit-panel rounded-lg text-bit-muted hover:text-bit-accent hidden md:block transition-all group"
-            >
-              <Monitor size={18} className="group-hover:scale-110" />
             </button>
             <button
               onClick={() => {
@@ -319,24 +355,20 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                       {pdfStudySnapshot?.currentPageBookmarked || pdfStudySnapshot?.currentPageHighlighted ? 'Saved current page' : 'Save current page'}
                     </button>
 
-                    <div className="mt-4 space-y-2">
+                    <div className="mt-4 grid grid-cols-4 gap-2">
                       {pdfStudySnapshot?.bookmarkedPages.length ? pdfStudySnapshot.bookmarkedPages.map((page) => (
                         <button
                           key={page}
                           type="button"
                           onClick={() => triggerPdfStudyAction('go-to-page', page)}
-                          className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-all ${pdfStudySnapshot.currentPage === page ? 'border-bit-accent bg-bit-accent/10 text-bit-accent' : 'border-bit-border bg-bit-bg/35 text-bit-muted hover:border-bit-accent/40 hover:text-bit-text'}`}
+                          className={`inline-flex h-10 min-w-0 items-center justify-center rounded-full border px-2 text-xs font-mono font-bold tabular-nums transition-all ${pdfStudySnapshot.currentPage === page ? 'border-bit-accent bg-bit-accent text-white shadow-sm shadow-bit-accent/25' : 'border-bit-border bg-bit-bg/45 text-bit-accent hover:border-bit-accent/50 hover:bg-bit-accent/10'}`}
+                          aria-label={`Go to bookmarked page ${page}`}
+                          title={`Page ${page}`}
                         >
-                          <span className="inline-flex items-center gap-2 text-sm font-semibold">
-                            <BookmarkCheck size={15} />
-                            Page {page}
-                          </span>
-                          {pdfStudySnapshot.currentPage === page && (
-                            <span className="text-[9px] font-mono uppercase tracking-widest">Current</span>
-                          )}
+                          {page}
                         </button>
                       )) : (
-                        <p className="rounded-lg border border-dashed border-bit-border bg-bit-bg/25 px-3 py-6 text-center text-sm leading-6 text-bit-muted">
+                        <p className="col-span-4 rounded-lg border border-dashed border-bit-border bg-bit-bg/25 px-3 py-6 text-center text-sm leading-6 text-bit-muted">
                           Save pages while reading and they will appear here.
                         </p>
                       )}
@@ -367,18 +399,91 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                       <Highlighter size={16} />
                       {pdfHighlightMode ? 'Highlight mode on' : 'Enable text highlight'}
                     </button>
-                    <div className="space-y-2">
-                      {pdfStudySnapshot?.textHighlights.length ? pdfStudySnapshot.textHighlights.slice(0, 20).map((highlight) => (
-                        <button
-                          key={highlight.id}
-                          type="button"
-                          onClick={() => triggerPdfStudyAction('go-to-page', highlight.page)}
-                          className="w-full rounded-lg border border-bit-border bg-bit-bg/35 p-3 text-left transition-colors hover:border-bit-accent/40"
-                        >
-                          <span className="mb-1 block text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent">Page {highlight.page}</span>
-                          <span className="line-clamp-3 text-xs leading-5 text-bit-muted">{highlight.text}</span>
-                        </button>
-                      )) : (
+                    <div className="space-y-3">
+                      {groupedTextHighlights.length ? groupedTextHighlights.map(({ page, highlights }) => {
+                        const isExpanded = Boolean(expandedHighlightPages[page]);
+
+                        return (
+                          <div
+                            key={page}
+                            className={`rounded-xl border bg-bit-bg/45 transition-all ${isExpanded ? 'border-yellow-300/35 p-3' : 'border-bit-border p-2.5 hover:border-yellow-300/30 hover:bg-bit-panel/20'}`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <button
+                                type="button"
+                                onClick={() => triggerPdfStudyAction('go-to-page', page)}
+                                className={`inline-flex h-9 min-w-9 shrink-0 items-center justify-center rounded-full border px-2 text-xs font-mono font-bold tabular-nums transition-all ${pdfStudySnapshot?.currentPage === page ? 'border-yellow-300 bg-yellow-300 text-zinc-950' : 'border-yellow-300/40 bg-yellow-300/10 text-yellow-200 hover:bg-yellow-300 hover:text-zinc-950'}`}
+                                aria-label={`Go to page ${page}`}
+                                title={`Go to page ${page}`}
+                              >
+                                {page}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleHighlightPage(page)}
+                                className="min-w-0 flex-1 text-left"
+                                aria-expanded={isExpanded}
+                              >
+                                <p className="text-xs font-semibold text-bit-text">Page highlights</p>
+                                <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted">
+                                  {highlights.length} saved
+                                </p>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleHighlightPage(page)}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-yellow-300/25 bg-yellow-300/10 px-2.5 text-[10px] font-mono font-bold text-yellow-200 transition-all hover:border-yellow-300/50 hover:bg-yellow-300/15"
+                                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} highlights for page ${page}`}
+                                aria-expanded={isExpanded}
+                              >
+                                <span className="tabular-nums">{highlights.length}</span>
+                                <ChevronRight size={13} className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                              </button>
+                            </div>
+
+                            {isExpanded && (
+                              <>
+                                <div className="mt-2.5 space-y-2">
+                                  {highlights.map((highlight) => (
+                                    <div
+                                      key={highlight.id}
+                                      className="group/highlight flex items-start gap-2 rounded-lg border border-bit-border/70 bg-bit-bg/40 p-2 transition-colors hover:border-yellow-300/25"
+                                    >
+                                <button
+                                  type="button"
+                                  onClick={() => triggerPdfStudyAction('go-to-page', highlight.page)}
+                                  className="min-w-0 flex-1 text-left"
+                                >
+                                  <span
+                                    className="mb-1 block h-1 w-10 rounded-full"
+                                    style={{
+                                      backgroundColor: PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === highlight.color)?.swatch || PDF_HIGHLIGHT_COLOR_PRESETS[0].swatch,
+                                    }}
+                                  />
+                                  <span className="line-clamp-3 text-xs leading-5 text-bit-text/88">
+                                    {highlight.text}
+                                  </span>
+                                </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          triggerPdfStudyAction('remove-text-highlight', undefined, highlight.id);
+                                        }}
+                                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-transparent text-bit-muted opacity-80 transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-200 group-hover/highlight:opacity-100"
+                                        aria-label="Remove highlight"
+                                        title="Remove highlight"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      }) : (
                         <p className="rounded-lg border border-dashed border-bit-border bg-bit-bg/25 px-3 py-6 text-center text-sm leading-6 text-bit-muted">
                           No text highlights yet.
                         </p>
@@ -412,6 +517,35 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                         </button>
                       ))}
                     </div>
+                  </section>
+                )}
+
+                {isPdfReader && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <Highlighter size={16} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Highlight color</p>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2">
+                      {PDF_HIGHLIGHT_COLOR_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setPdfHighlightColor(preset.id)}
+                          className={`flex h-11 items-center justify-center rounded-full border transition-all ${pdfHighlightColor === preset.id ? 'border-bit-accent bg-bit-accent/10 ring-2 ring-bit-accent/25' : 'border-bit-border bg-bit-bg/40 hover:border-bit-accent/50'}`}
+                          aria-label={`Use ${preset.label} highlight color`}
+                          title={preset.label}
+                        >
+                          <span
+                            className="h-6 w-6 rounded-full border border-white/40 shadow-inner"
+                            style={{ backgroundColor: preset.swatch }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-bit-muted">
+                      New text highlights will use this color.
+                    </p>
                   </section>
                 )}
 
@@ -453,6 +587,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             pdfUrl={readerUrl}
             title={book.title}
             backgroundPreset={pdfBackgroundPreset}
+            highlightColor={pdfHighlightColor}
             studyPanelOpen={pdfHighlightMode}
             studyAction={pdfStudyAction}
             onStudyPanelOpenChange={setPdfHighlightMode}
@@ -538,9 +673,27 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       {isImmersive && (
         <div className="fixed top-6 right-6 flex gap-2 z-[10002] animate-fade-in group">
           <button
-            onClick={() => setIsImmersive(false)}
+            onClick={() => {
+              setSidebarOpen((open) => {
+                const nextOpen = !open;
+                if (nextOpen && isPdfReader) {
+                  setPdfHighlightMode(true);
+                }
+                return nextOpen;
+              });
+            }}
+            className={`p-3 backdrop-blur-xl border rounded-xl transition-all shadow-2xl ${sidebarOpen ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-panel/80 text-bit-muted hover:text-bit-accent hover:border-bit-accent/50'}`}
+            title="Reader sidebar"
+            aria-label="Open reader sidebar"
+            aria-expanded={sidebarOpen}
+          >
+            <PanelRight size={18} />
+          </button>
+          <button
+            onClick={exitFocusMode}
             className="p-3 bg-bit-panel/80 backdrop-blur-xl border border-bit-border rounded-xl text-bit-muted hover:text-bit-accent hover:border-bit-accent/50 transition-all shadow-2xl"
             title="Restore Interface"
+            aria-label="Exit focus mode"
           >
             <Minimize2 size={18} />
           </button>
