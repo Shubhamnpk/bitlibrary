@@ -1,0 +1,362 @@
+{
+  "goals": [
+    {
+      "id": "foundation",
+      "title": "Library foundation",
+      "area": "Core",
+      "icon": "foundation",
+      "version": "v0.1.0",
+      "summary": "The first usable BitLibrary home, navigation, book cards, and reader path are complete.",
+      "subGoals": [
+        {
+          "title": "A welcoming home page",
+          "progress": 100
+        },
+        {
+          "title": "Book pages and reading",
+          "progress": 100
+        },
+        {
+          "title": "Works well on every screen",
+          "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "discovery-routes",
+      "title": "Book discovery",
+      "area": "Search",
+      "icon": "search",
+      "version": "v0.2.0",
+      "summary": "Search, author pages, categories, and browsing now make the library easier to move through.",
+      "subGoals": [
+        {
+          "title": "Find books by search",
+          "progress": 100
+        },
+        {
+          "title": "Browse by author and category",
+          "progress": 100
+        },
+        {
+          "title": "Follow related books and topics",
+          "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "my-library",
+      "title": "My Library registry",
+      "area": "Library",
+      "icon": "library",
+      "version": "v0.3.0",
+      "summary": "Local-first saved books, saved audio, recent searches, and profile preferences are available.",
+      "subGoals": [
+        {
+          "title": "Saved books and audiobooks",
+          "progress": 100
+        },
+        {
+          "title": "Recent searches and history",
+          "progress": 100
+        },
+        {
+          "title": "Local profile and theme",
+          "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "audiobooks",
+      "title": "Audiobooks and saved audio",
+      "area": "Audio",
+      "icon": "audio",
+      "version": "v0.4.0",
+      "summary": "Audio has a discovery page, detail page, custom player, saved state, and progress resume.",
+      "subGoals": [
+        {
+          "title": "Find and open audiobooks",
+          "progress": 100
+        },
+        {
+          "title": "Simple listening controls",
+          "progress": 100
+        },
+        {
+          "title": "Saved audio in library",
+          "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "search-quality",
+      "title": "Search quality",
+      "area": "Search",
+      "icon": "search",
+      "version": "v0.5.0",
+      "summary": "Search now feels calmer, source-aware, paginated, and safer under real typing.",
+      "subGoals": [
+        {
+          "title": "Wait until the search is clear",
+          "progress": 100
+        },
+        {
+          "title": "Keep typing smooth and reliable",
+          "progress": 100
+        },
+        {
+          "title": "Understand close matches",
+          "progress": 100
+        },
+        {
+          "title": "Filter and move through results",
+          "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "reader-study",
+      "title": "Reader study mode",
+      "area": "Reader",
+      "icon": "reader",
+      "version": "v0.5.0",
+      "summary": "The reader now works as a study space with bookmarks, highlights, color choices, focus mode, and a stronger tools panel.",
+      "subGoals": [
+        {
+          "title": "Save important pages",
+          "progress": 100
+        },
+        {
+          "title": "Keep highlights organized",
+          "progress": 100
+        },
+        {
+          "title": "Highlight color choices",
+          "progress": 100
+        },
+        {
+          "title": "Study tools in one place",
+          "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "yobook-curriculum",
+      "title": "YoBook curriculum coverage",
+      "area": "YoBook",
+      "icon": "yobook",
+      "version": "v0.5.0",
+      "summary": "YoBook is becoming the fastest education source for books, curriculum, and learning audio.",
+      "subGoals": [
+        {
+          "title": "Show school books faster",
+          "progress": 94
+        },
+        {
+          "title": "Curriculum audiobooks",
+          "progress": 92
+        },
+        {
+          "title": "Browse by grade and subject",
+          "progress": 90
+        },
+        {
+          "title": "Show where each item comes from",
+          "progress": 78
+        }
+      ]
+    },
+    {
+      "id": "reader-comfort",
+      "title": "Reader comfort and look",
+      "area": "Reader",
+      "icon": "design",
+      "version": "v0.5.0",
+      "summary": "The reader should feel crisp, centered, calm, and usable on mobile and desktop.",
+      "subGoals": [
+        {
+          "title": "Clear and stable pages",
+          "progress": 100
+        },
+        {
+          "title": "Easy zoom and focused reading",
+          "progress": 92
+        },
+        {
+          "title": "Reader backgrounds",
+          "progress": 100
+        },
+        {
+          "title": "Smoother reading on phones",
+          "progress": 58
+        }
+      ]
+    },
+    {
+      "id": "mobile-bottom-nav",
+      "title": "Dedicated mobile navigation",
+      "area": "Core",
+      "icon": "design",
+      "version": "v0.6.0",
+      "summary": "Mobile readers should get a thumb-friendly bottom navigation and simpler mobile-first paths into search, library, reader, and audio.",
+      "subGoals": [
+        {
+          "title": "Bottom navigation bar",
+          "progress": 20
+        },
+        {
+          "title": "Quick actions for phones",
+          "progress": 18
+        },
+        {
+          "title": "Library and reader shortcuts",
+          "progress": 16
+        },
+        {
+          "title": "Comfortable spacing on mobile",
+          "progress": 18
+        }
+      ]
+    },
+    {
+      "id": "book-audio-connection",
+      "title": "Connected book and audio paths",
+      "area": "Audio",
+      "icon": "audio",
+      "version": "v0.6.0",
+      "summary": "Books and matching audiobooks should point to each other when they describe the same work.",
+      "subGoals": [
+        {
+          "title": "Listen from a book page",
+          "progress": 30
+        },
+        {
+          "title": "Match books with their audio",
+          "progress": 42
+        },
+        {
+          "title": "Connect the right sources",
+          "progress": 25
+        }
+      ]
+    },
+    {
+      "id": "library-portability",
+      "title": "Library portability",
+      "area": "Library",
+      "icon": "sync",
+      "version": "v0.6.0",
+      "summary": "Users should be able to keep, move, and recover their local reading and listening data.",
+      "subGoals": [
+        {
+          "title": "Custom collections",
+          "progress": 16
+        },
+        {
+          "title": "Import and export",
+          "progress": 12
+        },
+        {
+          "title": "Move bookmarks and highlights",
+          "progress": 26
+        }
+      ]
+    },
+    {
+      "id": "local-profile-management",
+      "title": "Local profile management",
+      "area": "Library",
+      "icon": "library",
+      "version": "v0.6.0",
+      "summary": "The local reader profile should grow from a simple name into a proper private profile with preferences, identity details, and management tools.",
+      "subGoals": [
+        {
+          "title": "Edit name and picture",
+          "progress": 18
+        },
+        {
+          "title": "Reading preferences",
+          "progress": 30
+        },
+        {
+          "title": "Control local library privacy",
+          "progress": 20
+        },
+        {
+          "title": "Reset or restore a profile",
+          "progress": 28
+        }
+      ]
+    },
+    {
+      "id": "trust-layer",
+      "title": "Trust and source clarity",
+      "area": "Trust",
+      "icon": "trust",
+      "version": "v0.6.0",
+      "summary": "Every archive-backed item should make source, license, and access quality clearer.",
+      "subGoals": [
+        {
+          "title": "Show source quality",
+          "progress": 36
+        },
+        {
+          "title": "Show usage rights clearly",
+          "progress": 18
+        },
+        {
+          "title": "Handle unavailable sources",
+          "progress": 30
+        }
+      ]
+    },
+    {
+      "id": "reader-read-aloud",
+      "title": "Reader read-aloud tools",
+      "area": "Reader",
+      "icon": "audio",
+      "version": "Future",
+      "summary": "The PDF reader should support text-to-speech so users can listen to a selected paragraph, a page, or the full document while studying.",
+      "subGoals": [
+        {
+          "title": "Selected paragraph read aloud",
+          "progress": 10
+        },
+        {
+          "title": "Read a full page aloud",
+          "progress": 6
+        },
+        {
+          "title": "Read the whole PDF aloud",
+          "progress": 2
+        },
+        {
+          "title": "Voice, speed, and pause controls",
+          "progress": 6
+        }
+      ]
+    },
+    {
+      "id": "account-sync",
+      "title": "Account sync",
+      "area": "Library",
+      "icon": "sync",
+      "version": "Future",
+      "summary": "Sync is intentionally later because local-first library behavior should stay trustworthy first.",
+      "subGoals": [
+        {
+          "title": "Choose what can sync",
+          "progress": 10
+        },
+        {
+          "title": "Sync only selected data",
+          "progress": 4
+        },
+        {
+          "title": "Recover a library safely",
+          "progress": 2
+        }
+      ]
+    }
+  ]
+}

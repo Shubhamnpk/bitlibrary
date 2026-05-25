@@ -16,14 +16,14 @@
 }
 
 .theme-light {
-  --bit-bg: 250 248 244;
+  --bit-bg: 248 249 251;
   --bit-panel: 255 255 255;
-  --bit-border: 225 218 205;
+  --bit-border: 225 230 237;
   --bit-accent: 214 58 0;
   --bit-accent-rgb: 214 58 0;
-  --bit-text: 15 12 10;
-  --bit-muted: 105 92 80;
-  --bit-grid: 180 170 160;
+  --bit-text: 24 28 36;
+  --bit-muted: 99 111 128;
+  --bit-grid: 190 199 213;
   color-scheme: light;
 }
 

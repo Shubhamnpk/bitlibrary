@@ -7,7 +7,7 @@ interface FooterProps {
   isReaderActive: boolean;
 }
 
-const FOOTER_BUILD_LABEL = 'v0.0.1 . Build 2026.05.10 . oss';
+const FOOTER_BUILD_LABEL = 'v0.5.0 . Build 2026.05.25 . oss';
 
 const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
   if (isReaderActive) return null;
@@ -41,7 +41,7 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
               >
                 <Github size={18} />
               </a>
-              <button className="p-2 rounded-full border border-bit-border hover:border-bit-accent/50 text-bit-muted hover:text-bit-accent transition-all"><Disc size={18} /></button>
+              <button title='size' className="p-2 rounded-full border border-bit-border hover:border-bit-accent/50 text-bit-muted hover:text-bit-accent transition-all"><Disc size={18} /></button>
             </div>
           </div>
 

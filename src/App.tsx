@@ -28,7 +28,7 @@ import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import Seo from '@/components/Seo';
 
-const SEARCH_DEBOUNCE_MS = 350;
+const SEARCH_DEBOUNCE_MS = 400;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
@@ -131,10 +131,21 @@ const App: React.FC = () => {
   const [readerLoading, setReaderLoading] = useState(false);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const searchShellRef = React.useRef<HTMLDivElement>(null);
+  const syncSearchQueryFromRoute = useCallback((value: string) => {
+    setSearchQuery((current) => {
+      const isActivelyTyping = isSearchFocused && document.activeElement === searchInputRef.current;
+      if (isActivelyTyping && current.trim() !== value.trim()) {
+        return current;
+      }
+
+      return value;
+    });
+  }, [isSearchFocused]);
+
   const navigateToSearch = useCallback((rawQuery: string, options?: { persistRecent?: boolean }) => {
     const trimmed = rawQuery.trim();
 
-    if (!trimmed) {
+    if (!trimmed || trimmed.length < SEARCH_MIN_QUERY_LENGTH) {
       if (location.pathname === '/search') {
         setSearchParams({});
       }
@@ -203,8 +214,8 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    setSearchQuery(searchParams.get('q') || '');
-  }, [searchParams]);
+    syncSearchQueryFromRoute(searchParams.get('q') || '');
+  }, [searchParams, syncSearchQueryFromRoute]);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -223,7 +234,7 @@ const App: React.FC = () => {
     closeSearchSurface();
   };
 
-  // Auto-Search Neural Synchronization (Debounced after 3 characters)
+  // Auto-search after the user has typed enough signal to avoid noisy one-letter searches.
   useEffect(() => {
     const trimmed = searchQuery.trim();
     const isDeepSector = location.pathname.startsWith('/book/') ||
@@ -231,6 +242,14 @@ const App: React.FC = () => {
       location.pathname.startsWith('/author/');
 
     const isSearchableSector = location.pathname === '/' || location.pathname === '/search';
+    if (trimmed.length < SEARCH_MIN_QUERY_LENGTH) {
+      if (location.pathname === '/search' && searchParams.get('q')) {
+        const timer = setTimeout(() => setSearchParams({}), SEARCH_DEBOUNCE_MS);
+        return () => clearTimeout(timer);
+      }
+      return;
+    }
+
     if (trimmed.length >= SEARCH_MIN_QUERY_LENGTH && !isDeepSector && isSearchableSector) {
       const timer = setTimeout(() => {
         if (searchParams.get('q') !== trimmed) {
@@ -239,7 +258,7 @@ const App: React.FC = () => {
       }, SEARCH_DEBOUNCE_MS);
       return () => clearTimeout(timer);
     }
-  }, [searchQuery, searchParams, location.pathname, navigateToSearch]);
+  }, [searchQuery, searchParams, location.pathname, navigateToSearch, setSearchParams]);
 
   const isReaderActive = Boolean(activeBook && !isMinimized);
   const activeTab = (path: string) => location.pathname === path;
@@ -555,7 +574,7 @@ const App: React.FC = () => {
                 onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
                 onResultsChange={setSearchResults}
                 onSearchingChange={setIsSearching}
-                onQuerySync={setSearchQuery}
+                onQuerySync={syncSearchQueryFromRoute}
                 recentSearches={localUserState.recentSearches}
                 onQuickSearch={applySearchSelection}
               />
