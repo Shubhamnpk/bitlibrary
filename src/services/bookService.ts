@@ -120,11 +120,110 @@ const getAbsoluteYoBookAssetUrl = (url?: string | null): string | undefined => {
   return url;
 };
 
+const isPdfLikeResourceUrl = (url?: string): boolean => (
+  Boolean(url)
+  && (
+    /\.pdf(?:$|[?#])/i.test(url || '')
+    || /[?&]ext=pdf(?:&|$)/i.test(url || '')
+  )
+);
+
 const getGradeFromCategory = (category?: string): number | undefined => {
   const match = category?.match(/^(?:class|grade)\s*(\d{1,2})$/i);
   if (!match) return undefined;
   const grade = Number(match[1]);
   return grade >= 1 && grade <= 12 ? grade : undefined;
+};
+
+const ROMAN_GRADES: Record<string, number> = {
+  i: 1,
+  ii: 2,
+  iii: 3,
+  iv: 4,
+  v: 5,
+  vi: 6,
+  vii: 7,
+  viii: 8,
+  ix: 9,
+  x: 10,
+  xi: 11,
+  xii: 12,
+};
+
+const NUMBER_WORD_GRADES: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+};
+
+const getGradesFromYoBookItem = (item: any): number[] => {
+  if (typeof item.grade === 'number' && item.grade >= 1 && item.grade <= 12) {
+    return [item.grade];
+  }
+
+  const text = [
+    item.title,
+    item.description,
+    item.educationLevel,
+    ...(Array.isArray(item.keywords) ? item.keywords : []),
+  ]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ');
+
+  const grades = new Set<number>();
+  const numberPattern = /\b(?:grade|class|kaksha|कक्षा)\s*[-:]?\s*(\d{1,2})\b/gi;
+  let numberMatch: RegExpExecArray | null;
+  while ((numberMatch = numberPattern.exec(text))) {
+    const grade = Number(numberMatch[1]);
+    if (grade >= 1 && grade <= 12) grades.add(grade);
+  }
+
+  const romanPattern = /\b(?:grade|class)\s*[-:]?\s*(i{1,3}|iv|v|vi{1,3}|ix|x|xi|xii)\b/gi;
+  let romanMatch: RegExpExecArray | null;
+  while ((romanMatch = romanPattern.exec(text))) {
+    const grade = ROMAN_GRADES[romanMatch[1].toLowerCase()];
+    if (grade) grades.add(grade);
+  }
+
+  const bookNumberPattern = /\bbook\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|i{1,3}|iv|v|vi{1,3}|ix|x|xi|xii)\b/gi;
+  let bookNumberMatch: RegExpExecArray | null;
+  while ((bookNumberMatch = bookNumberPattern.exec(text))) {
+    const value = bookNumberMatch[1].toLowerCase();
+    const grade = NUMBER_WORD_GRADES[value] || ROMAN_GRADES[value];
+    if (grade) grades.add(grade);
+  }
+
+  return Array.from(grades);
+};
+
+const TEACHER_GUIDE_QUERIES = [
+  'teachers guide',
+  'teaching manual',
+  'teachers note',
+  'teacher guide',
+  'शिक्षक निर्देशिका',
+];
+
+const isTeacherGuideBook = (book: Book): boolean => {
+  const text = [
+    book.title,
+    book.category,
+    book.description,
+    ...(book.subjects || []),
+    ...(book.keywords || []),
+    ...(book.bookshelves || []),
+  ].join(' ').toLowerCase();
+
+  return /teacher'?s?\s+(guide|note)|teaching\s+manual|teachers?\s+guides?|शिक्षक निर्देशिका|शिक्षण निर्देशिका/.test(text);
 };
 
 const YOBOOK_SUBJECTS = new Set([
@@ -153,6 +252,7 @@ const YOBOOK_SOURCE_LABELS: Record<string, string> = {
   'pustakalaya-course': 'Pustakalaya Course',
   'pustakalaya-teaching': 'Pustakalaya Teaching',
   'pustakalaya-other-educational': 'Pustakalaya Educational',
+  'cdc-library': 'CDC Library',
 };
 
 const getYoBookQueryType = (value?: string): 'all' | 'grade' | 'subject' | 'query' => {
@@ -394,6 +494,7 @@ const mapYoBookToBook = (item: any): Book => {
     ...keywords,
   ].filter((value, index, list): value is string => Boolean(value) && list.indexOf(value as string) === index);
   const primaryResourceUrl = pdfUrl || audioUrl || readUrl || sourceUrl;
+  const downloadResourceUrl = pdfUrl || (isPdfLikeResourceUrl(readUrl) ? readUrl : undefined) || audioUrl;
 
   return {
     id: `yobook-${item.id}`,
@@ -410,7 +511,7 @@ const mapYoBookToBook = (item: any): Book => {
     keywords,
     bookshelves: [grade ? `Class ${grade}` : '', item.level ? `Level ${item.level}` : '', curriculum, sourceLabel, 'Nepali Curriculum'].filter(Boolean),
     externalUrl: primaryResourceUrl,
-    downloadUrl: pdfUrl || audioUrl,
+    downloadUrl: downloadResourceUrl,
     audioUrl,
     detailUrl,
     sourceUrl,
@@ -556,6 +657,44 @@ export const searchYoBookBooks = async (query: string, signal?: AbortSignal): Pr
       console.error('YoBook search failed:', error);
     }
     return [];
+  }
+};
+
+export const fetchYoBookGuideRows = async (signal?: AbortSignal): Promise<Record<number, Book[]>> => {
+  const cacheKey = 'yobook-guide-rows';
+  const cached = getFromCache<Record<number, Book[]>>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const guides = (
+      await Promise.all(TEACHER_GUIDE_QUERIES.map((query) => searchYoBookBooks(query, signal)))
+    )
+      .flat()
+      .filter(isTeacherGuideBook)
+      .filter((guide, index, list) => (
+        list.findIndex((entry) => entry.id === guide.id) === index
+      ));
+
+    const rows = guides.reduce((guideRows: Record<number, Book[]>, guide) => {
+      getGradesFromYoBookItem(guide).forEach((grade) => {
+        guideRows[grade] = guideRows[grade] || [];
+        guideRows[grade].push({ ...guide, grade });
+      });
+      return guideRows;
+    }, {});
+
+    Object.keys(rows).forEach((grade) => {
+      rows[Number(grade)] = rows[Number(grade)].filter((book: Book, index: number, list: Book[]) => (
+        list.findIndex((entry) => entry.id === book.id) === index
+      ));
+    });
+    setInCache(cacheKey, rows);
+    return rows;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      console.error('Failed to fetch YoBook guide rows:', error);
+    }
+    return {};
   }
 };
 

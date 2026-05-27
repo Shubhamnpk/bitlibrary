@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Audiobook, Book } from '@/types/index';
 import { CURRICULUM_GRADES, CURRICULUM_SUBJECTS } from '@/constants';
-import { fetchBooksFromYoBook } from '@/services/bookService';
+import { fetchBooksFromYoBook, fetchYoBookGuideRows } from '@/services/bookService';
 import { fetchYoBookAudiobooks, isYoBookAudioBook, mapYoBookAudioToAudiobook } from '@/services/audiobookService';
 import BookCard from '@/components/BookCard';
 import AudiobookCard from '@/components/AudiobookCard';
 import { BookCardSkeleton, BookGridSkeleton } from '@/components/Skeletons';
 import Seo from '@/components/Seo';
-import { BookOpen, ChevronDown, GraduationCap, Headphones, LayoutGrid, LibraryBig, ListFilter, RotateCcw, Search } from 'lucide-react';
+import { BookMarked, BookOpen, ChevronDown, GraduationCap, Headphones, LayoutGrid, LibraryBig, ListFilter, RotateCcw, Search } from 'lucide-react';
 import { createItemListSchema, truncate } from '@/lib/seo';
 
 interface CurriculumPageProps {
@@ -16,7 +16,7 @@ interface CurriculumPageProps {
   onRead: (book: Book) => void;
 }
 
-type ResourceMode = 'all' | 'textbooks' | 'audiobooks' | 'stories';
+type ResourceMode = 'all' | 'textbooks' | 'audiobooks' | 'stories' | 'teacher-guides';
 type GradeRows = Record<number, Book[]>;
 type AudioGradeRows = Record<number, Audiobook[]>;
 
@@ -25,6 +25,7 @@ const modeLabels: Record<ResourceMode, string> = {
   textbooks: 'Textbooks',
   audiobooks: 'Audiobooks',
   stories: 'Stories',
+  'teacher-guides': 'Guides',
 };
 
 const emptyRows = (): GradeRows => (
@@ -62,13 +63,23 @@ const matchesResourceMode = (book: Book, resourceMode: ResourceMode) => {
 
 const filterBooks = (books: Book[], selectedSubject: string, resourceMode: ResourceMode) => (
   books.filter((book) => {
-    if (resourceMode === 'audiobooks') return false;
+    if (resourceMode === 'audiobooks' || resourceMode === 'teacher-guides') return false;
     const matchesSubject = selectedSubject === 'all'
       || book.category === selectedSubject
       || book.subjects?.includes(selectedSubject);
 
     return matchesSubject && matchesResourceMode(book, resourceMode);
   })
+);
+
+const filterGuides = (guides: Book[], selectedSubject: string, resourceMode: ResourceMode) => (
+  resourceMode === 'teacher-guides'
+    ? guides.filter((guide) => (
+      selectedSubject === 'all'
+      || guide.category === selectedSubject
+      || guide.subjects?.includes(selectedSubject)
+    ))
+    : []
 );
 
 const filterAudiobooks = (audiobooks: Audiobook[], selectedSubject: string, resourceMode: ResourceMode) => (
@@ -83,6 +94,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [resourceMode, setResourceMode] = useState<ResourceMode>('all');
   const [gradeRows, setGradeRows] = useState<GradeRows>(() => emptyRows());
+  const [guideRows, setGuideRows] = useState<GradeRows>(() => emptyRows());
   const [audioRows, setAudioRows] = useState<AudioGradeRows>(() => emptyAudioRows());
   const [curriculumAudiobooks, setCurriculumAudiobooks] = useState<Audiobook[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,7 +106,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
     const loadCurriculumRows = async () => {
       setLoading(true);
       try {
-        const [results, featuredAudio] = await Promise.all([
+        const [results, teacherGuides, featuredAudio] = await Promise.all([
           Promise.all(CURRICULUM_GRADES.map(async (grade) => {
             const { books } = await fetchBooksFromYoBook(1, `Class ${grade}`, controller.signal);
             const gradeBooks = books.filter((book) => !book.grade || book.grade === grade);
@@ -107,17 +119,20 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
             const writtenBooks = dedupeBooks(gradeBooks.filter((book) => !isYoBookAudioBook(book)));
             return [grade, writtenBooks, audiobooks] as const;
           })),
+          fetchYoBookGuideRows(controller.signal),
           fetchYoBookAudiobooks(24, controller.signal),
         ]);
 
         if (!isMounted) return;
         setGradeRows(Object.fromEntries(results.map(([grade, books]) => [grade, books])) as GradeRows);
+        setGuideRows({ ...emptyRows(), ...teacherGuides });
         setAudioRows(Object.fromEntries(results.map(([grade, , audiobooks]) => [grade, audiobooks])) as AudioGradeRows);
         setCurriculumAudiobooks(dedupeAudiobooks(featuredAudio));
       } catch (error) {
         if (!controller.signal.aborted) {
           console.error('[Curriculum Sync] Error:', error);
           setGradeRows(emptyRows());
+          setGuideRows(emptyRows());
           setAudioRows(emptyAudioRows());
           setCurriculumAudiobooks([]);
         }
@@ -140,13 +155,17 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
     return grades.map((grade) => ({
       grade,
       books: filterBooks(gradeRows[grade] || [], selectedSubject, resourceMode),
+      guides: filterGuides(guideRows[grade] || [], selectedSubject, resourceMode),
       audiobooks: filterAudiobooks(audioRows[grade] || [], selectedSubject, resourceMode),
-      total: (gradeRows[grade]?.length || 0) + (audioRows[grade]?.length || 0),
+      total: (gradeRows[grade]?.length || 0) + (guideRows[grade]?.length || 0) + (audioRows[grade]?.length || 0),
     }));
-  }, [audioRows, gradeRows, resourceMode, selectedGrade, selectedSubject]);
+  }, [audioRows, gradeRows, guideRows, resourceMode, selectedGrade, selectedSubject]);
 
   const allVisibleBooks = useMemo(() => (
     visibleRows.flatMap((row) => row.books)
+  ), [visibleRows]);
+  const allVisibleGuides = useMemo(() => (
+    visibleRows.flatMap((row) => row.guides)
   ), [visibleRows]);
   const allVisibleAudiobooks = useMemo(() => (
     visibleRows.flatMap((row) => row.audiobooks)
@@ -158,8 +177,9 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
   const hasActiveFilters = selectedGrade !== 'all' || selectedSubject !== 'all' || resourceMode !== 'all';
   const activeCategory = selectedGrade === 'all' ? 'All grades' : `Grade ${selectedGrade}`;
   const availableBookCount = Object.values(gradeRows).flat().length;
+  const availableGuideCount = Object.values(guideRows).flat().length;
   const availableAudioCount = Object.values(audioRows).flat().length + curriculumAudiobooks.length;
-  const availableCount = availableBookCount + availableAudioCount;
+  const availableCount = availableBookCount + availableGuideCount + availableAudioCount;
 
   const resetFilters = () => {
     setSelectedGrade('all');
@@ -214,6 +234,10 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
             <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
               <Headphones size={15} className="text-bit-accent" />
               {availableAudioCount || '...'} audio
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
+              <BookMarked size={15} className="text-bit-accent" />
+              {availableGuideCount || '...'} guides
             </span>
             <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
               <LayoutGrid size={15} className="text-bit-accent" />
@@ -272,7 +296,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
                   onClick={() => setResourceMode(mode)}
                   className={`flex items-center justify-center gap-1.5 rounded-md px-3 text-[9px] font-mono font-bold uppercase tracking-widest transition-all ${resourceMode === mode ? 'bg-bit-accent text-white' : 'text-bit-muted hover:text-bit-text'}`}
                 >
-                  {mode === 'stories' ? <Search size={13} /> : mode === 'textbooks' ? <BookOpen size={13} /> : mode === 'audiobooks' ? <Headphones size={13} /> : <LayoutGrid size={13} />}
+                  {mode === 'stories' ? <Search size={13} /> : mode === 'textbooks' ? <BookOpen size={13} /> : mode === 'audiobooks' ? <Headphones size={13} /> : mode === 'teacher-guides' ? <BookMarked size={13} /> : <LayoutGrid size={13} />}
                   {modeLabels[mode]}
                 </button>
               ))}
@@ -301,7 +325,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
             </h2>
           </div>
           <p className="text-xs font-mono uppercase tracking-widest text-bit-muted">
-            {loading ? 'Loading shelves' : `${allVisibleBooks.length + allVisibleAudiobooks.length + visibleCurriculumAudiobooks.length} visible`}
+            {loading ? 'Loading shelves' : `${allVisibleBooks.length + allVisibleGuides.length + allVisibleAudiobooks.length + visibleCurriculumAudiobooks.length} visible`}
           </p>
         </div>
 
@@ -324,7 +348,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
           ) : (
             <BookGridSkeleton count={8} />
           )
-        ) : allVisibleBooks.length + allVisibleAudiobooks.length + visibleCurriculumAudiobooks.length > 0 ? (
+        ) : allVisibleBooks.length + allVisibleGuides.length + allVisibleAudiobooks.length + visibleCurriculumAudiobooks.length > 0 ? (
           <div className="space-y-12">
             {visibleCurriculumAudiobooks.length > 0 && (
               <div className="border-b border-bit-border/60 pb-10">
@@ -354,12 +378,12 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
                 </div>
               </div>
             )}
-            {visibleRows.filter((row) => row.books.length > 0 || row.audiobooks.length > 0).map((row) => (
+            {visibleRows.filter((row) => row.books.length > 0 || row.guides.length > 0 || row.audiobooks.length > 0).map((row) => (
               <div key={row.grade} className="border-b border-bit-border/60 pb-10 last:border-b-0">
                 <div className="mb-5 flex items-end justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-muted">
-                      {row.books.length + row.audiobooks.length} of {row.total || row.books.length + row.audiobooks.length} resources
+                      {row.books.length + row.guides.length + row.audiobooks.length} of {row.total || row.books.length + row.guides.length + row.audiobooks.length} resources
                     </p>
                     <h3 className="mt-1 text-2xl font-display font-bold tracking-tight text-bit-text">Grade {row.grade}</h3>
                   </div>
@@ -373,6 +397,31 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
                     </button>
                   )}
                 </div>
+                {row.guides.length > 0 && (
+                  <div className="mb-7">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <BookMarked size={15} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Guides</p>
+                    </div>
+                    <div className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
+                      {row.guides.slice(0, selectedGrade === 'all' ? 4 : undefined).map((guide, index) => (
+                        <div
+                          key={guide.id}
+                          className={`${selectedGrade === 'all' ? 'w-40 shrink-0 snap-start sm:w-44 lg:w-48' : ''} animate-fade-in-up`}
+                          style={{ animationDelay: `${(index % 5) * 35}ms` }}
+                        >
+                          <div className="relative h-full">
+                            <div className="absolute -top-3 left-3 z-20 rounded-full bg-bit-accent px-2 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-white shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.28)]">
+                              Guide
+                            </div>
+                            <BookCard variant="compact" book={guide} onClick={onBookClick} onRead={onRead} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(row.books.length > 0 || row.audiobooks.length > 0) && (
                 <div className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
                   {row.books.slice(0, selectedGrade === 'all' ? 8 : undefined).map((book, index) => (
                     <div
@@ -398,6 +447,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
                     </div>
                   ))}
                 </div>
+                )}
               </div>
             ))}
           </div>

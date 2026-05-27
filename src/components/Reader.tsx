@@ -4,6 +4,7 @@ import { streamBookChapter } from '@/services/geminiService';
 import { ArrowLeft, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PDFFlipBook, { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS, readPdfBackgroundPreset, readPdfHighlightColor, type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot } from './PDFFlipBook';
+import { downloadPdfLocally, getBestPdfSourceUrl, isPdfLikeUrl } from '@/lib/pdf';
 
 interface ReaderProps {
   book: Book;
@@ -44,8 +45,19 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const contentRef = useRef<HTMLDivElement>(null);
   const isExternal = !!book.externalUrl;
   const externalReaderUrl = book.externalUrl || book.downloadUrl || '';
-  const isPdfReader = /\.pdf(?:$|[?#])/i.test(externalReaderUrl) || /\.pdf(?:$|[?#])/i.test(book.downloadUrl || '');
+  const isPdfReader = isPdfLikeUrl(externalReaderUrl) || isPdfLikeUrl(book.downloadUrl);
   const readerUrl = isPdfReader && book.downloadUrl ? book.downloadUrl : externalReaderUrl;
+  const pdfDownloadUrl = getBestPdfSourceUrl(book);
+  const downloadUrl = pdfDownloadUrl || book.downloadUrl;
+  const handleDownload = async () => {
+    if (!pdfDownloadUrl) return;
+    try {
+      await downloadPdfLocally(pdfDownloadUrl, book.title);
+    } catch (error) {
+      console.error('PDF download failed:', error);
+      window.open(pdfDownloadUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
   useEffect(() => {
     if (!isExternal || isPdfReader) return;
     setIframeLoading(true);
@@ -257,9 +269,19 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 <ExternalLink size={17} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 sm:size-[18px]" />
               </a>
             )}
-            {book.downloadUrl && (
+            {pdfDownloadUrl ? (
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="rounded-lg p-2.5 text-bit-accent transition-all hover:bg-bit-panel hover:text-bit-text sm:border-r sm:border-bit-border sm:p-3 group"
+                title="Download Archival Volume"
+                aria-label="Download book"
+              >
+                <Download size={17} className="transition-transform group-hover:translate-y-0.5 sm:size-[18px]" />
+              </button>
+            ) : downloadUrl && (
               <a 
-                href={book.downloadUrl}
+                href={downloadUrl}
                 download={book.title}
                 target="_blank"
                 rel="noopener noreferrer"

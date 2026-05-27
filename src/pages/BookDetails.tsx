@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
+import { downloadPdfLocally, getBestPdfSourceUrl } from '@/lib/pdf';
 
 const isCurriculumBook = (book: Book) => (
   book.source === 'YoBook'
@@ -35,6 +36,17 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const [fullDescription, setFullDescription] = useState<string>(book.description || '');
   const [descLoading, setDescLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const pdfDownloadUrl = getBestPdfSourceUrl(book);
+  const downloadUrl = pdfDownloadUrl || book.downloadUrl;
+  const handleDownload = async () => {
+    if (!pdfDownloadUrl) return;
+    try {
+      await downloadPdfLocally(pdfDownloadUrl, book.title);
+    } catch (error) {
+      console.error('PDF download failed:', error);
+      window.open(pdfDownloadUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const { state } = useLocalUserState();
@@ -365,12 +377,16 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                     <Info size={18} className="text-bit-accent" /> Summary
                   </h3>
                   <div className="grid grid-cols-2 gap-3 sm:flex">
-                    {book.downloadUrl && (
-                      <a href={book.downloadUrl} download={book.title} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent shadow-sm transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white active:scale-95 sm:px-6 group/dl">
+                    {pdfDownloadUrl ? (
+                      <button type="button" onClick={handleDownload} className="flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent shadow-sm transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white active:scale-95 sm:px-6 group/dl">
+                        <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
+                      </button>
+                    ) : downloadUrl && (
+                      <a href={downloadUrl} download={book.title} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent shadow-sm transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white active:scale-95 sm:px-6 group/dl">
                         <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
                       </a>
                     )}
-                    <button onClick={() => onRead()} className={`${book.downloadUrl ? 'hidden sm:flex' : 'col-span-2 hidden sm:flex'} items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
+                    <button onClick={() => onRead()} className={`${downloadUrl ? 'hidden sm:flex' : 'col-span-2 hidden sm:flex'} items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
                       <BookOpen size={16} /> read
                     </button>
                   </div>

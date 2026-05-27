@@ -5,6 +5,7 @@ import { Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, ExternalLink, Highl
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
+import { getPdfProxyUrl } from '@/lib/pdf';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -161,11 +162,6 @@ const isTurnBookReady = (book: TurnBook) => {
   } catch {
     return false;
   }
-};
-
-const getProxyPdfUrl = (url: string) => {
-  if (!/^https?:\/\//i.test(url)) return url;
-  return `/api/pdf-proxy?url=${encodeURIComponent(url)}`;
 };
 
 const getStudyStorageKey = (pdfUrl: string) => `bitlibrary-pdf-study-v1:${encodeURIComponent(pdfUrl).slice(0, 180)}`;
@@ -617,7 +613,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const pendingZoomRef = useRef(zoom);
   const zoomFrameRef = useRef<number | null>(null);
   const handledStudyActionRef = useRef<number | null>(null);
-  const proxiedPdfUrl = useMemo(() => getProxyPdfUrl(pdfUrl), [pdfUrl]);
+  const proxiedPdfUrl = useMemo(() => getPdfProxyUrl(pdfUrl), [pdfUrl]);
   const sortedBookmarks = useMemo(() => [...studyState.bookmarks].sort((a, b) => a - b), [studyState.bookmarks]);
   const studyPanelOpen = controlledStudyPanelOpen ?? internalStudyPanelOpen;
   const backgroundPreset = controlledBackgroundPreset ?? internalBackgroundPreset;
