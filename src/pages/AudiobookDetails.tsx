@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Audiobook, AudiobookTrack } from '@/types/index';
 import { fetchAudiobookById, fetchFeaturedAudiobooks, searchAudiobooks } from '@/services/audiobookService';
 import AudiobookCard from '@/components/AudiobookCard';
+import AppSelect from '@/components/AppSelect';
 import Seo from '@/components/Seo';
 import { ArrowLeft, Calendar, Download, ExternalLink, Gauge, Headphones, Heart, Library, ListMusic, Pause, Play, Radio, RotateCcw, RotateCw, ShieldCheck, SkipBack, SkipForward } from 'lucide-react';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
@@ -517,37 +518,35 @@ const AudiobookDetails: React.FC = () => {
                         <ListMusic size={12} className="text-bit-accent" />
                         Chapter
                       </span>
-                      <select
+                      <AppSelect
                         value={activeTrack.id}
-                        onChange={(event) => {
-                          const nextTrack = audiobook.tracks.find((track) => track.id === event.target.value);
+                        onChange={(value) => {
+                          const nextTrack = audiobook.tracks.find((track) => track.id === value);
                           if (nextTrack) selectTrack(nextTrack);
                         }}
-                        className="w-full rounded-xl border border-bit-border bg-bit-panel/60 px-3 py-2 text-sm text-bit-text focus:border-bit-accent/40 focus:outline-none"
-                      >
-                        {audiobook.tracks.map((track) => (
-                          <option key={track.id} value={track.id}>
-                            {track.sectionNumber}. {track.title}
-                          </option>
-                        ))}
-                      </select>
+                        options={audiobook.tracks.map((track) => ({
+                          value: track.id,
+                          label: `${track.sectionNumber}. ${track.title}`,
+                        }))}
+                        className="w-full bg-bit-panel/60"
+                        ariaLabel="Chapter"
+                      />
                     </label>
                     <label className="block">
                       <span className="mb-2 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-bit-muted">
                         <Gauge size={12} className="text-bit-accent" />
                         Speed
                       </span>
-                      <select
-                        value={playbackRate}
-                        onChange={(event) => handlePlaybackRateChange(event.target.value)}
-                        className="w-full rounded-xl border border-bit-border bg-bit-panel/60 px-3 py-2 text-sm text-bit-text focus:border-bit-accent/40 focus:outline-none"
-                      >
-                        {PLAYBACK_RATES.map((rate) => (
-                          <option key={rate} value={rate}>
-                            {rate}x
-                          </option>
-                        ))}
-                      </select>
+                      <AppSelect
+                        value={String(playbackRate)}
+                        onChange={handlePlaybackRateChange}
+                        options={PLAYBACK_RATES.map((rate) => ({
+                          value: String(rate),
+                          label: `${rate}x`,
+                        }))}
+                        className="w-full bg-bit-panel/60"
+                        ariaLabel="Speed"
+                      />
                     </label>
                   </div>
                 </div>
@@ -715,37 +714,35 @@ const AudiobookDetails: React.FC = () => {
                       <ListMusic size={12} className="text-bit-accent" />
                       Jump to chapter
                     </span>
-                    <select
+                    <AppSelect
                       value={activeTrack.id}
-                      onChange={(event) => {
-                        const nextTrack = audiobook.tracks.find((track) => track.id === event.target.value);
+                      onChange={(value) => {
+                        const nextTrack = audiobook.tracks.find((track) => track.id === value);
                         if (nextTrack) selectTrack(nextTrack);
                       }}
-                      className="w-full rounded-xl border border-bit-border bg-bit-panel/60 px-3 py-2.5 text-sm text-bit-text focus:border-bit-accent/40 focus:outline-none"
-                    >
-                      {audiobook.tracks.map((track) => (
-                        <option key={track.id} value={track.id}>
-                          {track.sectionNumber}. {track.title}
-                        </option>
-                      ))}
-                    </select>
+                      options={audiobook.tracks.map((track) => ({
+                        value: track.id,
+                        label: `${track.sectionNumber}. ${track.title}`,
+                      }))}
+                      className="w-full bg-bit-panel/60"
+                      ariaLabel="Jump to chapter"
+                    />
                   </label>
                   <label className="block">
                     <span className="mb-2 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-bit-muted">
                       <Gauge size={12} className="text-bit-accent" />
                       Speed
                     </span>
-                    <select
-                      value={playbackRate}
-                      onChange={(event) => handlePlaybackRateChange(event.target.value)}
-                      className="w-full rounded-xl border border-bit-border bg-bit-panel/60 px-3 py-2.5 text-sm text-bit-text focus:border-bit-accent/40 focus:outline-none"
-                    >
-                      {PLAYBACK_RATES.map((rate) => (
-                        <option key={rate} value={rate}>
-                          {rate}x
-                        </option>
-                      ))}
-                    </select>
+                    <AppSelect
+                      value={String(playbackRate)}
+                      onChange={handlePlaybackRateChange}
+                      options={PLAYBACK_RATES.map((rate) => ({
+                        value: String(rate),
+                        label: `${rate}x`,
+                      }))}
+                      className="w-full bg-bit-panel/60"
+                      ariaLabel="Speed"
+                    />
                   </label>
                 </div>
               </div>

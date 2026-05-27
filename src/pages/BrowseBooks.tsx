@@ -616,9 +616,6 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
                         <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Audiobooks</p>
                      </div>
                      <h2 className="text-3xl font-display font-bold tracking-tight text-bit-text">Start listening</h2>
-                     <p className="mt-2 max-w-2xl text-sm leading-7 text-bit-muted">
-                        One quick row for public-domain recordings. Open the audiobook page when you want more listening categories.
-                     </p>
                   </div>
                   <button
                      type="button"

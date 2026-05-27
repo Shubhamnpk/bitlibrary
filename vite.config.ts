@@ -4,6 +4,8 @@ import react from '@vitejs/plugin-react';
 
 const ALLOWED_PDF_HOSTS = new Set([
   'learning.cehrd.gov.np',
+  'lib.moecdc.gov.np',
+  'ncert.nic.in',
   'yobook-api.vercel.app',
   'pustakalaya.org',
   'www.pustakalaya.org',

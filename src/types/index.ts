@@ -4,6 +4,11 @@ export interface Author {
   death_year?: number;
 }
 
+export interface ChapterPdf {
+  title: string;
+  pdfUrl: string;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -31,6 +36,7 @@ export interface Book {
   country?: string;
   detailUrl?: string;
   sourceUrl?: string;
+  chapterPdfUrls?: ChapterPdf[];
   providerSource?: string;
   source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library' | 'YoBook';
 }

@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 const ALLOWED_PDF_HOSTS = new Set([
   'learning.cehrd.gov.np',
   'lib.moecdc.gov.np',
+  'ncert.nic.in',
   'yobook-api.vercel.app',
   'pustakalaya.org',
   'www.pustakalaya.org',

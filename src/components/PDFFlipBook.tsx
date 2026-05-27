@@ -24,6 +24,9 @@ interface PDFFlipBookProps {
   studyAction?: PdfStudyAction | null;
   onStudyPanelOpenChange?: (open: boolean) => void;
   onStudySnapshotChange?: (snapshot: PdfStudySnapshot) => void;
+  onPreviousBoundary?: () => void;
+  onNextBoundary?: () => void;
+  preferFullDocumentLoad?: boolean;
 }
 
 interface FlipDimensions {
@@ -64,6 +67,7 @@ export interface PdfTextHighlight {
 }
 
 interface PdfStudyState {
+  lastPage?: number;
   bookmarks: number[];
   highlights: number[];
   notes: Record<string, string>;
@@ -215,7 +219,12 @@ const readStudyState = (pdfUrl: string): PdfStudyState => {
 
   try {
     const parsed = JSON.parse(window.localStorage.getItem(getStudyStorageKey(pdfUrl)) || 'null') as Partial<PdfStudyState> | null;
+    const parsedLastPage = typeof parsed?.lastPage === 'number' && Number.isFinite(parsed.lastPage) && parsed.lastPage > 0
+      ? Math.floor(parsed.lastPage)
+      : undefined;
+
     return {
+      lastPage: parsedLastPage,
       bookmarks: Array.isArray(parsed?.bookmarks) ? parsed.bookmarks.filter(Number.isFinite) : [],
       highlights: Array.isArray(parsed?.highlights) ? parsed.highlights.filter(Number.isFinite) : [],
       notes: parsed?.notes && typeof parsed.notes === 'object' ? parsed.notes as Record<string, string> : {},
@@ -581,9 +590,12 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   studyAction,
   onStudyPanelOpenChange,
   onStudySnapshotChange,
+  onPreviousBoundary,
+  onNextBoundary,
+  preferFullDocumentLoad = false,
 }) => {
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => readStudyState(pdfUrl).lastPage || 1);
   const [dimensions, setDimensions] = useState<FlipDimensions>(() => (
     typeof window === 'undefined'
       ? { width: 840, height: 594, display: 'double' }
@@ -613,6 +625,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const pendingZoomRef = useRef(zoom);
   const zoomFrameRef = useRef<number | null>(null);
   const handledStudyActionRef = useRef<number | null>(null);
+  const skipNextStudyStateWriteRef = useRef(false);
   const proxiedPdfUrl = useMemo(() => getPdfProxyUrl(pdfUrl), [pdfUrl]);
   const sortedBookmarks = useMemo(() => [...studyState.bookmarks].sort((a, b) => a - b), [studyState.bookmarks]);
   const studyPanelOpen = controlledStudyPanelOpen ?? internalStudyPanelOpen;
@@ -675,10 +688,16 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   }, [soundEnabled]);
 
   useEffect(() => {
+    skipNextStudyStateWriteRef.current = true;
     setStudyState(readStudyState(pdfUrl));
   }, [pdfUrl]);
 
   useEffect(() => {
+    if (skipNextStudyStateWriteRef.current) {
+      skipNextStudyStateWriteRef.current = false;
+      return;
+    }
+
     writeStudyState(pdfUrl, studyState);
   }, [pdfUrl, studyState]);
 
@@ -692,6 +711,15 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
   useEffect(() => {
     currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  useEffect(() => {
+    if (!Number.isFinite(currentPage) || currentPage < 1) return;
+
+    setStudyState((currentState) => {
+      const lastPage = Math.floor(currentPage);
+      return currentState.lastPage === lastPage ? currentState : { ...currentState, lastPage };
+    });
   }, [currentPage]);
 
   useEffect(() => {
@@ -903,10 +931,12 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
   useEffect(() => {
     let cancelled = false;
+    const savedState = readStudyState(pdfUrl);
+    const pageToRestore = savedState.lastPage && savedState.lastPage > 0 ? savedState.lastPage : 1;
     setLoading(true);
     setError(null);
-    currentPageRef.current = 1;
-    setCurrentPage(1);
+    currentPageRef.current = pageToRestore;
+    setCurrentPage(pageToRestore);
     const defaultZoom = getDefaultZoom();
     zoomRef.current = defaultZoom;
     pendingZoomRef.current = defaultZoom;
@@ -914,6 +944,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
     const task = pdfjsLib.getDocument({
       url: proxiedPdfUrl,
+      disableRange: preferFullDocumentLoad,
       disableAutoFetch: false,
       disableStream: false,
       wasmUrl: PDFJS_WASM_URL,
@@ -941,7 +972,13 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       cancelled = true;
       void task.destroy();
     };
-  }, [proxiedPdfUrl]);
+  }, [pdfUrl, preferFullDocumentLoad, proxiedPdfUrl]);
+
+  useEffect(() => {
+    if (!document || currentPage <= document.numPages) return;
+    currentPageRef.current = document.numPages;
+    setCurrentPage(document.numPages);
+  }, [currentPage, document]);
 
   useEffect(() => {
     if (!document || !bookRef.current) return;
@@ -1000,8 +1037,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const pageCount = document?.numPages || 0;
   const canZoomOut = zoom > 1;
   const canZoomIn = zoom < 1.75;
-  const canGoPrevious = currentPage > 1;
-  const canGoNext = currentPage < pageCount;
+  const canGoPrevious = currentPage > 1 || Boolean(onPreviousBoundary);
+  const canGoNext = currentPage < pageCount || Boolean(onNextBoundary);
   const renderScale = PDF_STABLE_RENDER_SCALE;
   const renderWindow = zoom > 1 ? 6 : 10;
   const textLayerWindow = dimensions.display === 'single' ? 1 : 2;
@@ -1034,6 +1071,11 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   }, [shouldCenterZoomedReader, currentPage, dimensions.width, dimensions.height, zoom]);
 
   const goPrevious = useCallback(() => {
+    if (currentPageRef.current <= 1 && onPreviousBoundary) {
+      onPreviousBoundary();
+      return;
+    }
+
     if (dimensions.display === 'single') {
       setCurrentPage((page) => Math.max(1, page - 1));
       if (soundEnabledRef.current && currentPageRef.current > 1) playPageTurnSound();
@@ -1047,9 +1089,14 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     } catch (turnError) {
       console.warn('[PDF Turn.js] Previous page skipped:', turnError);
     }
-  }, [dimensions.display, getBook]);
+  }, [dimensions.display, getBook, onPreviousBoundary]);
 
   const goNext = useCallback(() => {
+    if (currentPageRef.current >= pageCount && onNextBoundary) {
+      onNextBoundary();
+      return;
+    }
+
     if (dimensions.display === 'single') {
       setCurrentPage((page) => Math.min(pageCount, page + 1));
       if (soundEnabledRef.current && currentPageRef.current < pageCount) playPageTurnSound();
@@ -1063,7 +1110,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     } catch (turnError) {
       console.warn('[PDF Turn.js] Next page skipped:', turnError);
     }
-  }, [dimensions.display, getBook, pageCount]);
+  }, [dimensions.display, getBook, onNextBoundary, pageCount]);
 
   const goToPage = useCallback((page: number) => {
     if (dimensions.display === 'single') {

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Book } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PDFFlipBook, { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS, readPdfBackgroundPreset, readPdfHighlightColor, type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot } from './PDFFlipBook';
-import { downloadPdfLocally, getBestPdfSourceUrl, isPdfLikeUrl } from '@/lib/pdf';
+import AppSelect from './AppSelect';
+import { downloadPdfLocally, getBestPdfSourceUrl, getPdfProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
 
 interface ReaderProps {
   book: Book;
@@ -13,10 +14,35 @@ interface ReaderProps {
   onToggleMinimize?: (minimized: boolean) => void;
 }
 
+const getPdfReaderProgressKey = (bookId: string) => `bitlibrary-pdf-reader-progress-v1:${encodeURIComponent(bookId).slice(0, 160)}`;
+
+const readSavedPdfChapterIndex = (bookId: string, chapterCount: number) => {
+  if (typeof window === 'undefined' || chapterCount < 2) return 0;
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(getPdfReaderProgressKey(bookId)) || 'null') as { chapterIndex?: number } | null;
+    const chapterIndex = typeof parsed?.chapterIndex === 'number' && Number.isFinite(parsed.chapterIndex) ? Math.floor(parsed.chapterIndex) : 0;
+    return Math.min(chapterCount - 1, Math.max(0, chapterIndex));
+  } catch {
+    return 0;
+  }
+};
+
+const writeSavedPdfChapterIndex = (bookId: string, chapterIndex: number) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(getPdfReaderProgressKey(bookId), JSON.stringify({ chapterIndex }));
+  } catch {
+    // Reader progress is helpful, but storage failures should not block reading.
+  }
+};
+
 const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onToggleMinimize }) => {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [chapter, setChapter] = useState(1);
+  const [selectedPdfChapterIndex, setSelectedPdfChapterIndex] = useState(0);
   const [fontSize, setFontSize] = useState(18);
   const [isImmersive, setIsImmersive] = useState(false);
   const [localIsMinimized, setLocalIsMinimized] = useState(isMinimized);
@@ -43,10 +69,16 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   };
 
   const contentRef = useRef<HTMLDivElement>(null);
-  const isExternal = !!book.externalUrl;
-  const externalReaderUrl = book.externalUrl || book.downloadUrl || '';
-  const isPdfReader = isPdfLikeUrl(externalReaderUrl) || isPdfLikeUrl(book.downloadUrl);
-  const readerUrl = isPdfReader && book.downloadUrl ? book.downloadUrl : externalReaderUrl;
+  const preloadedPdfChapterUrlsRef = useRef(new Set<string>());
+  const pdfChapters = useMemo(
+    () => book.chapterPdfUrls?.filter((entry) => isPdfLikeUrl(entry.pdfUrl)) || [],
+    [book.chapterPdfUrls]
+  );
+  const activePdfChapter = pdfChapters[selectedPdfChapterIndex];
+  const isExternal = !!book.externalUrl || pdfChapters.length > 0;
+  const externalReaderUrl = activePdfChapter?.pdfUrl || book.externalUrl || book.downloadUrl || '';
+  const isPdfReader = pdfChapters.length > 0 || isPdfLikeUrl(externalReaderUrl) || isPdfLikeUrl(book.downloadUrl);
+  const readerUrl = activePdfChapter?.pdfUrl || (isPdfReader && isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl || externalReaderUrl : externalReaderUrl);
   const pdfDownloadUrl = getBestPdfSourceUrl(book);
   const downloadUrl = pdfDownloadUrl || book.downloadUrl;
   const handleDownload = async () => {
@@ -58,12 +90,61 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       window.open(pdfDownloadUrl, '_blank', 'noopener,noreferrer');
     }
   };
+  const goToPdfChapter = (index: number) => {
+    if (index < 0 || index >= pdfChapters.length) return;
+    setSelectedPdfChapterIndex(index);
+  };
+  const goToPreviousPdfChapter = () => {
+    setSelectedPdfChapterIndex((index) => Math.max(0, index - 1));
+  };
+  const goToNextPdfChapter = () => {
+    setSelectedPdfChapterIndex((index) => Math.min(pdfChapters.length - 1, index + 1));
+  };
+  useEffect(() => {
+    const nextChapter = pdfChapters[selectedPdfChapterIndex + 1];
+    if (!nextChapter) return;
+
+    const controller = new AbortController();
+    const preloadPdfChapter = async () => {
+      const preloadUrl = getPdfProxyUrl(nextChapter.pdfUrl);
+      if (preloadedPdfChapterUrlsRef.current.has(preloadUrl)) return;
+
+      try {
+        const response = await fetch(preloadUrl, {
+          cache: 'force-cache',
+          signal: controller.signal,
+        });
+
+        if (response.ok) {
+          await response.arrayBuffer();
+          preloadedPdfChapterUrlsRef.current.add(preloadUrl);
+        }
+      } catch {
+        // Preloading is best-effort; normal reader loading remains authoritative.
+      }
+    };
+
+    void preloadPdfChapter();
+
+    return () => controller.abort();
+  }, [pdfChapters, selectedPdfChapterIndex]);
+
   useEffect(() => {
     if (!isExternal || isPdfReader) return;
     setIframeLoading(true);
     const fallbackTimer = window.setTimeout(() => setIframeLoading(false), 6000);
     return () => window.clearTimeout(fallbackTimer);
   }, [isExternal, isPdfReader, readerUrl]);
+
+  useEffect(() => {
+    setSelectedPdfChapterIndex(readSavedPdfChapterIndex(book.id, pdfChapters.length));
+    preloadedPdfChapterUrlsRef.current.clear();
+  }, [book.id, pdfChapters.length]);
+
+  useEffect(() => {
+    if (pdfChapters.length < 2) return;
+    writeSavedPdfChapterIndex(book.id, selectedPdfChapterIndex);
+  }, [book.id, pdfChapters.length, selectedPdfChapterIndex]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -238,6 +319,20 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-6">
+          {isPdfReader && pdfChapters.length > 1 && (
+            <AppSelect
+              label="Chapter"
+              value={String(selectedPdfChapterIndex)}
+              onChange={(value) => setSelectedPdfChapterIndex(Number(value))}
+              options={pdfChapters.map((entry, index) => ({
+                value: String(index),
+                label: entry.title,
+              }))}
+              className="hidden max-w-64 bg-bit-panel/50 shadow-sm md:inline-flex"
+              selectClassName="max-w-44"
+              ariaLabel="Select PDF chapter"
+            />
+          )}
           {!isExternal && (
             <div className="hidden lg:flex items-center bg-bit-panel/50 rounded-lg border border-bit-border p-1 shadow-sm">
               <button
@@ -352,6 +447,37 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           </div>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-bit-bg p-5">
+            {isPdfReader && pdfChapters.length > 1 && (
+              <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-bit-accent">
+                    <BookOpen size={16} />
+                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Contents</p>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold text-bit-muted tabular-nums">
+                    {selectedPdfChapterIndex + 1}/{pdfChapters.length}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {pdfChapters.map((entry, index) => (
+                    <button
+                      key={`${entry.pdfUrl}-${index}`}
+                      type="button"
+                      onClick={() => goToPdfChapter(index)}
+                      className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${selectedPdfChapterIndex === index ? 'border-bit-accent bg-bit-accent text-white shadow-sm shadow-bit-accent/20' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:border-bit-accent/40 hover:text-bit-text'}`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold">{entry.title}</span>
+                        <span className={`mt-1 block text-[9px] font-mono font-bold uppercase tracking-widest ${selectedPdfChapterIndex === index ? 'text-white/70' : 'text-bit-muted'}`}>
+                          PDF {index + 1}
+                        </span>
+                      </span>
+                      <ChevronRight size={14} className={`shrink-0 transition-transform ${selectedPdfChapterIndex === index ? 'translate-x-0.5' : ''}`} />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
             {sidebarTab === 'saved' ? (
               <>
                 {isPdfReader ? (
@@ -604,6 +730,20 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
       {/* Main Content Area - Optimized Strip Layout */}
       <main className="flex-1 overflow-y-auto relative scrollbar-hide bg-bit-bg flex flex-col items-center">
+        {isPdfReader && pdfChapters.length > 1 && (
+          <div className="flex w-full items-center gap-2 overflow-x-auto border-b border-bit-border bg-bit-bg px-3 py-2 md:hidden">
+            {pdfChapters.map((entry, index) => (
+              <button
+                key={`${entry.pdfUrl}-${index}`}
+                type="button"
+                onClick={() => setSelectedPdfChapterIndex(index)}
+                className={`h-9 shrink-0 rounded-full border px-3 text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${selectedPdfChapterIndex === index ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:border-bit-accent/40 hover:text-bit-text'}`}
+              >
+                {entry.title}
+              </button>
+            ))}
+          </div>
+        )}
         {isExternal && isPdfReader ? (
           <PDFFlipBook
             pdfUrl={readerUrl}
@@ -614,6 +754,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             studyAction={pdfStudyAction}
             onStudyPanelOpenChange={setPdfHighlightMode}
             onStudySnapshotChange={setPdfStudySnapshot}
+            onPreviousBoundary={selectedPdfChapterIndex > 0 ? goToPreviousPdfChapter : undefined}
+            onNextBoundary={selectedPdfChapterIndex < pdfChapters.length - 1 ? goToNextPdfChapter : undefined}
+            preferFullDocumentLoad={pdfChapters.length > 1}
           />
         ) : isExternal ? (
           <div className="w-full max-w-[1000px] h-full bg-white relative shadow-2xl border-x border-bit-border overflow-hidden">

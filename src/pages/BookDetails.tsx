@@ -2,19 +2,60 @@ import React, { useState, useEffect } from 'react';
 import { Book, ViewState } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
-import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronRight, Share, Info, Maximize2, Library, Download, Bookmark } from 'lucide-react';
+import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronRight, Share, Info, Maximize2, Library, Download, Bookmark, ExternalLink } from 'lucide-react';
 import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
 import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 import { downloadPdfLocally, getBestPdfSourceUrl } from '@/lib/pdf';
+import { fetchYoBookGuideCollection, fetchYoBookTextbookCollection, isPriorCurriculumEdition } from '@/services/bookService';
 
 const isCurriculumBook = (book: Book) => (
   book.source === 'YoBook'
   || Boolean(book.grade)
   || book.bookshelves?.includes('Nepali Curriculum')
   || book.subjects?.includes('Nepali Curriculum')
+);
+
+const normalizeCurriculumSubject = (value?: string) => {
+  const normalized = (value || '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  if (['math', 'maths', 'mathematics'].includes(normalized)) return 'mathematics';
+  if (normalized.includes('english')) return 'english';
+  if (normalized.includes('nepali')) return 'nepali';
+  if (normalized.includes('science')) return 'science';
+  if (normalized.includes('social')) return 'social studies';
+  if (normalized.includes('health')) return 'health';
+  return normalized;
+};
+
+const isTeacherGuideResource = (book: Book) => {
+  const text = [
+    book.title,
+    book.category,
+    book.description,
+    ...(book.keywords || []),
+    ...(book.bookshelves || []),
+  ].join(' ').toLowerCase();
+
+  return /teacher'?s?\s+(guide|note)|teaching\s+manual|teachers?\s+guides?|\u0936\u093f\u0915\u094d\u0937\u0915\s+\u0928\u093f\u0930\u094d\u0926\u0947\u0936\u093f\u0915\u093e|\u0936\u093f\u0915\u094d\u0937\u0923\s+\u0928\u093f\u0930\u094d\u0926\u0947\u0936\u093f\u0915\u093e/.test(text);
+};
+
+const isSameCurriculumFamily = (book: Book, candidate: Book) => (
+  candidate.id !== book.id
+  && candidate.grade === book.grade
+  && normalizeCurriculumSubject(candidate.category) === normalizeCurriculumSubject(book.category)
+  && (
+    !book.curriculum
+    || !candidate.curriculum
+    || book.curriculum === candidate.curriculum
+    || book.country === candidate.country
+  )
 );
 
 interface BookDetailsProps {
@@ -32,6 +73,8 @@ interface BookDetailsProps {
 const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRead, onBookClick, onAuthorClick, onCategoryClick, onBreadcrumbClick, breadcrumbPath = [] }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'read' | 'authors'>('overview');
   const [similarBooks, setSimilarBooks] = useState<Book[]>([]);
+  const [editionBooks, setEditionBooks] = useState<Book[]>([]);
+  const [editionLoading, setEditionLoading] = useState(false);
   const [similarLoading, setSimilarLoading] = useState(false);
   const [fullDescription, setFullDescription] = useState<string>(book.description || '');
   const [descLoading, setDescLoading] = useState(false);
@@ -73,6 +116,54 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
 
   useEffect(() => {
     recordRecentlyViewedBook(book);
+  }, [book]);
+
+  useEffect(() => {
+    if (!isCurriculumBook(book) || !book.grade) {
+      setEditionBooks([]);
+      setEditionLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    const controller = new AbortController();
+
+    const syncEditions = async () => {
+      setEditionLoading(true);
+      try {
+        const [textbookCollection, guideCollection] = await Promise.all([
+          fetchYoBookTextbookCollection(controller.signal),
+          fetchYoBookGuideCollection(controller.signal),
+        ]);
+        if (!isMounted) return;
+
+        const gradeCandidates = isTeacherGuideResource(book)
+          ? (guideCollection.rows[book.grade || 0] || [])
+          : (textbookCollection.rows[book.grade || 0] || []);
+        const currentIsPrior = isPriorCurriculumEdition(book);
+        const editions = gradeCandidates
+          .filter((candidate) => isSameCurriculumFamily(book, candidate))
+          .filter((candidate) => currentIsPrior || isPriorCurriculumEdition(candidate))
+          .filter((candidate, index, list) => list.findIndex((entry) => entry.id === candidate.id) === index)
+          .slice(0, 6);
+
+        setEditionBooks(editions);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error('Curriculum edition sync failed:', error);
+          setEditionBooks([]);
+        }
+      } finally {
+        if (isMounted) setEditionLoading(false);
+      }
+    };
+
+    void syncEditions();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [book]);
 
   // Synchronize Similar Books
@@ -464,6 +555,79 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                         <p className="text-2xl font-display font-bold text-bit-text">{book.curriculum}</p>
                       </div>
                     )}
+                  </div>
+                </section>
+              )}
+
+              {book.chapterPdfUrls && book.chapterPdfUrls.length > 0 && (
+                <section className="mb-12">
+                  <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Chapter PDFs</p>
+                      <h3 className="mt-1 text-xl font-display font-semibold text-bit-text">NCERT chapter reader</h3>
+                    </div>
+                    <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted">
+                      {book.chapterPdfUrls.length} files
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {book.chapterPdfUrls.map((chapterPdf, index) => (
+                      <a
+                        key={`${chapterPdf.pdfUrl}-${index}`}
+                        href={chapterPdf.pdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group flex min-h-12 items-center justify-between gap-3 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-left transition-all hover:border-bit-accent/40 hover:bg-bit-panel/40"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-bit-text group-hover:text-bit-accent">
+                            {chapterPdf.title}
+                          </span>
+                          <span className="mt-1 block text-[9px] font-mono font-bold uppercase tracking-widest text-bit-muted">
+                            PDF chapter {index + 1}
+                          </span>
+                        </span>
+                        <ExternalLink size={15} className="shrink-0 text-bit-accent transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                      </a>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {(editionLoading || editionBooks.length > 0) && (
+                <section className="mb-12">
+                  <div className="mb-6 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">
+                        {isPriorCurriculumEdition(book) ? 'Edition trail' : 'Prior editions'}
+                      </p>
+                      <h3 className="mt-1 text-xl font-display font-semibold text-bit-text">
+                        {isPriorCurriculumEdition(book) ? 'Other editions' : 'Earlier versions'}
+                      </h3>
+                    </div>
+                    {editionBooks.length > 0 && (
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted">
+                        {editionBooks.length} found
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex snap-x gap-4 overflow-x-auto pb-4">
+                    {editionLoading
+                      ? [1, 2, 3].map((index) => (
+                        <div key={index} className="w-40 shrink-0 snap-start sm:w-44 lg:w-48">
+                          <BookCardSkeleton />
+                        </div>
+                      ))
+                      : editionBooks.map((edition) => (
+                        <div key={edition.id} className="w-40 shrink-0 snap-start sm:w-44 lg:w-48">
+                          <BookCard
+                            book={edition}
+                            onClick={onBookClick}
+                            onRead={(editionBook) => onRead(editionBook.id)}
+                            variant="compact"
+                          />
+                        </div>
+                      ))}
                   </div>
                 </section>
               )}

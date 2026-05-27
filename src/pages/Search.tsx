@@ -24,6 +24,12 @@ const SEARCH_CACHE_MAX_ENTRIES = 20;
 const SEARCH_MAX_RESULTS = 100;
 const SEARCH_PAGE_SIZE = 24;
 
+const formatResultCount = (count: number) => new Intl.NumberFormat('en').format(count);
+
+const formatResultLabel = (count: number, label: string) => (
+  `${formatResultCount(count)} ${label}${count === 1 ? '' : 's'}`
+);
+
 interface SearchCacheEntry {
   results: Book[];
   timestamp: number;
@@ -350,6 +356,31 @@ const SearchPage: React.FC<SearchPageProps> = ({
                 <h2 className="text-4xl md:text-5xl font-display font-bold text-bit-text tracking-tighter">
                   {isQueryReady ? `Results for "${currentQuery}"` : 'Search books and audiobooks'}
                 </h2>
+                {isQueryReady && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium text-bit-muted">
+                    {isSearching && totalResultCount === 0 ? (
+                      <span>Searching across connected libraries...</span>
+                    ) : totalResultCount > 0 ? (
+                      <>
+                        <span>
+                          Showing {formatResultLabel(totalFilteredCount, 'result')}
+                          {hasActiveFilters ? ` from ${formatResultLabel(totalResultCount, 'match')}` : ''}
+                        </span>
+                        <span className="hidden h-1 w-1 rounded-full bg-bit-muted/50 sm:inline-block" />
+                        <span>{formatResultLabel(searchResults.length, 'book')}</span>
+                        <span className="hidden h-1 w-1 rounded-full bg-bit-muted/50 sm:inline-block" />
+                        <span>{formatResultLabel(audiobookResults.length, 'audiobook')}</span>
+                        {isSearching && (
+                          <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-bit-accent">
+                            Updating
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span>No results found yet</span>
+                    )}
+                  </div>
+                )}
               </div>
               {isQueryReady && totalResultCount > 0 && (
                 <div className="flex items-center md:self-center">

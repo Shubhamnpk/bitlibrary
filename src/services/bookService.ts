@@ -1,4 +1,4 @@
-import { Author, Book } from '@/types/index';
+﻿import { Author, Book } from '@/types/index';
 import { INITIAL_BOOKS } from '@/constants';
 
 const GUTENDEX_BASE = 'https://gutendex.com/books';
@@ -128,8 +128,28 @@ const isPdfLikeResourceUrl = (url?: string): boolean => (
   )
 );
 
+export const isPriorCurriculumEdition = (book: Pick<Book, 'title' | 'description' | 'keywords' | 'bookshelves'>): boolean => {
+  const text = [
+    book.title,
+    book.description,
+    ...(book.keywords || []),
+    ...(book.bookshelves || []),
+  ].join(' ').toLowerCase();
+
+  return /\b(old|older|previous|prior)\s+(edition|textbook|version)\b|\b(old|older)\b|\u092a\u0941\u0930\u093e\u0928\u094b/.test(text);
+};
+
 const getGradeFromCategory = (category?: string): number | undefined => {
   const match = category?.match(/^(?:class|grade)\s*(\d{1,2})$/i);
+  if (!match) return undefined;
+  const grade = Number(match[1]);
+  return grade >= 1 && grade <= 12 ? grade : undefined;
+};
+
+const getGradeFromValue = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && value >= 1 && value <= 12) return value;
+  if (typeof value !== 'string') return undefined;
+  const match = value.match(/\b(?:grade|class)?\s*(\d{1,2})\b/i);
   if (!match) return undefined;
   const grade = Number(match[1]);
   return grade >= 1 && grade <= 12 ? grade : undefined;
@@ -165,67 +185,77 @@ const NUMBER_WORD_GRADES: Record<string, number> = {
   twelve: 12,
 };
 
-const getGradesFromYoBookItem = (item: any): number[] => {
-  if (typeof item.grade === 'number' && item.grade >= 1 && item.grade <= 12) {
-    return [item.grade];
+const GRADE_TOKEN = '(?:\\d{1,2}|[\\u0966-\\u096f]{1,2}|twelve|eleven|ten|nine|eight|seven|six|five|four|three|two|one|xii|xi|ix|viii|vii|vi|iv|iii|ii|i|x|v)';
+const GRADE_LABEL = '(?:grade|class|kaksha|\\u0915\\u0915\\u094d\\u0937\\u093e)';
+
+const normalizeGradeToken = (value: string) => (
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[\u0966-\u096f]/g, (digit) => String(digit.charCodeAt(0) - 0x0966))
+);
+
+const getGradeFromToken = (value: string): number | undefined => {
+  const normalized = normalizeGradeToken(value);
+  const grade = Number(normalized) || NUMBER_WORD_GRADES[normalized] || ROMAN_GRADES[normalized];
+  return grade >= 1 && grade <= 12 ? grade : undefined;
+};
+
+const addGradeOrRange = (grades: Set<number>, startValue: string, endValue?: string) => {
+  const startGrade = getGradeFromToken(startValue);
+  const endGrade = endValue ? getGradeFromToken(endValue) : undefined;
+  if (!startGrade) return;
+
+  if (!endGrade || startGrade === endGrade) {
+    grades.add(startGrade);
+    return;
   }
 
+  const [from, to] = startGrade < endGrade ? [startGrade, endGrade] : [endGrade, startGrade];
+  for (let grade = from; grade <= to; grade += 1) {
+    grades.add(grade);
+  }
+};
+
+const getGradesFromYoBookItem = (item: any): number[] => {
+  const explicitGrade = getGradeFromValue(item.grade);
+  if (explicitGrade) return [explicitGrade];
+
   const text = [
+    item.grade,
     item.title,
+    item.category,
     item.description,
     item.educationLevel,
+    item.curriculum,
     ...(Array.isArray(item.keywords) ? item.keywords : []),
+    ...(Array.isArray(item.subjects) ? item.subjects : []),
+    ...(Array.isArray(item.bookshelves) ? item.bookshelves : []),
   ]
     .filter((value): value is string => typeof value === 'string')
     .join(' ');
 
   const grades = new Set<number>();
-  const numberPattern = /\b(?:grade|class|kaksha|कक्षा)\s*[-:]?\s*(\d{1,2})\b/gi;
-  let numberMatch: RegExpExecArray | null;
-  while ((numberMatch = numberPattern.exec(text))) {
-    const grade = Number(numberMatch[1]);
-    if (grade >= 1 && grade <= 12) grades.add(grade);
+  const labeledGradePattern = new RegExp(`${GRADE_LABEL}\\s*[-:]?\\s*(${GRADE_TOKEN})(?:\\s*(?:-|–|—|to|dekhi|\\u0926\\u0947\\u0916\\u093f)\\s*(${GRADE_TOKEN}))?`, 'gi');
+  let labeledGradeMatch: RegExpExecArray | null;
+  while ((labeledGradeMatch = labeledGradePattern.exec(text))) {
+    addGradeOrRange(grades, labeledGradeMatch[1], labeledGradeMatch[2]);
   }
 
-  const romanPattern = /\b(?:grade|class)\s*[-:]?\s*(i{1,3}|iv|v|vi{1,3}|ix|x|xi|xii)\b/gi;
-  let romanMatch: RegExpExecArray | null;
-  while ((romanMatch = romanPattern.exec(text))) {
-    const grade = ROMAN_GRADES[romanMatch[1].toLowerCase()];
-    if (grade) grades.add(grade);
-  }
-
-  const bookNumberPattern = /\bbook\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|i{1,3}|iv|v|vi{1,3}|ix|x|xi|xii)\b/gi;
+  const bookNumberPattern = new RegExp(`\\bbook\\s+(${GRADE_TOKEN})(?:\\s*(?:-|–|—|to|dekhi)\\s*(${GRADE_TOKEN}))?\\b`, 'gi');
   let bookNumberMatch: RegExpExecArray | null;
   while ((bookNumberMatch = bookNumberPattern.exec(text))) {
-    const value = bookNumberMatch[1].toLowerCase();
-    const grade = NUMBER_WORD_GRADES[value] || ROMAN_GRADES[value];
-    if (grade) grades.add(grade);
+    addGradeOrRange(grades, bookNumberMatch[1], bookNumberMatch[2]);
+  }
+
+  const gradeKeywordPattern = new RegExp(`\\b(${GRADE_TOKEN})\\s*(?:grade|class)\\b`, 'gi');
+  let gradeKeywordMatch: RegExpExecArray | null;
+  while ((gradeKeywordMatch = gradeKeywordPattern.exec(text))) {
+    addGradeOrRange(grades, gradeKeywordMatch[1]);
   }
 
   return Array.from(grades);
 };
-
-const TEACHER_GUIDE_QUERIES = [
-  'teachers guide',
-  'teaching manual',
-  'teachers note',
-  'teacher guide',
-  'शिक्षक निर्देशिका',
-];
-
-const isTeacherGuideBook = (book: Book): boolean => {
-  const text = [
-    book.title,
-    book.category,
-    book.description,
-    ...(book.subjects || []),
-    ...(book.keywords || []),
-    ...(book.bookshelves || []),
-  ].join(' ').toLowerCase();
-
-  return /teacher'?s?\s+(guide|note)|teaching\s+manual|teachers?\s+guides?|शिक्षक निर्देशिका|शिक्षण निर्देशिका/.test(text);
-};
-
 const YOBOOK_SUBJECTS = new Set([
   'English',
   'English Stories',
@@ -253,6 +283,7 @@ const YOBOOK_SOURCE_LABELS: Record<string, string> = {
   'pustakalaya-teaching': 'Pustakalaya Teaching',
   'pustakalaya-other-educational': 'Pustakalaya Educational',
   'cdc-library': 'CDC Library',
+  'ncert-official': 'NCERT',
 };
 
 const getYoBookQueryType = (value?: string): 'all' | 'grade' | 'subject' | 'query' => {
@@ -465,13 +496,23 @@ const mapArchiveToBook = (item: any): Book => {
 };
 
 const mapYoBookToBook = (item: any): Book => {
-  const grade = typeof item.grade === 'number' ? item.grade : undefined;
+  const grade = getGradeFromValue(item.grade);
   const subject = toText(item.subject, item.category || 'Textbook');
-  const curriculum = toText(item.curriculum, 'CDC Nepal');
+  const curriculum = toText(item.curriculum, item.country === 'in' || item.source === 'ncert-official' ? 'NCERT' : 'CDC Nepal');
   const language = toText(item.language, 'en');
   const pdfUrl = getAbsoluteYoBookAssetUrl(item.pdfUrl);
   const audioUrl = getAbsoluteYoBookAssetUrl(item.audioUrl);
   const readUrl = getAbsoluteYoBookAssetUrl(item.readUrl);
+  const chapterPdfUrls = Array.isArray(item.chapterPdfUrls)
+    ? item.chapterPdfUrls
+      .map((chapter: any) => ({
+        title: toText(chapter?.title, 'Chapter'),
+        pdfUrl: getAbsoluteYoBookAssetUrl(chapter?.pdfUrl) || '',
+      }))
+      .filter((chapter: { title: string; pdfUrl: string }) => isPdfLikeResourceUrl(chapter.pdfUrl))
+    : [];
+  const chapterPdfUrl = chapterPdfUrls[0]?.pdfUrl;
+  const zipUrl = getAbsoluteYoBookAssetUrl(item.zipUrl);
   const coverUrl = getAbsoluteYoBookAssetUrl(item.coverUrl || item.localCoverUrl);
   const sourceUrl = getAbsoluteYoBookAssetUrl(item.sourceUrl);
   const detailUrl = getAbsoluteYoBookAssetUrl(item.detailUrl);
@@ -489,12 +530,13 @@ const mapYoBookToBook = (item: any): Book => {
     curriculum,
     sourceLabel,
     'Nepali Curriculum',
+    curriculum === 'NCERT' ? 'NCERT Curriculum' : undefined,
     'CEHRD',
     'Pustakalaya',
     ...keywords,
   ].filter((value, index, list): value is string => Boolean(value) && list.indexOf(value as string) === index);
-  const primaryResourceUrl = pdfUrl || audioUrl || readUrl || sourceUrl;
-  const downloadResourceUrl = pdfUrl || (isPdfLikeResourceUrl(readUrl) ? readUrl : undefined) || audioUrl;
+  const primaryResourceUrl = pdfUrl || chapterPdfUrl || audioUrl || readUrl || sourceUrl;
+  const downloadResourceUrl = pdfUrl || (isPdfLikeResourceUrl(readUrl) ? readUrl : undefined) || chapterPdfUrl || zipUrl || audioUrl;
 
   return {
     id: `yobook-${item.id}`,
@@ -515,6 +557,7 @@ const mapYoBookToBook = (item: any): Book => {
     audioUrl,
     detailUrl,
     sourceUrl,
+    chapterPdfUrls,
     providerSource: sourceKey,
     source: 'YoBook',
     grade,
@@ -526,6 +569,85 @@ const mapYoBookToBook = (item: any): Book => {
     popularity: grade ? Math.max(50, 100 - Math.abs(grade - 6) * 3) : 75,
     downloads: 0,
   };
+};
+
+const fetchYoBookEndpointPage = async (endpoint: 'textbooks' | 'teacher-guides', page: number, signal?: AbortSignal): Promise<{ items: any[]; pages: number }> => {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: '200',
+    full: 'true',
+  });
+  const response = await fetch(`${YOBOOK_BASE}/api/${endpoint}?${params.toString()}`, { signal });
+  if (!response.ok) {
+    markProviderFailure('yobook', response.status);
+    return { items: [], pages: 0 };
+  }
+
+  const data = await response.json();
+  return {
+    items: Array.isArray(data.data) ? data.data : [],
+    pages: Number(data.meta?.pages || 1),
+  };
+};
+
+export interface YoBookGradeCollection {
+  rows: Record<number, Book[]>;
+  ungraded: Book[];
+}
+
+const booksToGradeCollection = (books: Book[]): YoBookGradeCollection => {
+  const ungraded: Book[] = [];
+  const rows = books.reduce((gradeRows: Record<number, Book[]>, book) => {
+    const grades = getGradesFromYoBookItem(book);
+    if (grades.length === 0) {
+      ungraded.push(book);
+      return gradeRows;
+    }
+
+    grades.forEach((grade) => {
+      gradeRows[grade] = gradeRows[grade] || [];
+      gradeRows[grade].push({ ...book, grade });
+    });
+    return gradeRows;
+  }, {});
+
+  Object.keys(rows).forEach((grade) => {
+    rows[Number(grade)] = rows[Number(grade)].filter((book: Book, index: number, list: Book[]) => (
+      list.findIndex((entry) => entry.id === book.id) === index
+    ));
+  });
+
+  return { rows, ungraded };
+};
+
+const fetchYoBookEndpointCollection = async (endpoint: 'textbooks' | 'teacher-guides', signal?: AbortSignal): Promise<YoBookGradeCollection> => {
+  const cacheKey = `yobook-${endpoint}-collection-v4`;
+  const cached = getFromCache<YoBookGradeCollection>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('yobook')) {
+    warnProviderCooldown('yobook');
+    return { rows: {}, ungraded: [] };
+  }
+
+  try {
+    const firstPage = await fetchYoBookEndpointPage(endpoint, 1, signal);
+    const remainingPages = Array.from({ length: Math.max(0, firstPage.pages - 1) }, (_, index) => index + 2);
+    const remaining = await Promise.all(remainingPages.map((page) => fetchYoBookEndpointPage(endpoint, page, signal)));
+    const books = [firstPage, ...remaining]
+      .flatMap((page) => page.items)
+      .map(mapYoBookToBook)
+      .filter((book, index, list) => list.findIndex((entry) => entry.id === book.id) === index);
+    const collection = booksToGradeCollection(books);
+    setInCache(cacheKey, collection);
+    markProviderSuccess('yobook');
+    return collection;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('yobook');
+      console.error(`Failed to fetch YoBook ${endpoint}:`, error);
+    }
+    return { rows: {}, ungraded: [] };
+  }
 };
 
 // --- Exported Archival Connectors ---
@@ -660,43 +782,21 @@ export const searchYoBookBooks = async (query: string, signal?: AbortSignal): Pr
   }
 };
 
-export const fetchYoBookGuideRows = async (signal?: AbortSignal): Promise<Record<number, Book[]>> => {
-  const cacheKey = 'yobook-guide-rows';
-  const cached = getFromCache<Record<number, Book[]>>(cacheKey);
-  if (cached) return cached;
+export const fetchYoBookTextbookRows = async (signal?: AbortSignal): Promise<Record<number, Book[]>> => (
+  fetchYoBookEndpointCollection('textbooks', signal).then((collection) => collection.rows)
+);
 
-  try {
-    const guides = (
-      await Promise.all(TEACHER_GUIDE_QUERIES.map((query) => searchYoBookBooks(query, signal)))
-    )
-      .flat()
-      .filter(isTeacherGuideBook)
-      .filter((guide, index, list) => (
-        list.findIndex((entry) => entry.id === guide.id) === index
-      ));
+export const fetchYoBookTextbookCollection = async (signal?: AbortSignal): Promise<YoBookGradeCollection> => (
+  fetchYoBookEndpointCollection('textbooks', signal)
+);
 
-    const rows = guides.reduce((guideRows: Record<number, Book[]>, guide) => {
-      getGradesFromYoBookItem(guide).forEach((grade) => {
-        guideRows[grade] = guideRows[grade] || [];
-        guideRows[grade].push({ ...guide, grade });
-      });
-      return guideRows;
-    }, {});
+export const fetchYoBookGuideRows = async (signal?: AbortSignal): Promise<Record<number, Book[]>> => (
+  fetchYoBookEndpointCollection('teacher-guides', signal).then((collection) => collection.rows)
+);
 
-    Object.keys(rows).forEach((grade) => {
-      rows[Number(grade)] = rows[Number(grade)].filter((book: Book, index: number, list: Book[]) => (
-        list.findIndex((entry) => entry.id === book.id) === index
-      ));
-    });
-    setInCache(cacheKey, rows);
-    return rows;
-  } catch (error) {
-    if (!isAbortError(error)) {
-      console.error('Failed to fetch YoBook guide rows:', error);
-    }
-    return {};
-  }
-};
+export const fetchYoBookGuideCollection = async (signal?: AbortSignal): Promise<YoBookGradeCollection> => (
+  fetchYoBookEndpointCollection('teacher-guides', signal)
+);
 
 export interface YoBookSourceInfo {
   source: string;
