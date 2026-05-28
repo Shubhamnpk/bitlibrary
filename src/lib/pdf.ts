@@ -13,6 +13,11 @@ export const getPdfProxyUrl = (url: string): string => {
   return `/api/pdf-proxy?url=${encodeURIComponent(url)}`;
 };
 
+export const getPdfProxyDownloadUrl = (url: string, title: string): string => {
+  if (!/^https?:\/\//i.test(url)) return url;
+  return `/api/pdf-proxy?url=${encodeURIComponent(url)}&download=1&filename=${encodeURIComponent(getSafePdfFilename(title))}`;
+};
+
 export const getBestPdfSourceUrl = (book: Pick<Book, 'downloadUrl' | 'externalUrl' | 'sourceUrl' | 'detailUrl'>): string | undefined => (
   [book.downloadUrl, book.externalUrl, book.sourceUrl, book.detailUrl].find(isPdfLikeUrl)
 );
@@ -28,17 +33,33 @@ const getSafePdfFilename = (title: string) => {
   return /\.pdf$/i.test(safeTitle) ? safeTitle : `${safeTitle}.pdf`;
 };
 
-export const downloadPdfLocally = async (sourceUrl: string, title: string): Promise<void> => {
-  const response = await fetch(getPdfProxyUrl(sourceUrl));
-  if (!response.ok) throw new Error('Unable to download PDF.');
-
-  const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
+const clickDownloadLink = (href: string, title: string): void => {
   const link = document.createElement('a');
-  link.href = objectUrl;
+  link.href = href;
   link.download = getSafePdfFilename(title);
   document.body.appendChild(link);
   link.click();
   link.remove();
+};
+
+export const downloadPdfViaProxy = (sourceUrl: string, title: string): void => {
+  clickDownloadLink(getPdfProxyDownloadUrl(sourceUrl, title), title);
+};
+
+const downloadPdfFromBrowser = async (sourceUrl: string, title: string): Promise<void> => {
+  const response = await fetch(sourceUrl);
+  if (!response.ok) throw new Error('Unable to fetch PDF directly.');
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  clickDownloadLink(objectUrl, title);
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+};
+
+export const downloadPdfOptimized = async (sourceUrl: string, title: string): Promise<void> => {
+  try {
+    await downloadPdfFromBrowser(sourceUrl, title);
+  } catch {
+    downloadPdfViaProxy(sourceUrl, title);
+  }
 };

@@ -742,6 +742,61 @@ export const fetchBooksFromYoBook = async (page = 1, category?: string, signal?:
   }
 };
 
+export const fetchYoBookBooksBySource = async (source: string, limit = 100, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `yobook-source-${source}-${limit}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('yobook')) {
+    warnProviderCooldown('yobook');
+    return [];
+  }
+
+  try {
+    const pageSize = Math.min(100, Math.max(1, limit));
+    const fetchPage = async (page: number) => {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(pageSize),
+        full: 'true',
+        source,
+      });
+
+      const response = await fetch(`${YOBOOK_BASE}/api/books?${params.toString()}`, { signal });
+      if (!response.ok) {
+        markProviderFailure('yobook', response.status);
+        return { books: [] as Book[], pages: 0 };
+      }
+
+      const data = await response.json();
+      return {
+        books: Array.isArray(data.data) ? data.data.map(mapYoBookToBook) : [],
+        pages: Number(data.meta?.pages || 1),
+      };
+    };
+
+    const firstPage = await fetchPage(1);
+    const remainingPages = Array.from(
+      { length: Math.max(0, Math.min(firstPage.pages, Math.ceil(limit / pageSize)) - 1) },
+      (_, index) => index + 2
+    );
+    const remaining = await Promise.all(remainingPages.map(fetchPage));
+    const books = [firstPage, ...remaining]
+      .flatMap((page) => page.books)
+      .filter((book, index, list) => list.findIndex((entry) => entry.id === book.id) === index)
+      .slice(0, limit);
+
+    setInCache(cacheKey, books);
+    markProviderSuccess('yobook');
+    return books;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('yobook');
+      console.error(`Failed to fetch YoBook source ${source}:`, error);
+    }
+    return [];
+  }
+};
+
 export const searchYoBookBooks = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
   const cacheKey = `yobook-search-${normalizeCacheKey(query)}`;
   const cached = getFromCache<Book[]>(cacheKey);

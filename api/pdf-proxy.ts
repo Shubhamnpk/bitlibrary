@@ -26,9 +26,21 @@ const sendText = (response: ServerResponse, statusCode: number, message: string)
   response.end(message);
 };
 
+const getSafePdfFilename = (title: string | null) => {
+  const safeTitle = (title || 'book')
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .slice(0, 120)
+    || 'book';
+
+  return /\.pdf$/i.test(safeTitle) ? safeTitle : `${safeTitle}.pdf`;
+};
+
 export default async function handler(request: IncomingMessage, response: ServerResponse) {
   const requestUrl = new URL(request.url || '/', 'https://bitlibrary.local');
   const rawUrl = requestUrl.searchParams.get('url');
+  const shouldDownload = requestUrl.searchParams.get('download') === '1';
 
   if (!rawUrl) {
     sendText(response, 400, 'Missing url parameter.');
@@ -77,6 +89,9 @@ export default async function handler(request: IncomingMessage, response: Server
     response.setHeader('cache-control', 'public, max-age=3600, s-maxage=86400');
     response.setHeader('access-control-allow-origin', '*');
     response.setHeader('accept-ranges', upstream.headers.get('accept-ranges') || 'bytes');
+    if (shouldDownload) {
+      response.setHeader('content-disposition', `attachment; filename="${getSafePdfFilename(requestUrl.searchParams.get('filename'))}"`);
+    }
 
     ['content-length', 'content-range'].forEach((headerName) => {
       const headerValue = upstream.headers.get(headerName);

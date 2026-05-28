@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Audiobook, Book } from '@/types/index';
 import { CURRICULUM_GRADES, CURRICULUM_SUBJECTS } from '@/constants';
-import { fetchYoBookGuideCollection, fetchYoBookTextbookRows, isPriorCurriculumEdition } from '@/services/bookService';
+import { fetchYoBookGuideCollection, fetchYoBookTextbookCollection, isPriorCurriculumEdition } from '@/services/bookService';
 import { fetchYoBookAudiobooks } from '@/services/audiobookService';
 import BookCard from '@/components/BookCard';
 import AudiobookCard from '@/components/AudiobookCard';
@@ -21,6 +21,7 @@ type ResourceMode = 'all' | 'textbooks' | 'audiobooks' | 'stories' | 'teacher-gu
 type CurriculumRegion = 'all' | 'nepal' | 'ncert';
 type GradeRows = Record<number, Book[]>;
 type AudioGradeRows = Record<number, Audiobook[]>;
+type LazyLoadStatus = 'idle' | 'loading' | 'loaded' | 'error';
 
 const regionLabels: Record<CurriculumRegion, string> = {
   all: 'All',
@@ -57,6 +58,24 @@ const dedupeBooks = (books: Book[]) => books.filter((book, index, list) => (
 const dedupeAudiobooks = (audiobooks: Audiobook[]) => audiobooks.filter((audiobook, index, list) => (
   list.findIndex((entry) => entry.id === audiobook.id) === index
 ));
+
+const GENERIC_AUDIO_SUBJECTS = new Set([
+  'audio',
+  'audiobook',
+  'audio book',
+  'cehrd',
+  'cehrd audio',
+  'cdc nepal',
+  'nepal',
+  'nepali curriculum',
+  'pustakalaya',
+]);
+
+const getCurriculumAudioSubjects = (audiobook: Audiobook) => (
+  audiobook.genres
+    .filter((genre) => genre && !GENERIC_AUDIO_SUBJECTS.has(genre.toLowerCase()))
+    .filter((genre, index, list) => list.indexOf(genre) === index)
+);
 
 const matchesCurriculumRegion = (book: Book, curriculumRegion: CurriculumRegion) => {
   if (curriculumRegion === 'all') return true;
@@ -109,7 +128,7 @@ const filterAudiobooks = (audiobooks: Audiobook[], selectedSubject: string, reso
   audiobooks.filter((audiobook) => {
     if (curriculumRegion === 'ncert') return false;
     if (resourceMode !== 'all' && resourceMode !== 'audiobooks') return false;
-    return selectedSubject === 'all' || audiobook.genres.includes(selectedSubject);
+    return selectedSubject === 'all' || getCurriculumAudioSubjects(audiobook).includes(selectedSubject);
   })
 );
 
@@ -119,52 +138,92 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [resourceMode, setResourceMode] = useState<ResourceMode>('textbooks');
   const [gradeRows, setGradeRows] = useState<GradeRows>(() => emptyRows());
+  const [ungradedBooks, setUngradedBooks] = useState<Book[]>([]);
   const [guideRows, setGuideRows] = useState<GradeRows>(() => emptyRows());
   const [ungradedGuides, setUngradedGuides] = useState<Book[]>([]);
   const [audioRows, setAudioRows] = useState<AudioGradeRows>(() => emptyAudioRows());
   const [curriculumAudiobooks, setCurriculumAudiobooks] = useState<Audiobook[]>([]);
   const [loading, setLoading] = useState(true);
+  const [guidesStatus, setGuidesStatus] = useState<LazyLoadStatus>('idle');
+  const [audioStatus, setAudioStatus] = useState<LazyLoadStatus>('idle');
 
   useEffect(() => {
     let isMounted = true;
     const controller = new AbortController();
 
-    const loadCurriculumRows = async () => {
+    const loadTextbooks = async () => {
       setLoading(true);
       try {
-        const [textbookRows, teacherGuides, featuredAudio] = await Promise.all([
-          fetchYoBookTextbookRows(controller.signal),
-          fetchYoBookGuideCollection(controller.signal),
-          fetchYoBookAudiobooks(24, controller.signal),
-        ]);
+        const textbookCollection = await fetchYoBookTextbookCollection(controller.signal);
 
         if (!isMounted) return;
-        setGradeRows({ ...emptyRows(), ...textbookRows });
-        setGuideRows({ ...emptyRows(), ...teacherGuides.rows });
-        setUngradedGuides(teacherGuides.ungraded);
-        setAudioRows(emptyAudioRows());
-        setCurriculumAudiobooks(dedupeAudiobooks(featuredAudio));
+        setGradeRows({ ...emptyRows(), ...textbookCollection.rows });
+        setUngradedBooks(textbookCollection.ungraded);
       } catch (error) {
         if (!controller.signal.aborted) {
-          console.error('[Curriculum Sync] Error:', error);
+          console.error('[Curriculum Textbooks] Error:', error);
           setGradeRows(emptyRows());
-          setGuideRows(emptyRows());
-          setUngradedGuides([]);
-          setAudioRows(emptyAudioRows());
-          setCurriculumAudiobooks([]);
+          setUngradedBooks([]);
         }
       } finally {
         if (isMounted) setLoading(false);
       }
     };
 
-    void loadCurriculumRows();
+    void loadTextbooks();
 
     return () => {
       isMounted = false;
       controller.abort();
     };
   }, []);
+
+  const loadTeacherGuides = useCallback(async (signal?: AbortSignal) => {
+    if (guidesStatus === 'loading' || guidesStatus === 'loaded') return;
+
+    setGuidesStatus('loading');
+    try {
+      const teacherGuides = await fetchYoBookGuideCollection(signal);
+      setGuideRows({ ...emptyRows(), ...teacherGuides.rows });
+      setUngradedGuides(teacherGuides.ungraded);
+      setGuidesStatus('loaded');
+    } catch (error) {
+      if (!signal?.aborted) {
+        console.error('[Curriculum Guides] Error:', error);
+        setGuideRows(emptyRows());
+        setUngradedGuides([]);
+        setGuidesStatus('error');
+      }
+    }
+  }, [guidesStatus]);
+
+  const loadAudiobooks = useCallback(async (signal?: AbortSignal) => {
+    if (audioStatus === 'loading' || audioStatus === 'loaded') return;
+
+    setAudioStatus('loading');
+    try {
+      const featuredAudio = await fetchYoBookAudiobooks(100, signal);
+      setAudioRows(emptyAudioRows());
+      setCurriculumAudiobooks(dedupeAudiobooks(featuredAudio));
+      setAudioStatus('loaded');
+    } catch (error) {
+      if (!signal?.aborted) {
+        console.error('[Curriculum Audio] Error:', error);
+        setAudioRows(emptyAudioRows());
+        setCurriculumAudiobooks([]);
+        setAudioStatus('error');
+      }
+    }
+  }, [audioStatus]);
+
+  useEffect(() => {
+    const needsGuides = resourceMode === 'all' || resourceMode === 'teacher-guides';
+    const needsAudio = curriculumRegion !== 'ncert' && (resourceMode === 'all' || resourceMode === 'audiobooks');
+    if (!needsGuides && !needsAudio) return;
+
+    if (needsGuides) void loadTeacherGuides();
+    if (needsAudio) void loadAudiobooks();
+  }, [curriculumRegion, loadAudiobooks, loadTeacherGuides, resourceMode]);
 
   const visibleRows = useMemo(() => {
     const grades = selectedGrade === 'all' ? CURRICULUM_GRADES : [selectedGrade];
@@ -189,25 +248,38 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
   const allVisibleAudiobooks = useMemo(() => (
     visibleRows.flatMap((row) => row.audiobooks)
   ), [visibleRows]);
+  const visibleUngradedBooks = useMemo(() => (
+    selectedGrade === 'all' ? filterBooks(ungradedBooks, selectedSubject, resourceMode, curriculumRegion) : []
+  ), [curriculumRegion, resourceMode, selectedGrade, selectedSubject, ungradedBooks]);
   const visibleUngradedGuides = useMemo(() => (
     selectedGrade === 'all' ? filterGuides(ungradedGuides, selectedSubject, resourceMode, curriculumRegion) : []
   ), [curriculumRegion, resourceMode, selectedGrade, selectedSubject, ungradedGuides]);
   const curriculumSubjects = useMemo(() => {
     const subjects = new Set(CURRICULUM_SUBJECTS);
-    [...Object.values(gradeRows).flat(), ...Object.values(guideRows).flat(), ...ungradedGuides].forEach((book) => {
+    [...Object.values(gradeRows).flat(), ...ungradedBooks, ...Object.values(guideRows).flat(), ...ungradedGuides].forEach((book) => {
       if (!matchesCurriculumRegion(book, curriculumRegion)) return;
       if (book.category) subjects.add(book.category);
     });
+    if (curriculumRegion !== 'ncert') {
+      curriculumAudiobooks.forEach((audiobook) => {
+        getCurriculumAudioSubjects(audiobook).forEach((genre) => {
+          if (genre) subjects.add(genre);
+        });
+      });
+    }
     return Array.from(subjects).sort((a, b) => a.localeCompare(b));
-  }, [curriculumRegion, gradeRows, guideRows, ungradedGuides]);
+  }, [curriculumAudiobooks, curriculumRegion, gradeRows, guideRows, ungradedBooks, ungradedGuides]);
   const visibleCurriculumAudiobooks = useMemo(() => (
     selectedGrade === 'all' ? filterAudiobooks(curriculumAudiobooks, selectedSubject, resourceMode, curriculumRegion) : []
   ), [curriculumAudiobooks, curriculumRegion, resourceMode, selectedGrade, selectedSubject]);
 
   const hasActiveFilters = curriculumRegion !== 'all' || selectedGrade !== 'all' || selectedSubject !== 'all' || resourceMode !== 'textbooks';
   const activeCategory = `${regionLabels[curriculumRegion]} curriculum / ${selectedGrade === 'all' ? 'All grades' : `Grade ${selectedGrade}`}`;
+  const guidesLoading = guidesStatus === 'loading';
+  const audioLoading = audioStatus === 'loading';
+  const supplementalLoading = guidesLoading || audioLoading;
   const availableBookCount = dedupeBooks(
-    Object.values(gradeRows).flat().filter((book) => matchesCurriculumRegion(book, curriculumRegion) && !isPriorCurriculumEdition(book))
+    [...Object.values(gradeRows).flat(), ...ungradedBooks].filter((book) => matchesCurriculumRegion(book, curriculumRegion) && !isPriorCurriculumEdition(book))
   ).length;
   const availableGuideCount = dedupeBooks([
     ...Object.values(guideRows).flat(),
@@ -215,12 +287,31 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
   ].filter((book) => matchesCurriculumRegion(book, curriculumRegion) && !isPriorCurriculumEdition(book))).length;
   const availableAudioCount = curriculumRegion === 'ncert' ? 0 : Object.values(audioRows).flat().length + curriculumAudiobooks.length;
   const availableCount = availableBookCount + availableGuideCount + availableAudioCount;
+  const visibleResourceCount = allVisibleBooks.length + visibleUngradedBooks.length + allVisibleGuides.length + visibleUngradedGuides.length + allVisibleAudiobooks.length + visibleCurriculumAudiobooks.length;
+  const guideCountLabel = guidesLoading ? '...' : guidesStatus === 'idle' ? 'on demand' : availableGuideCount;
+  const audioCountLabel = curriculumRegion === 'ncert'
+    ? 0
+    : audioLoading
+      ? '...'
+      : audioStatus === 'idle'
+        ? 'on demand'
+        : availableAudioCount;
 
   const resetFilters = () => {
     setCurriculumRegion('nepal');
     setSelectedGrade('all');
     setSelectedSubject('all');
     setResourceMode('textbooks');
+  };
+
+  const scrollToShelf = (targetId: string) => {
+    if (selectedGrade !== 'all') {
+      setSelectedGrade('all');
+    }
+
+    window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
   };
 
   return (
@@ -237,9 +328,9 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
             name: 'Curriculum Books',
             description: 'CDC Nepal and NCERT curriculum books for classes 1 through 12.',
           },
-          ...(allVisibleBooks.length > 0 ? [
+          ...(allVisibleBooks.length + visibleUngradedBooks.length > 0 ? [
             createItemListSchema(
-              allVisibleBooks.map((book) => ({
+              [...allVisibleBooks, ...visibleUngradedBooks].map((book) => ({
                 name: book.title,
                 path: `/book/${book.id}`,
                 image: book.coverUrl,
@@ -269,11 +360,11 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
             </span>
             <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
               <Headphones size={15} className="text-bit-accent" />
-              {loading ? '...' : availableAudioCount} audio
+              {loading ? '...' : audioCountLabel} audio
             </span>
             <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
               <BookMarked size={15} className="text-bit-accent" />
-              {loading ? '...' : availableGuideCount} guides
+              {loading ? '...' : guideCountLabel} guides
             </span>
             <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
               <LayoutGrid size={15} className="text-bit-accent" />
@@ -358,6 +449,29 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
         </div>
       </section>
 
+      <nav className="mb-10 flex items-center gap-2 overflow-x-auto border-b border-bit-border pb-4" aria-label="Jump to curriculum grade">
+        <span className="shrink-0 text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-muted">Jump</span>
+        {CURRICULUM_GRADES.map((grade) => (
+          <button
+            key={grade}
+            type="button"
+            onClick={() => scrollToShelf(`curriculum-grade-${grade}`)}
+            className="inline-flex h-8 shrink-0 items-center rounded-full border border-bit-border bg-bit-panel/20 px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/50 hover:text-bit-text"
+          >
+            {grade}
+          </button>
+        ))}
+        {(visibleUngradedBooks.length > 0 || visibleUngradedGuides.length > 0) && (
+          <button
+            type="button"
+            onClick={() => scrollToShelf('curriculum-others')}
+            className="inline-flex h-8 shrink-0 items-center rounded-full border border-bit-accent/40 bg-bit-accent/10 px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent transition-all hover:bg-bit-accent hover:text-white"
+          >
+            Others
+          </button>
+        )}
+      </nav>
+
       <section>
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -367,7 +481,9 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
             </h2>
           </div>
           <p className="text-xs font-mono uppercase tracking-widest text-bit-muted">
-            {loading ? 'Loading shelves' : `${allVisibleBooks.length + allVisibleGuides.length + visibleUngradedGuides.length + allVisibleAudiobooks.length + visibleCurriculumAudiobooks.length} visible`}
+            {loading
+              ? 'Loading textbooks'
+              : `${visibleResourceCount} visible${supplementalLoading ? ' / loading more' : ''}`}
           </p>
         </div>
 
@@ -390,7 +506,9 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
           ) : (
             <BookGridSkeleton count={8} />
           )
-        ) : allVisibleBooks.length + allVisibleGuides.length + visibleUngradedGuides.length + allVisibleAudiobooks.length + visibleCurriculumAudiobooks.length > 0 ? (
+        ) : supplementalLoading && visibleResourceCount === 0 ? (
+          <BookGridSkeleton count={8} />
+        ) : visibleResourceCount > 0 ? (
           <div className="space-y-12">
             {visibleCurriculumAudiobooks.length > 0 && (
               <div className="border-b border-bit-border/60 pb-10">
@@ -420,36 +538,8 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
                 </div>
               </div>
             )}
-            {visibleUngradedGuides.length > 0 && (
-              <div className="border-b border-bit-border/60 pb-10">
-                <div className="mb-5 flex items-end justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-muted">
-                      {visibleUngradedGuides.length} guides without a single grade
-                    </p>
-                    <h3 className="mt-1 text-2xl font-display font-bold tracking-tight text-bit-text">Other guides</h3>
-                  </div>
-                </div>
-                <div className="flex snap-x gap-4 overflow-x-auto pb-4">
-                  {visibleUngradedGuides.slice(0, 12).map((guide, index) => (
-                    <div
-                      key={guide.id}
-                      className="w-40 shrink-0 snap-start animate-fade-in-up sm:w-44 lg:w-48"
-                      style={{ animationDelay: `${(index % 5) * 35}ms` }}
-                    >
-                      <div className="relative h-full">
-                        <div className="absolute -top-3 left-3 z-20 rounded-full bg-bit-accent px-2 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-white shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.28)]">
-                          Guide
-                        </div>
-                        <BookCard variant="compact" book={guide} onClick={onBookClick} onRead={onRead} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
             {visibleRows.filter((row) => row.books.length > 0 || row.guides.length > 0 || row.audiobooks.length > 0).map((row) => (
-              <div key={row.grade} className="border-b border-bit-border/60 pb-10 last:border-b-0">
+              <div key={row.grade} id={`curriculum-grade-${row.grade}`} className="scroll-mt-32 border-b border-bit-border/60 pb-10 last:border-b-0">
                 <div className="mb-5 flex items-end justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-muted">
@@ -520,6 +610,63 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
                 )}
               </div>
             ))}
+            {(visibleUngradedBooks.length > 0 || visibleUngradedGuides.length > 0) && (
+              <div id="curriculum-others" className="scroll-mt-32 border-b border-bit-border/60 pb-10 last:border-b-0">
+                <div className="mb-5 flex items-end justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-muted">
+                      {visibleUngradedBooks.length + visibleUngradedGuides.length} resources without a single grade
+                    </p>
+                    <h3 className="mt-1 text-2xl font-display font-bold tracking-tight text-bit-text">Others</h3>
+                  </div>
+                </div>
+
+                {visibleUngradedBooks.length > 0 && (
+                  <div className="mb-7">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <BookOpen size={15} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Books</p>
+                    </div>
+                    <div className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
+                      {visibleUngradedBooks.slice(0, selectedGrade === 'all' ? 12 : undefined).map((book, index) => (
+                        <div
+                          key={book.id}
+                          className={`${selectedGrade === 'all' ? 'w-40 shrink-0 snap-start sm:w-44 lg:w-48' : ''} animate-fade-in-up`}
+                          style={{ animationDelay: `${(index % 5) * 35}ms` }}
+                        >
+                          <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {visibleUngradedGuides.length > 0 && (
+                  <div>
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <BookMarked size={15} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Guides</p>
+                    </div>
+                    <div className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
+                      {visibleUngradedGuides.slice(0, selectedGrade === 'all' ? 12 : undefined).map((guide, index) => (
+                        <div
+                          key={guide.id}
+                          className={`${selectedGrade === 'all' ? 'w-40 shrink-0 snap-start sm:w-44 lg:w-48' : ''} animate-fade-in-up`}
+                          style={{ animationDelay: `${(index % 5) * 35}ms` }}
+                        >
+                          <div className="relative h-full">
+                            <div className="absolute -top-3 left-3 z-20 rounded-full bg-bit-accent px-2 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-white shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.28)]">
+                              Guide
+                            </div>
+                            <BookCard variant="compact" book={guide} onClick={onBookClick} onRead={onRead} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-bit-border bg-bit-panel/20 px-6 py-20 text-center">

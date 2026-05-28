@@ -5,7 +5,7 @@ import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, C
 import ReactMarkdown from 'react-markdown';
 import PDFFlipBook, { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS, readPdfBackgroundPreset, readPdfHighlightColor, type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot } from './PDFFlipBook';
 import AppSelect from './AppSelect';
-import { downloadPdfLocally, getBestPdfSourceUrl, getPdfProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
+import { downloadPdfOptimized, getBestPdfSourceUrl, getPdfProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
 
 interface ReaderProps {
   book: Book;
@@ -83,12 +83,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const downloadUrl = pdfDownloadUrl || book.downloadUrl;
   const handleDownload = async () => {
     if (!pdfDownloadUrl) return;
-    try {
-      await downloadPdfLocally(pdfDownloadUrl, book.title);
-    } catch (error) {
-      console.error('PDF download failed:', error);
-      window.open(pdfDownloadUrl, '_blank', 'noopener,noreferrer');
-    }
+    await downloadPdfOptimized(pdfDownloadUrl, book.title);
   };
   const goToPdfChapter = (index: number) => {
     if (index < 0 || index >= pdfChapters.length) return;

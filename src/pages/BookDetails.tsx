@@ -8,7 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
-import { downloadPdfLocally, getBestPdfSourceUrl } from '@/lib/pdf';
+import { downloadPdfOptimized, getBestPdfSourceUrl } from '@/lib/pdf';
 import { fetchYoBookGuideCollection, fetchYoBookTextbookCollection, isPriorCurriculumEdition } from '@/services/bookService';
 
 const isCurriculumBook = (book: Book) => (
@@ -83,12 +83,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const downloadUrl = pdfDownloadUrl || book.downloadUrl;
   const handleDownload = async () => {
     if (!pdfDownloadUrl) return;
-    try {
-      await downloadPdfLocally(pdfDownloadUrl, book.title);
-    } catch (error) {
-      console.error('PDF download failed:', error);
-      window.open(pdfDownloadUrl, '_blank', 'noopener,noreferrer');
-    }
+    await downloadPdfOptimized(pdfDownloadUrl, book.title);
   };
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);

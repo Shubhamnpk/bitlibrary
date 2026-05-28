@@ -1,5 +1,5 @@
 import { Audiobook, AudiobookTrack, Author, Book } from '@/types/index';
-import { fetchBookById, fetchBooksFromYoBook, searchYoBookBooks } from '@/services/bookService';
+import { fetchBookById, fetchBooksFromYoBook, fetchYoBookBooksBySource, searchYoBookBooks } from '@/services/bookService';
 
 const LIBRIVOX_API_BASE = 'https://librivox.org/api/feed/audiobooks';
 const CACHE_TTL = 6 * 60 * 60 * 1000;
@@ -292,7 +292,10 @@ export const fetchYoBookAudiobooks = async (limit = 12, signal?: AbortSignal): P
   const cached = getCached<Audiobook[]>(cacheKey);
   if (cached) return cached;
 
-  const { books } = await fetchBooksFromYoBook(1, 'Audio Drama', signal);
+  const sourceBooks = await fetchYoBookBooksBySource('cehrd-audio', limit, signal);
+  const books = sourceBooks.length > 0
+    ? sourceBooks
+    : (await fetchBooksFromYoBook(1, 'Audio Drama', signal)).books;
   const audiobooks = books
     .filter(isYoBookAudioBook)
     .map(mapYoBookAudioToAudiobook)
