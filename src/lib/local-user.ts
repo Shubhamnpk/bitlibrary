@@ -287,6 +287,19 @@ export const toggleSavedBook = (book: Book) => {
   });
 };
 
+export const saveBook = (book: Book) => {
+  return updateLocalUserState((current) => {
+    if (current.savedBooks.some((entry) => entry.id === book.id)) {
+      return current;
+    }
+
+    return {
+      ...current,
+      savedBooks: [compactBook(book), ...current.savedBooks].slice(0, MAX_SAVED_BOOKS),
+    };
+  });
+};
+
 export const toggleSavedAudiobook = (audiobook: Audiobook) => {
   return updateLocalUserState((current) => {
     const alreadySaved = current.savedAudiobooks.some((entry) => entry.id === audiobook.id);
@@ -350,6 +363,7 @@ export const useLocalUserState = () => {
     state,
     recordRecentSearch,
     toggleSavedBook,
+    saveBook,
     toggleSavedAudiobook,
     recordRecentlyViewedBook,
     updateDisplayName,

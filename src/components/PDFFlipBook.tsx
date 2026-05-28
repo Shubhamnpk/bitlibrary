@@ -6,6 +6,29 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import { getPdfProxyUrl } from '@/lib/pdf';
+import {
+  readPdfBackgroundPreset,
+  readPdfHighlightColor,
+  readPdfStudyState,
+  writePdfBackgroundPreset,
+  writePdfHighlightColor,
+  writePdfStudyState,
+  type PdfBackgroundPresetId,
+  type PdfHighlightColorId,
+  type PdfStudyState,
+  type PdfTextHighlight,
+} from '@/lib/pdf-reader-storage';
+
+export {
+  readPdfBackgroundPreset,
+  readPdfHighlightColor,
+};
+
+export type {
+  PdfBackgroundPresetId,
+  PdfHighlightColorId,
+  PdfTextHighlight,
+} from '@/lib/pdf-reader-storage';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -21,9 +44,11 @@ interface PDFFlipBookProps {
   backgroundPreset?: PdfBackgroundPresetId;
   highlightColor?: PdfHighlightColorId;
   studyPanelOpen?: boolean;
+  tableOfContentsRequestId?: number;
   studyAction?: PdfStudyAction | null;
   onStudyPanelOpenChange?: (open: boolean) => void;
   onStudySnapshotChange?: (snapshot: PdfStudySnapshot) => void;
+  onTableOfContentsChange?: (snapshot: PdfTableOfContentsSnapshot) => void;
   onPreviousBoundary?: () => void;
   onNextBoundary?: () => void;
   preferFullDocumentLoad?: boolean;
@@ -50,34 +75,7 @@ interface PDFPageCanvasProps {
   onTextSelection: (highlight: Omit<PdfTextHighlight, 'id' | 'createdAt'>) => void;
 }
 
-interface PdfHighlightRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export interface PdfTextHighlight {
-  id: string;
-  page: number;
-  text: string;
-  rects: PdfHighlightRect[];
-  color?: PdfHighlightColorId;
-  createdAt: number;
-}
-
-interface PdfStudyState {
-  lastPage?: number;
-  bookmarks: number[];
-  highlights: number[];
-  notes: Record<string, string>;
-  textHighlights: PdfTextHighlight[];
-}
-
 const EMPTY_TEXT_HIGHLIGHTS: PdfTextHighlight[] = [];
-
-export type PdfBackgroundPresetId = 'default' | 'wood' | 'paper' | 'sage' | 'night';
-export type PdfHighlightColorId = 'yellow' | 'mint' | 'sky' | 'rose' | 'violet';
 
 export interface PdfStudySnapshot {
   currentPage: number;
@@ -98,6 +96,19 @@ export type PdfStudyAction = {
   highlightId?: string;
 };
 
+export interface PdfTableOfContentsItem {
+  id: string;
+  title: string;
+  page: number;
+  level: number;
+}
+
+export interface PdfTableOfContentsSnapshot {
+  status: 'idle' | 'loading' | 'ready' | 'empty' | 'error';
+  items: PdfTableOfContentsItem[];
+  pageCount: number;
+}
+
 type TurnBook = JQuery & {
   turn: (commandOrOptions?: unknown, value?: unknown) => unknown;
 };
@@ -106,8 +117,11 @@ type GestureEventLike = Event & {
   scale?: number;
 };
 
-const PDF_BACKGROUND_STORAGE_KEY = 'bitlibrary-pdf-background-v1';
-const PDF_HIGHLIGHT_COLOR_STORAGE_KEY = 'bitlibrary-pdf-highlight-color-v1';
+type PdfOutlineItem = {
+  title?: string;
+  dest?: string | unknown[] | null;
+  items?: PdfOutlineItem[];
+};
 
 export const PDF_BACKGROUND_PRESETS: Array<{
   id: PdfBackgroundPresetId;
@@ -168,85 +182,65 @@ const isTurnBookReady = (book: TurnBook) => {
   }
 };
 
-const getStudyStorageKey = (pdfUrl: string) => `bitlibrary-pdf-study-v1:${encodeURIComponent(pdfUrl).slice(0, 180)}`;
-
 const clampZoom = (value: number) => Math.min(1.75, Math.max(1, Number(value.toFixed(3))));
 
 const getHighlightOverlay = (color?: PdfHighlightColorId) => (
   PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === color)?.overlay || PDF_HIGHLIGHT_COLOR_PRESETS[0].overlay
 );
 
-export const readPdfBackgroundPreset = (): PdfBackgroundPresetId => {
-  if (typeof window === 'undefined') return 'default';
-
+const resolveOutlinePage = async (document: PDFDocumentProxy, dest: PdfOutlineItem['dest']) => {
   try {
-    const value = window.localStorage.getItem(PDF_BACKGROUND_STORAGE_KEY);
-    return PDF_BACKGROUND_PRESETS.some((preset) => preset.id === value) ? value as PdfBackgroundPresetId : 'default';
+    const explicitDestination = typeof dest === 'string'
+      ? await document.getDestination(dest)
+      : Array.isArray(dest)
+        ? dest
+        : null;
+    const destinationRef = explicitDestination?.[0];
+
+    if (typeof destinationRef === 'number') {
+      return Math.min(document.numPages, Math.max(1, destinationRef + 1));
+    }
+
+    if (destinationRef && typeof destinationRef === 'object') {
+      return await document.getPageIndex(destinationRef).then((pageIndex) => pageIndex + 1);
+    }
   } catch {
-    return 'default';
+    return null;
   }
+
+  return null;
 };
 
-export const writePdfBackgroundPreset = (preset: PdfBackgroundPresetId) => {
-  try {
-    window.localStorage.setItem(PDF_BACKGROUND_STORAGE_KEY, preset);
-  } catch {
-    // Reading backgrounds are cosmetic, so storage failures should not block the reader.
-  }
-};
+const readOutlineItems = async (document: PDFDocumentProxy) => {
+  const outline = await document.getOutline() as PdfOutlineItem[] | null;
+  if (!outline?.length) return [];
 
-export const readPdfHighlightColor = (): PdfHighlightColorId => {
-  if (typeof window === 'undefined') return 'yellow';
+  const items: PdfTableOfContentsItem[] = [];
+  let itemIndex = 0;
 
-  try {
-    const value = window.localStorage.getItem(PDF_HIGHLIGHT_COLOR_STORAGE_KEY);
-    return PDF_HIGHLIGHT_COLOR_PRESETS.some((preset) => preset.id === value) ? value as PdfHighlightColorId : 'yellow';
-  } catch {
-    return 'yellow';
-  }
-};
+  const visit = async (entries: PdfOutlineItem[], level: number) => {
+    for (const entry of entries) {
+      const page = await resolveOutlinePage(document, entry.dest);
+      const title = entry.title?.replace(/\s+/g, ' ').trim();
 
-export const writePdfHighlightColor = (color: PdfHighlightColorId) => {
-  try {
-    window.localStorage.setItem(PDF_HIGHLIGHT_COLOR_STORAGE_KEY, color);
-  } catch {
-    // Highlight color is cosmetic, so storage failures should not block reading.
-  }
-};
+      if (title && page) {
+        itemIndex += 1;
+        items.push({
+          id: `${level}-${itemIndex}-${page}`,
+          title,
+          page,
+          level,
+        });
+      }
 
-const readStudyState = (pdfUrl: string): PdfStudyState => {
-  if (typeof window === 'undefined') return { bookmarks: [], highlights: [], notes: {}, textHighlights: [] };
+      if (entry.items?.length) {
+        await visit(entry.items, level + 1);
+      }
+    }
+  };
 
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(getStudyStorageKey(pdfUrl)) || 'null') as Partial<PdfStudyState> | null;
-    const parsedLastPage = typeof parsed?.lastPage === 'number' && Number.isFinite(parsed.lastPage) && parsed.lastPage > 0
-      ? Math.floor(parsed.lastPage)
-      : undefined;
-
-    return {
-      lastPage: parsedLastPage,
-      bookmarks: Array.isArray(parsed?.bookmarks) ? parsed.bookmarks.filter(Number.isFinite) : [],
-      highlights: Array.isArray(parsed?.highlights) ? parsed.highlights.filter(Number.isFinite) : [],
-      notes: parsed?.notes && typeof parsed.notes === 'object' ? parsed.notes as Record<string, string> : {},
-      textHighlights: Array.isArray(parsed?.textHighlights) ? parsed.textHighlights.filter((highlight) => (
-        typeof highlight?.id === 'string' &&
-        Number.isFinite(highlight.page) &&
-        typeof highlight.text === 'string' &&
-        Array.isArray(highlight.rects) &&
-        (highlight.color === undefined || PDF_HIGHLIGHT_COLOR_PRESETS.some((preset) => preset.id === highlight.color))
-      )) as PdfTextHighlight[] : [],
-    };
-  } catch {
-    return { bookmarks: [], highlights: [], notes: {}, textHighlights: [] };
-  }
-};
-
-const writeStudyState = (pdfUrl: string, state: PdfStudyState) => {
-  try {
-    window.localStorage.setItem(getStudyStorageKey(pdfUrl), JSON.stringify(state));
-  } catch {
-    // Local study tools stay optional when browser storage is unavailable.
-  }
+  await visit(outline, 0);
+  return items;
 };
 
 const playPageTurnSound = () => {
@@ -587,15 +581,17 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   backgroundPreset: controlledBackgroundPreset,
   highlightColor: controlledHighlightColor,
   studyPanelOpen: controlledStudyPanelOpen,
+  tableOfContentsRequestId = 0,
   studyAction,
   onStudyPanelOpenChange,
   onStudySnapshotChange,
+  onTableOfContentsChange,
   onPreviousBoundary,
   onNextBoundary,
   preferFullDocumentLoad = false,
 }) => {
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
-  const [currentPage, setCurrentPage] = useState(() => readStudyState(pdfUrl).lastPage || 1);
+  const [currentPage, setCurrentPage] = useState(() => readPdfStudyState(pdfUrl).lastPage || 1);
   const [dimensions, setDimensions] = useState<FlipDimensions>(() => (
     typeof window === 'undefined'
       ? { width: 840, height: 594, display: 'double' }
@@ -609,7 +605,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const [internalStudyPanelOpen, setInternalStudyPanelOpen] = useState(false);
   const [internalBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
   const [internalHighlightColor] = useState<PdfHighlightColorId>(() => readPdfHighlightColor());
-  const [studyState, setStudyState] = useState<PdfStudyState>(() => readStudyState(pdfUrl));
+  const [studyState, setStudyState] = useState<PdfStudyState>(() => readPdfStudyState(pdfUrl));
   const shellRef = useRef<HTMLDivElement | null>(null);
   const bookRef = useRef<HTMLDivElement | null>(null);
   const soundEnabledRef = useRef(soundEnabled);
@@ -626,6 +622,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const zoomFrameRef = useRef<number | null>(null);
   const handledStudyActionRef = useRef<number | null>(null);
   const skipNextStudyStateWriteRef = useRef(false);
+  const loadedTableOfContentsRequestRef = useRef<string | null>(null);
   const proxiedPdfUrl = useMemo(() => getPdfProxyUrl(pdfUrl), [pdfUrl]);
   const sortedBookmarks = useMemo(() => [...studyState.bookmarks].sort((a, b) => a - b), [studyState.bookmarks]);
   const studyPanelOpen = controlledStudyPanelOpen ?? internalStudyPanelOpen;
@@ -689,7 +686,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
   useEffect(() => {
     skipNextStudyStateWriteRef.current = true;
-    setStudyState(readStudyState(pdfUrl));
+    setStudyState(readPdfStudyState(pdfUrl));
+    loadedTableOfContentsRequestRef.current = null;
   }, [pdfUrl]);
 
   useEffect(() => {
@@ -698,7 +696,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       return;
     }
 
-    writeStudyState(pdfUrl, studyState);
+    writePdfStudyState(pdfUrl, studyState);
   }, [pdfUrl, studyState]);
 
   useEffect(() => {
@@ -931,7 +929,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    const savedState = readStudyState(pdfUrl);
+    const savedState = readPdfStudyState(pdfUrl);
     const pageToRestore = savedState.lastPage && savedState.lastPage > 0 ? savedState.lastPage : 1;
     setLoading(true);
     setError(null);
@@ -979,6 +977,40 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     currentPageRef.current = document.numPages;
     setCurrentPage(document.numPages);
   }, [currentPage, document]);
+
+  useEffect(() => {
+    if (!tableOfContentsRequestId || !document || !onTableOfContentsChange) return;
+
+    const requestKey = `${pdfUrl}:${tableOfContentsRequestId}`;
+    if (loadedTableOfContentsRequestRef.current === requestKey) return;
+
+    let cancelled = false;
+    loadedTableOfContentsRequestRef.current = requestKey;
+    onTableOfContentsChange({ status: 'loading', items: [], pageCount: document.numPages });
+
+    const loadTableOfContents = async () => {
+      try {
+        const items = await readOutlineItems(document);
+        if (cancelled) return;
+
+        onTableOfContentsChange({
+          status: items.length ? 'ready' : 'empty',
+          items,
+          pageCount: document.numPages,
+        });
+      } catch {
+        if (!cancelled) {
+          onTableOfContentsChange({ status: 'error', items: [], pageCount: document.numPages });
+        }
+      }
+    };
+
+    void loadTableOfContents();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [document, onTableOfContentsChange, pdfUrl, tableOfContentsRequestId]);
 
   useEffect(() => {
     if (!document || !bookRef.current) return;

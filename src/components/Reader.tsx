@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Book } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import PDFFlipBook, { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS, readPdfBackgroundPreset, readPdfHighlightColor, type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot } from './PDFFlipBook';
+import PDFFlipBook, { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS, readPdfBackgroundPreset, readPdfHighlightColor, type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
 import AppSelect from './AppSelect';
 import { downloadPdfOptimized, getBestPdfSourceUrl, getPdfProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
+import { saveBook } from '@/lib/local-user';
 
 interface ReaderProps {
   book: Book;
@@ -48,10 +49,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [localIsMinimized, setLocalIsMinimized] = useState(isMinimized);
   const [iframeLoading, setIframeLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState<'saved' | 'look'>('saved');
+  const [sidebarTab, setSidebarTab] = useState<'contents' | 'saved' | 'look'>('saved');
   const [pdfBackgroundPreset, setPdfBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
   const [pdfHighlightColor, setPdfHighlightColor] = useState<PdfHighlightColorId>(() => readPdfHighlightColor());
   const [pdfStudySnapshot, setPdfStudySnapshot] = useState<PdfStudySnapshot | null>(null);
+  const [pdfTableOfContents, setPdfTableOfContents] = useState<PdfTableOfContentsSnapshot>({ status: 'idle', items: [], pageCount: 0 });
+  const [pdfTableOfContentsRequestId, setPdfTableOfContentsRequestId] = useState(0);
   const [pdfStudyAction, setPdfStudyAction] = useState<PdfStudyAction | null>(null);
   const [pdfHighlightMode, setPdfHighlightMode] = useState(false);
   const [expandedHighlightPages, setExpandedHighlightPages] = useState<Record<number, boolean>>({});
@@ -70,6 +73,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
   const contentRef = useRef<HTMLDivElement>(null);
   const preloadedPdfChapterUrlsRef = useRef(new Set<string>());
+  const autoSavedStudyBookRef = useRef<string | null>(null);
   const pdfChapters = useMemo(
     () => book.chapterPdfUrls?.filter((entry) => isPdfLikeUrl(entry.pdfUrl)) || [],
     [book.chapterPdfUrls]
@@ -134,7 +138,21 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   useEffect(() => {
     setSelectedPdfChapterIndex(readSavedPdfChapterIndex(book.id, pdfChapters.length));
     preloadedPdfChapterUrlsRef.current.clear();
+    autoSavedStudyBookRef.current = null;
+    setPdfTableOfContents({ status: 'idle', items: [], pageCount: 0 });
+    setPdfTableOfContentsRequestId(0);
   }, [book.id, pdfChapters.length]);
+
+  useEffect(() => {
+    setPdfTableOfContents({ status: 'idle', items: [], pageCount: 0 });
+    setPdfTableOfContentsRequestId(0);
+  }, [readerUrl]);
+
+  useEffect(() => {
+    if (!isPdfReader && sidebarTab === 'contents') {
+      setSidebarTab('saved');
+    }
+  }, [isPdfReader, sidebarTab]);
 
   useEffect(() => {
     if (pdfChapters.length < 2) return;
@@ -228,6 +246,27 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
   const triggerPdfStudyAction = (type: PdfStudyAction['type'], page?: number, highlightId?: string) => {
     setPdfStudyAction({ id: Date.now(), type, page, highlightId });
+  };
+
+  const handlePdfStudySnapshotChange = useCallback((snapshot: PdfStudySnapshot) => {
+    setPdfStudySnapshot(snapshot);
+
+    const hasSavedPdfStudy = snapshot.bookmarkCount > 0 || snapshot.highlightCount > 0;
+    if (!hasSavedPdfStudy || autoSavedStudyBookRef.current === book.id) return;
+
+    autoSavedStudyBookRef.current = book.id;
+    saveBook(book);
+  }, [book]);
+
+  const handlePdfTableOfContentsChange = useCallback((snapshot: PdfTableOfContentsSnapshot) => {
+    setPdfTableOfContents(snapshot);
+  }, []);
+
+  const openPdfContentsTab = () => {
+    setSidebarTab('contents');
+    if (pdfTableOfContents.status === 'idle') {
+      setPdfTableOfContentsRequestId((requestId) => requestId + 1);
+    }
   };
 
   const toggleHighlightPage = (page: number) => {
@@ -424,6 +463,15 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           <div className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-px bg-gradient-to-b from-bit-accent/60 via-bit-border to-transparent" />
           <div className="border-b border-bit-border/70 bg-bit-bg px-5 py-3">
             <div className="flex rounded-full border border-bit-border bg-bit-panel/50 p-1">
+              {isPdfReader && (
+                <button
+                  type="button"
+                  onClick={openPdfContentsTab}
+                  className={`h-9 flex-1 rounded-full text-xs font-semibold transition-all ${sidebarTab === 'contents' ? 'bg-bit-accent text-white shadow-sm shadow-bit-accent/20' : 'text-bit-muted hover:text-bit-text'}`}
+                >
+                  Contents
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setSidebarTab('saved')}
@@ -442,38 +490,97 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           </div>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-bit-bg p-5">
-            {isPdfReader && pdfChapters.length > 1 && (
-              <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-bit-accent">
-                    <BookOpen size={16} />
-                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Contents</p>
-                  </div>
-                  <span className="text-[10px] font-mono font-bold text-bit-muted tabular-nums">
-                    {selectedPdfChapterIndex + 1}/{pdfChapters.length}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {pdfChapters.map((entry, index) => (
-                    <button
-                      key={`${entry.pdfUrl}-${index}`}
-                      type="button"
-                      onClick={() => goToPdfChapter(index)}
-                      className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${selectedPdfChapterIndex === index ? 'border-bit-accent bg-bit-accent text-white shadow-sm shadow-bit-accent/20' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:border-bit-accent/40 hover:text-bit-text'}`}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold">{entry.title}</span>
-                        <span className={`mt-1 block text-[9px] font-mono font-bold uppercase tracking-widest ${selectedPdfChapterIndex === index ? 'text-white/70' : 'text-bit-muted'}`}>
-                          PDF {index + 1}
-                        </span>
+            {sidebarTab === 'contents' && isPdfReader ? (
+              <>
+                {pdfChapters.length > 1 && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-bit-accent">
+                        <BookOpen size={16} />
+                        <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Files</p>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-bit-muted tabular-nums">
+                        {selectedPdfChapterIndex + 1}/{pdfChapters.length}
                       </span>
-                      <ChevronRight size={14} className={`shrink-0 transition-transform ${selectedPdfChapterIndex === index ? 'translate-x-0.5' : ''}`} />
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-            {sidebarTab === 'saved' ? (
+                    </div>
+                    <div className="space-y-2">
+                      {pdfChapters.map((entry, index) => (
+                        <button
+                          key={`${entry.pdfUrl}-${index}`}
+                          type="button"
+                          onClick={() => goToPdfChapter(index)}
+                          className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${selectedPdfChapterIndex === index ? 'border-bit-accent bg-bit-accent text-white shadow-sm shadow-bit-accent/20' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:border-bit-accent/40 hover:text-bit-text'}`}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold">{entry.title}</span>
+                            <span className={`mt-1 block text-[9px] font-mono font-bold uppercase tracking-widest ${selectedPdfChapterIndex === index ? 'text-white/70' : 'text-bit-muted'}`}>
+                              PDF {index + 1}
+                            </span>
+                          </span>
+                          <ChevronRight size={14} className={`shrink-0 transition-transform ${selectedPdfChapterIndex === index ? 'translate-x-0.5' : ''}`} />
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-bit-accent">
+                      <BookOpen size={16} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">PDF outline</p>
+                    </div>
+                    {pdfTableOfContents.pageCount > 0 && (
+                      <span className="text-[10px] font-mono font-bold text-bit-muted tabular-nums">
+                        {pdfTableOfContents.pageCount} pages
+                      </span>
+                    )}
+                  </div>
+
+                  {pdfTableOfContents.status === 'loading' && (
+                    <div className="space-y-2">
+                      {[1, 2, 3, 4].map((item) => (
+                        <div key={item} className="h-11 animate-shimmer rounded-lg border border-bit-border/40 bg-bit-bg/30" />
+                      ))}
+                    </div>
+                  )}
+
+                  {pdfTableOfContents.status === 'ready' && (
+                    <div className="space-y-1.5">
+                      {pdfTableOfContents.items.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => triggerPdfStudyAction('go-to-page', item.page)}
+                          className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${pdfStudySnapshot?.currentPage === item.page ? 'border-bit-accent bg-bit-accent text-white shadow-sm shadow-bit-accent/20' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:border-bit-accent/40 hover:text-bit-text'}`}
+                          style={{ paddingLeft: `${12 + Math.min(item.level, 4) * 14}px` }}
+                        >
+                          <span className="line-clamp-2 min-w-0 text-sm font-semibold leading-5">{item.title}</span>
+                          <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-mono font-bold tabular-nums ${pdfStudySnapshot?.currentPage === item.page ? 'border-white/30 text-white/80' : 'border-bit-border text-bit-accent'}`}>
+                            {item.page}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {(pdfTableOfContents.status === 'idle' || pdfTableOfContents.status === 'empty' || pdfTableOfContents.status === 'error') && (
+                    <div className="space-y-3">
+                      <p className="rounded-lg border border-dashed border-bit-border bg-bit-bg/25 px-3 py-5 text-center text-sm leading-6 text-bit-muted">
+                        {pdfTableOfContents.status === 'error' ? 'This PDF outline could not be loaded.' : 'This PDF does not include an embedded outline.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setPdfTableOfContentsRequestId((requestId) => requestId + 1)}
+                        className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-bit-border bg-bit-bg/40 px-3 text-sm font-semibold text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent"
+                      >
+                        Refresh outline
+                      </button>
+                    </div>
+                  )}
+                </section>
+              </>
+            ) : sidebarTab === 'saved' ? (
               <>
                 {isPdfReader ? (
                   <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
@@ -746,9 +853,11 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             backgroundPreset={pdfBackgroundPreset}
             highlightColor={pdfHighlightColor}
             studyPanelOpen={pdfHighlightMode}
+            tableOfContentsRequestId={pdfTableOfContentsRequestId}
             studyAction={pdfStudyAction}
             onStudyPanelOpenChange={setPdfHighlightMode}
-            onStudySnapshotChange={setPdfStudySnapshot}
+            onStudySnapshotChange={handlePdfStudySnapshotChange}
+            onTableOfContentsChange={handlePdfTableOfContentsChange}
             onPreviousBoundary={selectedPdfChapterIndex > 0 ? goToPreviousPdfChapter : undefined}
             onNextBoundary={selectedPdfChapterIndex < pdfChapters.length - 1 ? goToNextPdfChapter : undefined}
             preferFullDocumentLoad={pdfChapters.length > 1}
