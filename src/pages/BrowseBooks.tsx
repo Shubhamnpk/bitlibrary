@@ -788,7 +788,7 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
                {hasMore ? (
                   <div className="flex flex-col items-center gap-3">
                      <Disc className="text-bit-accent animate-spin" size={24} />
-                     <span className="text-[10px] font-mono text-bit-muted font-bold uppercase tracking-[0.3em] animate-pulse">Syncing_Sector_Registry...</span>
+                     <span className="text-[10px] font-mono text-bit-muted font-bold uppercase tracking-[0.3em] animate-pulse">loading...</span>
                   </div>
                ) : books.length > 0 && (
                   <div className="h-[1px] w-32 bg-gradient-to-r from-transparent via-bit-border to-transparent" />

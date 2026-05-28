@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap } from 'lucide-react';
+import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap, User, ChevronDown, Bookmark, Headphones, History, Settings } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 
 interface NavbarProps {
@@ -50,6 +50,40 @@ const Navbar: React.FC<NavbarProps> = ({
   mobileQuickTopics,
   navigateToSearch
 }) => {
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const displayName = localUserState.profile.displayName || 'Reader';
+  const profileInitials = useMemo(() => {
+    const initials = displayName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part: string) => part[0]?.toUpperCase())
+      .join('');
+
+    return initials || 'US';
+  }, [displayName]);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setProfileOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [profileOpen]);
+
   if (isReaderActive) return null;
 
   return (
@@ -188,10 +222,93 @@ const Navbar: React.FC<NavbarProps> = ({
             <Link to="/" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Home</Link>
             <Link to="/library" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/library') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Library</Link>
             <Link to="/curriculum" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/curriculum') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Curriculum</Link>
-            <Link to="/mylibrary" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/mylibrary') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>My Library</Link>
             <ThemeToggle />
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-bit-panel to-bit-border border border-bit-border flex items-center justify-center cursor-pointer hover:border-bit-accent/50 transition-all">
-              <span className="text-[10px] font-bold text-bit-text">US</span>
+            <div ref={profileMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setProfileOpen((open) => !open)}
+                className={`flex items-center gap-2 rounded-full border px-1.5 py-1 transition-all ${profileOpen ? 'border-bit-accent/60 bg-bit-panel text-bit-text' : 'border-bit-border bg-bit-panel/40 text-bit-muted hover:border-bit-accent/50 hover:text-bit-text'}`}
+                aria-haspopup="menu"
+                aria-expanded={profileOpen}
+                aria-label="Open profile menu"
+              >
+                <span className="flex h-7 w-7 items-center justify-center rounded-full border border-bit-border bg-gradient-to-tr from-bit-panel to-bit-border text-[10px] font-bold text-bit-text">
+                  {profileInitials}
+                </span>
+                <ChevronDown size={13} className={`transition-transform ${profileOpen ? 'rotate-180 text-bit-accent' : ''}`} />
+              </button>
+
+              {profileOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+0.75rem)] w-80 overflow-hidden rounded-2xl border border-bit-border bg-bit-panel/95 text-bit-text shadow-2xl shadow-bit-bg/35 backdrop-blur-2xl"
+                >
+                  <div className="border-b border-bit-border/50 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-bit-accent/30 bg-bit-accent/10 text-sm font-bold text-bit-accent">
+                        {profileInitials}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{displayName}</p>
+                        <p className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted">Local reader profile</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 border-b border-bit-border/50 text-center">
+                    <div className="px-3 py-3">
+                      <p className="text-sm font-bold text-bit-text">{localUserState.savedBooks.length}</p>
+                      <p className="mt-1 text-[9px] font-mono uppercase tracking-[0.18em] text-bit-muted">Books</p>
+                    </div>
+                    <div className="border-x border-bit-border/50 px-3 py-3">
+                      <p className="text-sm font-bold text-bit-text">{localUserState.savedAudiobooks.length}</p>
+                      <p className="mt-1 text-[9px] font-mono uppercase tracking-[0.18em] text-bit-muted">Audio</p>
+                    </div>
+                    <div className="px-3 py-3">
+                      <p className="text-sm font-bold text-bit-text">{localUserState.recentlyViewed.length}</p>
+                      <p className="mt-1 text-[9px] font-mono uppercase tracking-[0.18em] text-bit-muted">Recent</p>
+                    </div>
+                  </div>
+
+                  <div className="p-2">
+                    <Link
+                      to="/mylibrary"
+                      role="menuitem"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-bit-muted transition-all hover:bg-bit-bg/50 hover:text-bit-text"
+                    >
+                      <Bookmark size={16} className="text-bit-accent" />
+                      My Library
+                    </Link>
+                    <Link
+                      to="/audiobooks"
+                      role="menuitem"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-bit-muted transition-all hover:bg-bit-bg/50 hover:text-bit-text"
+                    >
+                      <Headphones size={16} className="text-bit-accent" />
+                      Audiobooks
+                    </Link>
+                    <Link
+                      to="/search"
+                      role="menuitem"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-bit-muted transition-all hover:bg-bit-bg/50 hover:text-bit-text"
+                    >
+                      <History size={16} className="text-bit-accent" />
+                      Search history
+                    </Link>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 border-t border-bit-border/50 px-4 py-3">
+                    <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-bit-muted">
+                      <Settings size={13} />
+                      Theme
+                    </div>
+                    <ThemeToggle />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
