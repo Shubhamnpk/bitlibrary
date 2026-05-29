@@ -112,6 +112,13 @@ const getGoalStatus = (progress: number): RoadmapStatus => {
   return 'idea';
 };
 
+const getMilestoneSortValue = (version: string) => {
+  if (version === 'Future') return -1;
+  const match = version.match(/v(\d+)\.(\d+)\.(\d+)/i);
+  if (!match) return 0;
+  return Number(match[1]) * 1_000_000 + Number(match[2]) * 1_000 + Number(match[3]);
+};
+
 const CircularProgress = ({ value, label }: { value: number; label?: string }) => {
   const radius = 17;
   const circumference = 2 * Math.PI * radius;
@@ -160,6 +167,20 @@ const RoadmapPage: React.FC<RoadmapPageProps> = ({ onBack }) => {
   const averageProgress = Math.round(
     roadmapDatabase.goals.reduce((total, goal) => total + getGoalProgress(goal.subGoals), 0) / roadmapDatabase.goals.length
   );
+  const milestoneGroups = useMemo(() => {
+    const groups = new Map<string, RoadmapGoal[]>();
+    roadmapDatabase.goals.forEach((goal) => {
+      groups.set(goal.version, [...(groups.get(goal.version) || []), goal]);
+    });
+
+    return Array.from(groups.entries())
+      .map(([version, goals]) => {
+        const progress = Math.round(goals.reduce((total, goal) => total + getGoalProgress(goal.subGoals), 0) / goals.length);
+        const doneCount = goals.filter((goal) => getGoalStatus(getGoalProgress(goal.subGoals)) === 'done').length;
+        return { version, goals, progress, doneCount };
+      })
+      .sort((a, b) => getMilestoneSortValue(b.version) - getMilestoneSortValue(a.version));
+  }, []);
 
   const getStatusFilterCount = (status: 'active' | RoadmapStatus) => (
     roadmapDatabase.goals.filter((goal) => {
@@ -265,8 +286,9 @@ const RoadmapPage: React.FC<RoadmapPageProps> = ({ onBack }) => {
           </div>
         </header>
 
-        <main className="space-y-8">
-          <section className="space-y-4">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
+          <main className="space-y-8">
+            <section className="space-y-4">
             <div className="flex flex-col gap-2 rounded-2xl border border-bit-border bg-bit-panel/25 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-bit-accent">
@@ -364,9 +386,9 @@ const RoadmapPage: React.FC<RoadmapPageProps> = ({ onBack }) => {
                 </article>
               );
             })}
-          </section>
+            </section>
 
-          <section className="rounded-2xl border border-bit-border bg-bit-panel/25 p-5 md:p-6">
+            <section className="rounded-2xl border border-bit-border bg-bit-panel/25 p-5 md:p-6">
             <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-bit-accent">Decision Principles</p>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {principles.map((principle) => (
@@ -375,8 +397,64 @@ const RoadmapPage: React.FC<RoadmapPageProps> = ({ onBack }) => {
                 </div>
               ))}
             </div>
-          </section>
-        </main>
+            </section>
+          </main>
+
+          <aside className="overflow-hidden rounded-2xl border border-bit-border bg-bit-panel/30 shadow-sm lg:sticky lg:top-24 lg:max-h-[calc(100svh-7rem)]">
+            <div className="border-b border-bit-border/70 bg-bit-bg/30 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-accent">Milestones</p>
+                  <h2 className="mt-1 text-lg font-display font-bold text-bit-text">Release path</h2>
+                </div>
+                <span className="rounded-full border border-bit-border bg-bit-bg/45 px-2.5 py-1 text-[10px] font-mono font-bold text-bit-muted">
+                  {milestoneGroups.length}
+                </span>
+              </div>
+            </div>
+
+            <div className="max-h-[28rem] space-y-3 overflow-y-auto p-4 pr-3 lg:max-h-[calc(100svh-14rem)]">
+              {milestoneGroups.map((milestone) => {
+                const isDone = milestone.doneCount === milestone.goals.length;
+                const isFuture = milestone.version === 'Future';
+                const statusLabel = isDone ? 'Completed' : isFuture ? 'Future' : 'In progress';
+                return (
+                  <div key={milestone.version} className={`relative overflow-hidden rounded-xl border p-3 transition-colors ${isDone ? 'border-emerald-400/20 bg-emerald-400/5' : isFuture ? 'border-violet-300/25 bg-violet-300/8' : 'border-bit-accent/25 bg-bit-accent/8'}`}>
+                    <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-bit-accent/60" />
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${isDone ? 'border-emerald-400/35 bg-emerald-400/10 text-emerald-300' : isFuture ? 'border-violet-300/35 bg-violet-300/10 text-violet-200' : 'border-bit-accent/35 bg-bit-accent/10 text-bit-accent'}`}>
+                        {isDone ? <CheckCircle2 size={15} /> : isFuture ? <Sparkles size={15} /> : <Clock3 size={15} />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-bold text-bit-text">{milestone.version}</p>
+                          <span className="text-[10px] font-mono font-bold text-bit-accent tabular-nums">{milestone.progress}%</span>
+                        </div>
+                        <p className="mt-0.5 text-[9px] font-mono font-bold uppercase tracking-[0.16em] text-bit-muted">
+                          {statusLabel}
+                        </p>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-bit-bg/70">
+                          <div className="h-full rounded-full bg-bit-accent" style={{ width: `${milestone.progress}%` }} />
+                        </div>
+                        <p className="mt-2 text-[10px] font-mono font-bold uppercase tracking-[0.14em] text-bit-muted">
+                          {milestone.doneCount}/{milestone.goals.length} complete
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-1.5">
+                      {milestone.goals.slice(0, 4).map((goal) => (
+                        <div key={goal.id} className="flex items-center justify-between gap-2 rounded-lg border border-bit-border/60 bg-bit-bg/25 px-2.5 py-2 text-xs">
+                          <span className="line-clamp-1 font-medium text-bit-text/85">{goal.title}</span>
+                          <span className="shrink-0 font-mono text-[10px] font-bold text-bit-accent">{getGoalProgress(goal.subGoals)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
   );

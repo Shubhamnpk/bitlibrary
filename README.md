@@ -2,17 +2,23 @@
   <img src="./assets/bitlibrary-logo.svg" alt="BitLibrary logo" width="220" />
 </p>
 
-BitLibrary is a futuristic book discovery and reading app built with React, Vite, and TypeScript. It combines public book data sources, AI-assisted search enrichment, cached browsing, and a polished reading-focused UI.
+# BitLibrary
 
-## Features
+BitLibrary is an open digital library for books, curriculum resources, audiobooks, and focused reading. It is built with React, Vite, TypeScript, Tailwind CSS, PDF.js, and public book/audio APIs.
 
-- Multi-source book search across Gutendex, Google Books, Open Library, Internet Archive, and IT Bookstore
-- Fast staged search results with caching for repeat queries
-- Author and category exploration pages
-- AI-assisted search insights and enrichment through OpenRouter
-- Reader flow for opening and navigating book details
-- Cached explore page data for faster repeat visits
-- Responsive UI with a distinctive "neural archive" visual style
+The app is local-first where possible: saved books, saved audiobooks, profile preferences, reader progress, PDF bookmarks, and highlights live in the browser unless a future backend feature moves them elsewhere.
+
+## Current Features
+
+- Multi-source book discovery across Gutendex, Google Books, Open Library, Internet Archive, IT Bookstore, and YoBook
+- Curriculum library for Nepal and NCERT resources, with grade, subject, and resource-type filters
+- Audiobook browsing and playback using LibriVox and YoBook audio sources
+- Book detail pages with source links, downloads, related books, and AI-assisted summaries when configured
+- PDF flip-book reader powered by PDF.js and Turn.js
+- PDF study tools: page bookmarks, text highlights, highlight colors, background presets, last-page restore, and on-demand PDF outline loading
+- Local profile dropdown, saved books, saved audiobooks, recent searches, recently viewed books, and theme preference
+- Optimized PDF download path with a browser-first download attempt and Vercel proxy fallback
+- SEO metadata, sitemap/robots handling, release notes, roadmap, terms, and about pages
 
 ## Tech Stack
 
@@ -21,62 +27,68 @@ BitLibrary is a futuristic book discovery and reading app built with React, Vite
 - Vite
 - React Router
 - Tailwind CSS
+- PDF.js
+- Turn.js
+- Lucide React
 - Axios
-- Convex
-- OpenRouter
+- Convex client package
+- Vercel serverless API route for PDF proxying
 
 ## Data Sources
 
-BitLibrary currently pulls book and metadata results from:
+BitLibrary reads public metadata and media from several sources:
 
-- Gutendex
+- Gutendex / Project Gutenberg
 - Google Books
 - Open Library
 - Internet Archive
 - IT Bookstore
+- YoBook curriculum and audio records
+- LibriVox audiobook feeds
 
-AI-powered search enhancements are optional and use OpenRouter when configured.
+Some sources are slower or less consistent than others, so the app uses client-side caching, staged loading, ranking, and fallbacks.
 
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js 20+
-- pnpm or npm
+- pnpm
 
-### Installation
+### Install
 
 ```bash
 pnpm install
 ```
 
-If you use npm instead:
+### Environment
 
-```bash
-npm install
-```
-
-### Environment Variables
-
-Copy the example env file and fill in your values:
+Copy the example file:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Required for AI features:
+Optional AI enrichment uses OpenRouter:
 
-- `VITE_OPENROUTER_API_KEY`
+```text
+VITE_OPENROUTER_API_KEY=your_openrouter_api_key
+VITE_OPENROUTER_MODEL=minimax/minimax-m2.5:free
+VITE_OPENROUTER_SITE_URL=http://localhost:5173
+VITE_OPENROUTER_APP_NAME=BitLibrary
+```
 
-Optional:
+Without an OpenRouter key, the app still works. AI summaries, streamed chapter-style responses, and search insight enrichment fall back gracefully or are disabled.
 
-- `VITE_OPENROUTER_MODEL`
-- `VITE_OPENROUTER_SITE_URL`
-- `VITE_OPENROUTER_APP_NAME`
+Convex is present in the repo, but the current app is primarily client/local-first. If you wire Convex features locally, set:
 
-Without an OpenRouter key, the app still works, but AI-generated search enrichment and summaries will be disabled.
+```text
+VITE_CONVEX_URL=your_convex_url
+```
 
-## Running Locally
+## Development
+
+Start the Vite dev server:
 
 ```bash
 pnpm dev
@@ -88,47 +100,93 @@ Open:
 http://localhost:5173
 ```
 
-## Build
+Run checks:
 
 ```bash
+pnpm typecheck
 pnpm build
 ```
 
-## Preview Production Build
+Or run both:
+
+```bash
+pnpm check
+```
+
+Preview the production build:
 
 ```bash
 pnpm preview
 ```
 
+## Scripts
+
+- `pnpm dev` - Start the Vite development server
+- `pnpm typecheck` - Run TypeScript typechecking
+- `pnpm build` - Build production assets
+- `pnpm preview` - Preview the production build locally
+- `pnpm check` - Run typecheck and build
+
 ## Project Structure
 
 ```text
+api/
+  pdf-proxy.ts              Vercel API route for PDF streaming/download fallback
+
+convex/
+  schema.ts, books.ts       Convex schema/functions kept for backend experiments
+
 src/
-  components/     Reusable UI pieces
-  pages/          Route-level pages
-  services/       External API integrations
-  lib/            Shared utilities
-  styles/         Global styling
-convex/           Convex schema and functions
+  components/               Shared UI, reader, cards, navbar, SEO
+  pages/                    Route-level screens
+  services/                 Book, audiobook, and AI service integrations
+  lib/                      Local user state, PDF helpers, SEO, search ranking
+  styles/                   Global CSS and PDF reader styles
+  data/                     Roadmap/release content
+  content/                  Static page content
 ```
 
-## Open Source Notes
+## Main Routes
 
-- Secrets should never be committed. Use `.env.local` for local development.
-- `.env.local` is ignored by git.
-- If you accidentally expose an API key, rotate it immediately.
+- `/` - Home
+- `/library`, `/books`, `/browse` - Book discovery
+- `/curriculum` - Nepal and NCERT curriculum library
+- `/audiobooks` - Audiobook browse page
+- `/audiobooks/category/:categoryId` - Audiobook category page
+- `/book/:id` - Book detail page
+- `/audiobook/:id` - Audiobook detail/player page
+- `/author/:name` - Author page
+- `/mylibrary` - Local saved books, saved audio, profile state
+- `/search?q=...` - Search results
+- `/releases`, `/roadmap`, `/about`, `/terms` - Project pages
+
+## Reader Notes
+
+The PDF reader uses PDF.js for rendering and Turn.js for page navigation. Study state is stored under a single localStorage record:
+
+```text
+bitlibrary-pdf-reader-storage-v1
+```
+
+That record stores PDF reader preferences, recent PDF study records, last page, bookmarks, and text highlights. Older scattered PDF reader keys are migrated/cleaned up by `src/lib/pdf-reader-storage.ts`.
+
+## Deployment
+
+The app is designed to deploy cleanly on Vercel as a Vite frontend with one serverless API route:
+
+```text
+api/pdf-proxy.ts
+```
+
+The proxy is used when direct PDF download or loading needs same-origin help. Static SPA routing is handled by `vercel.json`.
 
 ## Known Limitations
 
-- Search speed depends on third-party APIs, and some sources are slower than others.
-- Convex types may need to be generated locally if you plan to use Convex functions in development.
-- Availability and quality of book metadata can vary by source.
-
-## Scripts
-
-- `pnpm dev` - Start the Vite dev server
-- `pnpm build` - Create a production build
-- `pnpm preview` - Preview the production build locally
+- Public APIs can rate-limit, timeout, or return inconsistent metadata.
+- PDF rendering quality depends on the source PDF, browser, fonts, and device memory.
+- PDF outlines only appear when the PDF contains embedded outline data.
+- User library/profile data is browser-local and can be cleared by browser storage cleanup.
+- Large bundles currently produce Vite chunk-size warnings during build.
 
 ## Contributing
 
@@ -136,7 +194,7 @@ Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) befo
 
 ## Security
 
-If you discover a security issue, please read [SECURITY.md](./SECURITY.md).
+Secrets should never be committed. Use `.env.local` for local development. If you discover a security issue, please read [SECURITY.md](./SECURITY.md).
 
 ## License
 

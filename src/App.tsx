@@ -27,6 +27,7 @@ import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, usePara
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import Seo from '@/components/Seo';
+import FloatingScrollButton from '@/components/FloatingScrollButton';
 
 const SEARCH_DEBOUNCE_MS = 400;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
@@ -266,6 +267,8 @@ const App: React.FC = () => {
     () => !ROUTE_PATTERNS.some((path) => matchPath({ path, end: true }, location.pathname)),
     [location.pathname]
   );
+  const isLibraryRoute = /^\/(?:library|books|browse|mylibrary)(?:\/|$)/.test(location.pathname);
+  const hideFloatingScrollControls = Boolean(isReaderActive || readerLoading || mobileMenuOpen);
 
   const handleReadBook = useCallback((book: Book) => {
     setActiveBook(book);
@@ -318,6 +321,22 @@ const App: React.FC = () => {
     navigateToSearch(query, { persistRecent: true });
     closeSearchSurface();
   };
+  const currentRoutePath = useCallback(() => `${location.pathname}${location.search}${location.hash}`, [location.hash, location.pathname, location.search]);
+  const navigateToBook = useCallback((bookOrId: Book | string, extraState?: Record<string, unknown>) => {
+    const id = typeof bookOrId === 'string' ? bookOrId : bookOrId.id;
+    const currentState = location.state as { from?: string } | null;
+    const from = location.pathname.startsWith('/book/')
+      ? currentState?.from || '/library'
+      : currentRoutePath();
+
+    navigate(`/book/${id}`, {
+      state: {
+        from,
+        ...extraState,
+      },
+    });
+  }, [currentRoutePath, location.pathname, location.state, navigate]);
+
   const handleMobileMenuSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
@@ -501,7 +520,7 @@ const App: React.FC = () => {
                     ))
                   ) : (
                     featuredBooks.map(book => (
-                      <BookCard key={book.id} variant="compact" book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
+                      <BookCard key={book.id} variant="compact" book={book} onClick={navigateToBook} onRead={handleReadBook} />
                     ))
                   )}
                 </div>
@@ -532,14 +551,14 @@ const App: React.FC = () => {
           } />
 
           {/* Discovery / Library Registry */}
-          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
-          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
-          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
 
           <Route path="/curriculum" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <CurriculumPage
-                onBookClick={(book) => navigate(`/book/${book.id}`)}
+                onBookClick={navigateToBook}
                 onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
                 onRead={handleReadBook}
               />
@@ -557,7 +576,7 @@ const App: React.FC = () => {
                 recentlyViewed={localUserState.recentlyViewed}
                 profile={localUserState.profile}
                 settings={localUserState.settings}
-                onBookClick={(b) => navigate(`/book/${b.id}`)}
+                onBookClick={navigateToBook}
                 onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
                 onRead={handleReadBook}
                 onExplore={() => navigate('/')}
@@ -568,7 +587,7 @@ const App: React.FC = () => {
           <Route path="/search" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <SearchPage
-                onBookClick={(book) => navigate(`/book/${book.id}`)}
+                onBookClick={navigateToBook}
                 onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
                 onRead={handleReadBook}
                 onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
@@ -620,7 +639,7 @@ const App: React.FC = () => {
                     });
                   }
                 }}
-                onBookClick={(id) => navigate(`/book/${id}`)}
+                onBookClick={(id) => navigateToBook(id)}
                 onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
                 onCategoryClick={(cat) => navigate(`/category/${encodeURIComponent(cat)}`)}
               />
@@ -629,13 +648,13 @@ const App: React.FC = () => {
 
           <Route path="/author/:name" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
-              <AuthorDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+              <AuthorDetails onBookClick={navigateToBook} />
             </div>
           } />
 
           <Route path="/category/:categoryId" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
-              <CategoryDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+              <CategoryDetails onBookClick={navigateToBook} />
             </div>
           } />
 
@@ -652,6 +671,11 @@ const App: React.FC = () => {
 
       {/* Global Footer */}
       <Footer isReaderActive={Boolean(isReaderActive || isNotFoundRoute)} />
+
+      <FloatingScrollButton
+        hidden={hideFloatingScrollControls}
+        hideScrollDown={isLibraryRoute}
+      />
 
       {/* Global PiP Overlay */}
       {readerLoading && !activeBook && <ReaderSkeleton />}
@@ -692,20 +716,23 @@ const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, 
   if (loading && !book) return <div className="animate-fade-in"><BookDetailsSkeleton /></div>;
   if (!book) return <div className="py-20 text-center font-mono text-red-500 uppercase">Archive Node {id} not found in current sector registry.</div>;
 
+  const routeState = location.state as { from?: string; path?: Book[] } | null;
+  const returnTo = routeState?.from || '/library';
+  const breadcrumbPath = routeState?.path || [];
+
   return (
     <BookDetails
       book={book}
       allBooks={books}
-      onClose={() => navigate('/library')}
+      onClose={() => navigate(returnTo)}
       onRead={(rid) => onRead(rid || book.id)}
-      onBookClick={(b) => navigate(`/book/${b.id}`, { state: { path: [...(location.state?.path || []), book] } })}
+      onBookClick={(b) => navigate(`/book/${b.id}`, { state: { from: returnTo, path: [...breadcrumbPath, book] } })}
       onAuthorClick={onAuthorClick}
       onCategoryClick={onCategoryClick}
       onBreadcrumbClick={(b, index) => {
-        const currentPath = location.state?.path || [];
-        navigate(`/book/${b.id}`, { state: { path: currentPath.slice(0, index) } });
+        navigate(`/book/${b.id}`, { state: { from: returnTo, path: breadcrumbPath.slice(0, index) } });
       }}
-      breadcrumbPath={location.state?.path || []}
+      breadcrumbPath={breadcrumbPath}
     />
   );
 };

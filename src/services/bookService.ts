@@ -1,5 +1,6 @@
 ﻿import { Author, Book } from '@/types/index';
 import { INITIAL_BOOKS } from '@/constants';
+import { ChapterAudio } from '@/types/index';
 
 const GUTENDEX_BASE = 'https://gutendex.com/books';
 const GOOGLE_BOOKS_BASE = 'https://www.googleapis.com/books/v1/volumes';
@@ -272,6 +273,15 @@ const YOBOOK_SUBJECTS = new Set([
   'Audio Drama',
 ]);
 
+const YOBOOK_AUDIO_SUBJECT_LABELS: Record<string, string> = {
+  english: 'English',
+  nepali: 'नेपाली',
+  mathematics: 'Mathematics',
+  science: 'Science',
+  'social studies': 'Social Studies',
+  health: 'Health',
+};
+
 const YOBOOK_SOURCE_LABELS: Record<string, string> = {
   'cehrd-learning': 'CEHRD Learning',
   'cehrd-audio': 'CEHRD Audio',
@@ -291,6 +301,34 @@ const getYoBookQueryType = (value?: string): 'all' | 'grade' | 'subject' | 'quer
   if (getGradeFromCategory(value)) return 'grade';
   if (YOBOOK_SUBJECTS.has(value)) return 'subject';
   return 'query';
+};
+
+const getYoBookAudioSubjectFromValue = (value?: string): string | undefined => {
+  if (/नेपाली|नेपালি|नेपालि/.test(value || '')) return 'नेपाली';
+
+  const normalized = (value || '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  if (!normalized) return undefined;
+  if (['math', 'maths', 'mathematics'].includes(normalized)) return 'Mathematics';
+  if (normalized.includes('english')) return 'English';
+  if (normalized.includes('nepali')) return 'नेपाली';
+  if (normalized.includes('science')) return 'Science';
+  if (normalized.includes('social')) return 'Social Studies';
+  if (normalized.includes('health')) return 'Health';
+  return YOBOOK_AUDIO_SUBJECT_LABELS[normalized];
+};
+
+export const getYoBookAudioSubjectForBook = (book: Pick<Book, 'category' | 'subjects'>): string | undefined => {
+  const categorySubject = getYoBookAudioSubjectFromValue(book.category);
+  if (categorySubject) return categorySubject;
+
+  return (book.subjects || [])
+    .map(getYoBookAudioSubjectFromValue)
+    .find((subject): subject is string => Boolean(subject));
 };
 
 // --- Neural Format Helpers ---
@@ -852,6 +890,53 @@ export const fetchYoBookGuideRows = async (signal?: AbortSignal): Promise<Record
 export const fetchYoBookGuideCollection = async (signal?: AbortSignal): Promise<YoBookGradeCollection> => (
   fetchYoBookEndpointCollection('teacher-guides', signal)
 );
+
+export const fetchYoBookGradeAudio = async (grade: number, subject?: string, signal?: AbortSignal): Promise<ChapterAudio[]> => {
+  if (!Number.isFinite(grade) || grade < 1 || grade > 12) return [];
+
+  const normalizedSubject = getYoBookAudioSubjectFromValue(subject) || subject?.trim();
+  const cacheKey = `yobook-gradewise-audio-${grade}-${normalizedSubject || 'all'}`;
+  const cached = getFromCache<ChapterAudio[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('yobook')) {
+    warnProviderCooldown('yobook');
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams({ grade: String(grade) });
+    if (normalizedSubject) params.set('subject', normalizedSubject);
+
+    const response = await fetch(`${YOBOOK_BASE}/api/gradewise-audio?${params.toString()}`, { signal });
+    if (!response.ok) {
+      markProviderFailure('yobook', response.status);
+      return [];
+    }
+
+    const payload = await response.json();
+    const chapters = (Array.isArray(payload?.data?.grades) ? payload.data.grades : [])
+      .flatMap((gradeEntry: any) => Array.isArray(gradeEntry?.subjects) ? gradeEntry.subjects : [])
+      .flatMap((subjectEntry: any) => Array.isArray(subjectEntry?.chapters) ? subjectEntry.chapters : [])
+      .map((chapter: any): ChapterAudio => ({
+        chapter: Number(chapter?.chapter || 0),
+        chapterName: toText(chapter?.chapterName, 'Chapter'),
+        unit: toText(chapter?.unit, ''),
+        url: getAbsoluteYoBookAssetUrl(chapter?.url) || '',
+      }))
+      .filter((chapter: ChapterAudio) => chapter.chapter > 0 && /^https?:\/\//i.test(chapter.url))
+      .sort((a: ChapterAudio, b: ChapterAudio) => a.chapter - b.chapter);
+
+    setInCache(cacheKey, chapters);
+    markProviderSuccess('yobook');
+    return chapters;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('yobook');
+      console.error('YoBook gradewise audio sync failed:', error);
+    }
+    return [];
+  }
+};
 
 export interface YoBookSourceInfo {
   source: string;

@@ -9,6 +9,13 @@ export interface ChapterPdf {
   pdfUrl: string;
 }
 
+export interface ChapterAudio {
+  chapter: number;
+  chapterName: string;
+  unit: string;
+  url: string;
+}
+
 export interface Book {
   id: string;
   title: string;

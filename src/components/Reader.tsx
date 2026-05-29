@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Book } from '@/types/index';
+import { Book, ChapterAudio } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap, Headphones, Play } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PDFFlipBook, { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS, readPdfBackgroundPreset, readPdfHighlightColor, type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
 import AppSelect from './AppSelect';
 import { downloadPdfOptimized, getBestPdfSourceUrl, getPdfProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
 import { saveBook } from '@/lib/local-user';
+import { fetchYoBookGradeAudio, getYoBookAudioSubjectForBook } from '@/services/bookService';
 
 interface ReaderProps {
   book: Book;
@@ -55,6 +56,11 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [pdfStudySnapshot, setPdfStudySnapshot] = useState<PdfStudySnapshot | null>(null);
   const [pdfTableOfContents, setPdfTableOfContents] = useState<PdfTableOfContentsSnapshot>({ status: 'idle', items: [], pageCount: 0 });
   const [pdfTableOfContentsRequestId, setPdfTableOfContentsRequestId] = useState(0);
+  const [chapterAudio, setChapterAudio] = useState<ChapterAudio[]>([]);
+  const [chapterAudioLoading, setChapterAudioLoading] = useState(false);
+  const [chapterAudioRequested, setChapterAudioRequested] = useState(false);
+  const [chapterAudioExpanded, setChapterAudioExpanded] = useState(false);
+  const [selectedChapterAudioIndex, setSelectedChapterAudioIndex] = useState<number | null>(null);
   const [pdfStudyAction, setPdfStudyAction] = useState<PdfStudyAction | null>(null);
   const [pdfHighlightMode, setPdfHighlightMode] = useState(false);
   const [expandedHighlightPages, setExpandedHighlightPages] = useState<Record<number, boolean>>({});
@@ -79,6 +85,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     [book.chapterPdfUrls]
   );
   const activePdfChapter = pdfChapters[selectedPdfChapterIndex];
+  const chapterAudioSubject = getYoBookAudioSubjectForBook(book);
+  const canLoadChapterAudio = Boolean(book.grade && chapterAudioSubject);
+  const selectedChapterAudio = selectedChapterAudioIndex === null ? null : chapterAudio[selectedChapterAudioIndex] || null;
   const isExternal = !!book.externalUrl || pdfChapters.length > 0;
   const externalReaderUrl = activePdfChapter?.pdfUrl || book.externalUrl || book.downloadUrl || '';
   const isPdfReader = pdfChapters.length > 0 || isPdfLikeUrl(externalReaderUrl) || isPdfLikeUrl(book.downloadUrl);
@@ -141,6 +150,11 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     autoSavedStudyBookRef.current = null;
     setPdfTableOfContents({ status: 'idle', items: [], pageCount: 0 });
     setPdfTableOfContentsRequestId(0);
+    setChapterAudio([]);
+    setChapterAudioLoading(false);
+    setChapterAudioRequested(false);
+    setChapterAudioExpanded(false);
+    setSelectedChapterAudioIndex(null);
   }, [book.id, pdfChapters.length]);
 
   useEffect(() => {
@@ -149,10 +163,10 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   }, [readerUrl]);
 
   useEffect(() => {
-    if (!isPdfReader && sidebarTab === 'contents') {
+    if (!isPdfReader && !canLoadChapterAudio && sidebarTab === 'contents') {
       setSidebarTab('saved');
     }
-  }, [isPdfReader, sidebarTab]);
+  }, [canLoadChapterAudio, isPdfReader, sidebarTab]);
 
   useEffect(() => {
     if (pdfChapters.length < 2) return;
@@ -262,9 +276,25 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     setPdfTableOfContents(snapshot);
   }, []);
 
+  const loadChapterAudio = useCallback(async () => {
+    if (!book.grade || !chapterAudioSubject || chapterAudioRequested || chapterAudioLoading) return;
+
+    setChapterAudioRequested(true);
+    setChapterAudioLoading(true);
+    try {
+      const chapters = await fetchYoBookGradeAudio(book.grade, chapterAudioSubject);
+      setChapterAudio(chapters);
+    } catch (error) {
+      console.error('Reader chapter audio sync failed:', error);
+      setChapterAudio([]);
+    } finally {
+      setChapterAudioLoading(false);
+    }
+  }, [book.grade, chapterAudioLoading, chapterAudioRequested, chapterAudioSubject]);
+
   const openPdfContentsTab = () => {
     setSidebarTab('contents');
-    if (pdfTableOfContents.status === 'idle') {
+    if (isPdfReader && pdfTableOfContents.status === 'idle') {
       setPdfTableOfContentsRequestId((requestId) => requestId + 1);
     }
   };
@@ -438,13 +468,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             </button>
             <button
               onClick={() => {
-                setSidebarOpen((open) => {
-                  const nextOpen = !open;
-                  if (nextOpen && isPdfReader) {
-                    setPdfHighlightMode(true);
-                  }
-                  return nextOpen;
-                });
+                setSidebarOpen((open) => !open);
               }}
               className={`rounded-lg p-2.5 transition-all sm:p-3 group ${sidebarOpen ? 'bg-bit-accent text-white' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-accent'}`}
               title="Reader sidebar"
@@ -463,7 +487,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           <div className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-px bg-gradient-to-b from-bit-accent/60 via-bit-border to-transparent" />
           <div className="border-b border-bit-border/70 bg-bit-bg px-5 py-3">
             <div className="flex rounded-full border border-bit-border bg-bit-panel/50 p-1">
-              {isPdfReader && (
+              {(isPdfReader || canLoadChapterAudio) && (
                 <button
                   type="button"
                   onClick={openPdfContentsTab}
@@ -490,7 +514,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           </div>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-bit-bg p-5">
-            {sidebarTab === 'contents' && isPdfReader ? (
+            {sidebarTab === 'contents' && (isPdfReader || canLoadChapterAudio) ? (
               <>
                 {pdfChapters.length > 1 && (
                   <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
@@ -524,6 +548,121 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                   </section>
                 )}
 
+                {canLoadChapterAudio && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <button
+                      type="button"
+                      onClick={() => setChapterAudioExpanded((expanded) => !expanded)}
+                      className="flex w-full items-center justify-between gap-3 text-left"
+                      aria-expanded={chapterAudioExpanded}
+                    >
+                      <span className="flex items-center gap-2 text-bit-accent">
+                        <Headphones size={16} />
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Chapter audio</span>
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {chapterAudio.length > 0 && (
+                          <span className="text-[10px] font-mono font-bold text-bit-muted tabular-nums">
+                            {chapterAudio.length}
+                          </span>
+                        )}
+                        <ChevronRight size={15} className={`text-bit-muted transition-transform ${chapterAudioExpanded ? 'rotate-90 text-bit-accent' : ''}`} />
+                      </span>
+                    </button>
+
+                    {chapterAudioExpanded && !chapterAudioRequested && (
+                      <button
+                        type="button"
+                        onClick={loadChapterAudio}
+                        className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-bit-border bg-bit-bg/40 px-3 text-sm font-semibold text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent"
+                      >
+                        <Headphones size={16} />
+                        Load chapter audio
+                      </button>
+                    )}
+
+                    {chapterAudioExpanded && chapterAudioLoading && (
+                      <div className="mt-3 space-y-2">
+                        {[1, 2, 3].map((item) => (
+                          <div key={item} className="h-20 animate-shimmer rounded-lg border border-bit-border/40 bg-bit-bg/30" />
+                        ))}
+                      </div>
+                    )}
+
+                    {chapterAudioExpanded && !chapterAudioLoading && chapterAudio.length > 0 && (
+                      <div className="mt-3 space-y-3">
+                        {selectedChapterAudio && (
+                          <div className="rounded-xl border border-bit-accent/35 bg-bit-accent/10 p-3">
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedChapterAudioIndex((index) => index === null ? 0 : Math.max(0, index - 1))}
+                                disabled={selectedChapterAudioIndex === 0}
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-bit-accent/30 text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                                aria-label="Previous audio chapter"
+                              >
+                                <ChevronLeft size={15} />
+                              </button>
+                              <div className="min-w-0 flex-1 text-center">
+                                <p className="truncate text-sm font-semibold text-bit-text">{selectedChapterAudio.chapterName}</p>
+                                <p className="mt-1 text-[9px] font-mono font-bold uppercase tracking-widest text-bit-muted">
+                                  {selectedChapterAudio.unit || `Chapter ${selectedChapterAudio.chapter}`}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedChapterAudioIndex(null)}
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-bit-border/70 text-bit-muted transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
+                                aria-label="Close audio player"
+                              >
+                                <X size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedChapterAudioIndex((index) => index === null ? 0 : Math.min(chapterAudio.length - 1, index + 1))}
+                                disabled={selectedChapterAudioIndex === chapterAudio.length - 1}
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-bit-accent/30 text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                                aria-label="Next audio chapter"
+                              >
+                                <ChevronRight size={15} />
+                              </button>
+                            </div>
+                            <audio key={selectedChapterAudio.url} controls autoPlay preload="metadata" src={selectedChapterAudio.url} className="h-9 w-full" />
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          {chapterAudio.map((audio, index) => (
+                          <button
+                            key={`${audio.chapter}-${audio.url}`}
+                            type="button"
+                            onClick={() => setSelectedChapterAudioIndex(index)}
+                            className={`group flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all ${selectedChapterAudioIndex === index ? 'border-bit-accent bg-bit-accent text-white shadow-sm shadow-bit-accent/20' : 'border-bit-border bg-bit-bg/40 hover:border-bit-accent/40 hover:text-bit-text'}`}
+                          >
+                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all ${selectedChapterAudioIndex === index ? 'bg-white/15 text-white' : 'bg-bit-accent/10 text-bit-accent group-hover:bg-bit-accent group-hover:text-white'}`}>
+                              <Play size={14} className={selectedChapterAudioIndex === index ? 'fill-current' : ''} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold">{audio.chapterName}</span>
+                              <span className={`mt-1 block text-[9px] font-mono font-bold uppercase tracking-widest ${selectedChapterAudioIndex === index ? 'text-white/70' : 'text-bit-muted'}`}>
+                                {audio.unit || `Chapter ${audio.chapter}`}
+                              </span>
+                            </span>
+                          </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {chapterAudioExpanded && !chapterAudioLoading && chapterAudioRequested && chapterAudio.length === 0 && (
+                      <p className="mt-3 rounded-lg border border-dashed border-bit-border bg-bit-bg/25 px-3 py-5 text-center text-sm leading-6 text-bit-muted">
+                        No chapter audio is available for this subject yet.
+                      </p>
+                    )}
+                  </section>
+                )}
+
+                {isPdfReader && (
                 <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-bit-accent">
@@ -579,6 +718,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                     </div>
                   )}
                 </section>
+                )}
               </>
             ) : sidebarTab === 'saved' ? (
               <>
@@ -943,13 +1083,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         <div className="fixed top-6 right-6 flex gap-2 z-[10002] animate-fade-in group">
           <button
             onClick={() => {
-              setSidebarOpen((open) => {
-                const nextOpen = !open;
-                if (nextOpen && isPdfReader) {
-                  setPdfHighlightMode(true);
-                }
-                return nextOpen;
-              });
+              setSidebarOpen((open) => !open);
             }}
             className={`p-3 backdrop-blur-xl border rounded-xl transition-all shadow-2xl ${sidebarOpen ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-panel/80 text-bit-muted hover:text-bit-accent hover:border-bit-accent/50'}`}
             title="Reader sidebar"

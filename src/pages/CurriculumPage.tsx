@@ -77,13 +77,24 @@ const getCurriculumAudioSubjects = (audiobook: Audiobook) => (
     .filter((genre, index, list) => list.indexOf(genre) === index)
 );
 
+const getCurriculumBookText = (book: Book) => (
+  `${book.curriculum || ''} ${book.country || ''} ${book.providerSource || ''} ${book.source || ''} ${(book.subjects || []).join(' ')} ${(book.bookshelves || []).join(' ')}`.toLowerCase()
+);
+
+const isNcertBook = (book: Book) => {
+  const text = getCurriculumBookText(book);
+  return book.country === 'in' || book.providerSource === 'ncert-official' || text.includes('ncert');
+};
+
 const matchesCurriculumRegion = (book: Book, curriculumRegion: CurriculumRegion) => {
   if (curriculumRegion === 'all') return true;
-  const text = `${book.curriculum || ''} ${book.country || ''} ${book.providerSource || ''} ${(book.subjects || []).join(' ')}`.toLowerCase();
+  const text = getCurriculumBookText(book);
 
   if (curriculumRegion === 'ncert') {
-    return book.country === 'in' || text.includes('ncert');
+    return isNcertBook(book);
   }
+
+  if (isNcertBook(book)) return false;
 
   return book.country === 'np' || text.includes('cdc nepal') || text.includes('cehrd') || text.includes('nepali curriculum');
 };
@@ -553,7 +564,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
                       onClick={() => setSelectedGrade(row.grade)}
                       className="shrink-0 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent hover:text-bit-text"
                     >
-                      View grade
+                      View all
                     </button>
                   )}
                 </div>

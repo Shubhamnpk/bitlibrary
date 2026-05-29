@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Book, ViewState } from '@/types/index';
+import { Book, ChapterAudio, ViewState } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
-import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronRight, Share, Info, Maximize2, Library, Download, Bookmark, ExternalLink } from 'lucide-react';
+import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronLeft, ChevronRight, Share, Info, Maximize2, Library, Download, Bookmark, ExternalLink, Headphones, X } from 'lucide-react';
 import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
 import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 import { downloadPdfOptimized, getBestPdfSourceUrl } from '@/lib/pdf';
-import { fetchYoBookGuideCollection, fetchYoBookTextbookCollection, isPriorCurriculumEdition } from '@/services/bookService';
+import { fetchYoBookGradeAudio, fetchYoBookGuideCollection, fetchYoBookTextbookCollection, getYoBookAudioSubjectForBook, isPriorCurriculumEdition } from '@/services/bookService';
 
 const isCurriculumBook = (book: Book) => (
   book.source === 'YoBook'
@@ -76,6 +76,10 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const [editionBooks, setEditionBooks] = useState<Book[]>([]);
   const [editionLoading, setEditionLoading] = useState(false);
   const [similarLoading, setSimilarLoading] = useState(false);
+  const [chapterAudio, setChapterAudio] = useState<ChapterAudio[]>([]);
+  const [chapterAudioLoading, setChapterAudioLoading] = useState(false);
+  const [chapterAudioRequested, setChapterAudioRequested] = useState(false);
+  const [selectedChapterAudioIndex, setSelectedChapterAudioIndex] = useState<number | null>(null);
   const [fullDescription, setFullDescription] = useState<string>(book.description || '');
   const [descLoading, setDescLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -160,6 +164,33 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
       controller.abort();
     };
   }, [book]);
+
+  const audioSubject = getYoBookAudioSubjectForBook(book);
+  const canLoadChapterAudio = Boolean(isCurriculumBook(book) && book.grade && audioSubject);
+  const selectedChapterAudio = selectedChapterAudioIndex === null ? null : chapterAudio[selectedChapterAudioIndex] || null;
+
+  const loadChapterAudio = async () => {
+    if (!book.grade || !audioSubject || chapterAudioLoading) return;
+
+    setChapterAudioRequested(true);
+    setChapterAudioLoading(true);
+    try {
+      const chapters = await fetchYoBookGradeAudio(book.grade, audioSubject);
+      setChapterAudio(chapters);
+    } catch (error) {
+      console.error('Curriculum audio sync failed:', error);
+      setChapterAudio([]);
+    } finally {
+      setChapterAudioLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setChapterAudio([]);
+    setChapterAudioLoading(false);
+    setChapterAudioRequested(false);
+    setSelectedChapterAudioIndex(null);
+  }, [book.id]);
 
   // Synchronize Similar Books
   useEffect(() => {
@@ -309,7 +340,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
           onClick={onClose}
           className="flex min-w-0 items-center gap-2 text-xs font-mono text-bit-text transition-colors hover:text-bit-accent sm:text-sm"
         >
-          <ArrowLeft size={16} className="shrink-0" /> <span className="truncate">Back to Library</span>
+          <ArrowLeft size={16} className="shrink-0" /> <span className="truncate">Back</span>
         </button>
         <div className="flex shrink-0 items-center gap-4 sm:gap-6">
           {book.source && (
@@ -441,7 +472,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               className={`relative shrink-0 pb-4 text-xs font-mono font-bold tracking-wider transition-colors sm:text-sm ${activeTab === 'read' ? 'text-bit-accent' : 'text-bit-muted hover:text-bit-text'}`}
             >
               <span className="sm:hidden">AI_EXTRACT</span>
-              <span className="hidden sm:inline">AI_CHAPTER_EXTRACT</span>
+              <span className="hidden sm:inline">AI_EXTRACT</span>
               {activeTab === 'read' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-bit-accent" />}
             </button>
             {book.authors && book.authors.length > 1 && (
@@ -514,43 +545,134 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
 
               <section className="mb-12">
                 <h3 className="text-xl font-display font-semibold text-bit-text mb-6">Metadata Archive</h3>
-                <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-                  <div className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 shadow-sm">
-                    <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 font-bold">Impact Score</p>
-                    <p className="text-2xl font-display font-bold text-bit-text">{book.popularity || 0}%</p>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
+                  <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
+                    <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Impact Score</p>
+                    <p className="text-xl font-display font-bold text-bit-text">{book.popularity || 0}%</p>
                   </div>
-                  <div className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 shadow-sm">
-                    <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 font-bold">Downloads</p>
-                    <p className="text-2xl font-display font-bold text-bit-text">{(book.downloads || 0).toLocaleString()}</p>
+                  <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
+                    <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Downloads</p>
+                    <p className="text-xl font-display font-bold text-bit-text">{(book.downloads || 0).toLocaleString()}</p>
                   </div>
-                  <button onClick={() => onAuthorClick?.(book.author)} className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 text-left hover:border-bit-accent/50 transition-colors group/meta shadow-sm">
-                    <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 group-hover/meta:text-bit-accent transition-colors font-bold">{book.source === 'YoBook' ? 'By Publisher' : 'By Author'}</p>
-                    <p className="line-clamp-2 text-base font-display font-bold text-bit-text transition-colors group-hover/meta:text-bit-accent sm:text-xl">{book.author}</p>
+                  <button onClick={() => onAuthorClick?.(book.author)} className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 text-left shadow-sm transition-colors hover:border-bit-accent/50 group/meta">
+                    <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted transition-colors group-hover/meta:text-bit-accent">{book.source === 'YoBook' ? 'By Publisher' : 'By Author'}</p>
+                    <p className="line-clamp-2 text-sm font-display font-bold text-bit-text transition-colors group-hover/meta:text-bit-accent">{book.author}</p>
                   </button>
-                  <div className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 shadow-sm">
-                    <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 font-bold">Language</p>
-                    <p className="text-2xl font-display font-bold text-bit-text">{(book.language || 'en').toUpperCase()}</p>
+                  <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
+                    <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Language</p>
+                    <p className="text-xl font-display font-bold text-bit-text">{(book.language || 'en').toUpperCase()}</p>
                   </div>
+                  {book.grade && (
+                    <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
+                      <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Class</p>
+                      <p className="text-xl font-display font-bold text-bit-text">Class {book.grade}</p>
+                    </div>
+                  )}
+                  {book.curriculum && (
+                    <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
+                      <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Curriculum</p>
+                      <p className="line-clamp-2 text-sm font-display font-bold text-bit-text">{book.curriculum}</p>
+                    </div>
+                  )}
                 </div>
               </section>
 
-              {(book.grade || book.curriculum) && (
+              {canLoadChapterAudio && (
                 <section className="mb-12">
-                  <h3 className="text-xl font-display font-semibold text-bit-text mb-6">Curriculum Details</h3>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {book.grade && (
-                      <div className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 shadow-sm">
-                        <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 font-bold">Class</p>
-                        <p className="text-2xl font-display font-bold text-bit-text">Class {book.grade}</p>
-                      </div>
-                    )}
-                    {book.curriculum && (
-                      <div className="p-4 rounded-xl border border-bit-border bg-bit-panel/30 shadow-sm">
-                        <p className="text-[10px] font-mono text-bit-muted uppercase mb-1 font-bold">Curriculum</p>
-                        <p className="text-2xl font-display font-bold text-bit-text">{book.curriculum}</p>
-                      </div>
+                  <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Chapter audio</p>
+                      <h3 className="mt-1 text-xl font-display font-semibold text-bit-text">Listen by unit</h3>
+                    </div>
+                    {chapterAudio.length > 0 && (
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted">
+                        {chapterAudio.length} tracks
+                      </p>
                     )}
                   </div>
+                  {!chapterAudioRequested ? (
+                    <button
+                      type="button"
+                      onClick={loadChapterAudio}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-bit-border bg-bit-panel/30 px-4 text-sm font-semibold text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent"
+                    >
+                      <Headphones size={16} />
+                      Load chapter audio
+                    </button>
+                  ) : chapterAudioLoading ? (
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {[1, 2, 3, 4].map((item) => (
+                        <div key={item} className="h-20 animate-shimmer rounded-lg border border-bit-border/40 bg-bit-panel/25" />
+                      ))}
+                    </div>
+                  ) : chapterAudio.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedChapterAudio && (
+                        <div className="rounded-xl border border-bit-accent/35 bg-bit-accent/10 p-4 shadow-sm">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedChapterAudioIndex((index) => index === null ? 0 : Math.max(0, index - 1))}
+                              disabled={selectedChapterAudioIndex === 0}
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-bit-accent/30 text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                              aria-label="Previous audio chapter"
+                            >
+                              <ChevronLeft size={16} />
+                            </button>
+                            <div className="min-w-0 flex-1 text-center">
+                              <p className="truncate text-sm font-semibold text-bit-text">{selectedChapterAudio.chapterName}</p>
+                              <p className="mt-1 text-[9px] font-mono font-bold uppercase tracking-widest text-bit-muted">
+                                {selectedChapterAudio.unit || `Chapter ${selectedChapterAudio.chapter}`}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedChapterAudioIndex(null)}
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-bit-border/70 text-bit-muted transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
+                              aria-label="Close audio player"
+                            >
+                              <X size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedChapterAudioIndex((index) => index === null ? 0 : Math.min(chapterAudio.length - 1, index + 1))}
+                              disabled={selectedChapterAudioIndex === chapterAudio.length - 1}
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-bit-accent/30 text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                              aria-label="Next audio chapter"
+                            >
+                              <ChevronRight size={16} />
+                            </button>
+                          </div>
+                          <audio key={selectedChapterAudio.url} controls autoPlay preload="metadata" src={selectedChapterAudio.url} className="h-9 w-full" />
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                        {chapterAudio.map((audio, index) => (
+                          <button
+                            key={`${audio.chapter}-${audio.url}`}
+                            type="button"
+                            onClick={() => setSelectedChapterAudioIndex(index)}
+                            className={`group flex min-h-24 flex-col items-start gap-2 rounded-lg border p-2 text-left transition-all sm:min-h-16 sm:flex-row sm:items-center sm:gap-3 sm:p-3 ${selectedChapterAudioIndex === index ? 'border-bit-accent bg-bit-accent text-white shadow-sm shadow-bit-accent/20' : 'border-bit-border bg-bit-panel/25 hover:border-bit-accent/40 hover:bg-bit-panel/40'}`}
+                          >
+                            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all ${selectedChapterAudioIndex === index ? 'bg-white/15 text-white' : 'bg-bit-accent/10 text-bit-accent group-hover:bg-bit-accent group-hover:text-white'}`}>
+                              <Play size={14} className={selectedChapterAudioIndex === index ? 'fill-current' : ''} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="line-clamp-2 text-xs font-semibold leading-4 sm:block sm:truncate sm:text-sm">{audio.chapterName}</span>
+                              <span className={`mt-1 block text-[9px] font-mono font-bold uppercase tracking-widest ${selectedChapterAudioIndex === index ? 'text-white/70' : 'text-bit-muted'}`}>
+                                {audio.unit || `Chapter ${audio.chapter}`}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="rounded-lg border border-dashed border-bit-border bg-bit-panel/25 px-3 py-5 text-center text-sm leading-6 text-bit-muted">
+                      No chapter audio is available for this subject yet.
+                    </p>
+                  )}
                 </section>
               )}
 

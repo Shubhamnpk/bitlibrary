@@ -10,6 +10,18 @@ By prioritizing **API Linking** over direct file hosting, we ensure BitLibrary c
 
 ---
 
+## Current Product Progress
+
+Recent roadmap updates now tracked in `src/data/roadmap.json`:
+
+- **Curriculum audio player:** Chapter audio from YoBook gradewise audio loads on demand in book details and the reader side panel, using one shared player with previous/next and close controls.
+- **Nepali curriculum audio matching:** English `Nepali` and Nepali-script `नेपाली` subjects resolve to the correct audio endpoint labels.
+- **Book details navigation:** The Back button returns to the source page, such as curriculum, search results, author, category, or library, instead of always going to Library.
+- **Book details polish:** Metadata Archive now includes compact curriculum metadata, and chapter audio choices are denser on mobile and desktop.
+- **Page comfort:** A single floating scroll button switches between scroll-down and scroll-up behavior and hides while overlays are open.
+
+---
+
 ## 🗺️ Architecture Map (Hybrid Model)
 
 ### 1. The "Frontend" (Cloudflare Pages)

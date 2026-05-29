@@ -154,7 +154,7 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
                   variant="compact"
                   book={book} 
                   onClick={() => onBookClick(book)} 
-                  onRead={() => navigate(`/book/${book.id}`)} 
+                  onRead={() => onBookClick(book)} 
                 />
               </div>
             ))}

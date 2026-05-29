@@ -146,23 +146,79 @@
       "area": "YoBook",
       "icon": "yobook",
       "version": "v0.5.0",
-      "summary": "YoBook is becoming the fastest education source for books, curriculum, and learning audio.",
+      "summary": "YoBook is becoming the fastest education source for books, curriculum, chapter PDFs, and chapter-level learning audio.",
       "subGoals": [
         {
           "title": "Show school books faster",
-          "progress": 94
+          "progress": 96
         },
         {
-          "title": "Curriculum audiobooks",
-          "progress": 92
+          "title": "Curriculum chapter audio",
+          "progress": 100
         },
         {
           "title": "Browse by grade and subject",
-          "progress": 90
+          "progress": 92
         },
         {
           "title": "Show where each item comes from",
-          "progress": 78
+          "progress": 82
+        },
+        {
+          "title": "Nepali and English subject matching",
+          "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "curriculum-audio-player",
+      "title": "Curriculum audio player",
+      "area": "Audio",
+      "icon": "audio",
+      "version": "v0.5.0",
+      "summary": "Curriculum books can now load chapter audio on demand, choose a unit, and play through one shared compact player.",
+      "subGoals": [
+        {
+          "title": "Load chapter audio on demand",
+          "progress": 100
+        },
+        {
+          "title": "Single shared player per book",
+          "progress": 100
+        },
+        {
+          "title": "Reader side-panel audio",
+          "progress": 100
+        },
+        {
+          "title": "Compact mobile audio choices",
+          "progress": 92
+        }
+      ]
+    },
+    {
+      "id": "navigation-polish",
+      "title": "Navigation and page polish",
+      "area": "Core",
+      "icon": "design",
+      "version": "v0.5.0",
+      "summary": "Book details now return to the page they came from, long pages have a floating scroll helper, and metadata is more compact.",
+      "subGoals": [
+        {
+          "title": "Return to the source page from book details",
+          "progress": 100
+        },
+        {
+          "title": "Floating one-button page scroll",
+          "progress": 100
+        },
+        {
+          "title": "Compact book metadata",
+          "progress": 100
+        },
+        {
+          "title": "Hide helpers while overlays are open",
+          "progress": 100
         }
       ]
     },
@@ -172,7 +228,7 @@
       "area": "Reader",
       "icon": "design",
       "version": "v0.5.0",
-      "summary": "The reader should feel crisp, centered, calm, and usable on mobile and desktop.",
+      "summary": "The reader should feel crisp, centered, calm, and usable on mobile and desktop, with side-panel tools staying intentional.",
       "subGoals": [
         {
           "title": "Clear and stable pages",
@@ -188,7 +244,11 @@
         },
         {
           "title": "Smoother reading on phones",
-          "progress": 58
+          "progress": 66
+        },
+        {
+          "title": "Intentional side-panel tools",
+          "progress": 90
         }
       ]
     },
@@ -197,7 +257,7 @@
       "title": "Dedicated mobile navigation",
       "area": "Core",
       "icon": "design",
-      "version": "v0.6.0",
+      "version": "v0.5.0",
       "summary": "Mobile readers should get a thumb-friendly bottom navigation and simpler mobile-first paths into search, library, reader, and audio.",
       "subGoals": [
         {
@@ -223,20 +283,20 @@
       "title": "Connected book and audio paths",
       "area": "Audio",
       "icon": "audio",
-      "version": "v0.6.0",
-      "summary": "Books and matching audiobooks should point to each other when they describe the same work.",
+      "version": "v0.5.0",
+      "summary": "Books and matching audio should point to each other when they describe the same work or curriculum unit.",
       "subGoals": [
         {
           "title": "Listen from a book page",
-          "progress": 30
+          "progress": 78
         },
         {
           "title": "Match books with their audio",
-          "progress": 42
+          "progress": 62
         },
         {
           "title": "Connect the right sources",
-          "progress": 25
+          "progress": 55
         }
       ]
     },
@@ -245,7 +305,7 @@
       "title": "Library portability",
       "area": "Library",
       "icon": "sync",
-      "version": "v0.6.0",
+      "version": "v0.5.0",
       "summary": "Users should be able to keep, move, and recover their local reading and listening data.",
       "subGoals": [
         {
@@ -267,7 +327,7 @@
       "title": "Local profile management",
       "area": "Library",
       "icon": "library",
-      "version": "v0.6.0",
+      "version": "v0.5.0",
       "summary": "The local reader profile should grow from a simple name into a proper private profile with preferences, identity details, and management tools.",
       "subGoals": [
         {
@@ -293,7 +353,7 @@
       "title": "Trust and source clarity",
       "area": "Trust",
       "icon": "trust",
-      "version": "v0.6.0",
+      "version": "v0.5.0",
       "summary": "Every archive-backed item should make source, license, and access quality clearer.",
       "subGoals": [
         {
