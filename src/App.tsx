@@ -20,6 +20,7 @@ import RoadmapPage from '@/pages/RoadmapPage';
 import AudiobooksPage from '@/pages/AudiobooksPage';
 import AudiobookDetails from '@/pages/AudiobookDetails';
 import CurriculumPage from '@/pages/CurriculumPage';
+import DictionaryPage from '@/pages/DictionaryPage';
 import { recordRecentSearch, useLocalUserState } from '@/lib/local-user';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams, matchPath } from 'react-router-dom';
@@ -35,7 +36,7 @@ const SEARCH_DEBOUNCE_MS = 400;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
-const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/mylibrary','/search','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap',];
+const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/mylibrary','/search','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary',];
 const HERO_ORBIT_NODES = {
   star: {
     title: 'Archive Star',
@@ -668,6 +669,7 @@ const App: React.FC = () => {
           <Route path="/about" element={<AboutPage onBack={() => navigate('/')} />} />
           <Route path="/releases" element={<ReleasesPage onBack={() => navigate('/')} />} />
           <Route path="/roadmap" element={<RoadmapPage onBack={() => navigate('/')} />} />
+          <Route path="/dictionary" element={<DictionaryPage onBack={() => navigate('/')} />} />
           <Route path="*" element={<NotFound />} />
 
         </Routes>

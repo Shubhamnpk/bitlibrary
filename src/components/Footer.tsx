@@ -74,6 +74,7 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
                 <li><Link to="/about" className="hover:text-bit-accent transition-all">ABOUT BITLIBRARY</Link></li>
                 <li><Link to="/releases" className="hover:text-bit-accent transition-all">RELEASE HISTORY</Link></li>
                 <li><Link to="/roadmap" className="hover:text-bit-accent transition-all">ROADMAP</Link></li>
+                <li><Link to="/dictionary" className="hover:text-bit-accent transition-all">DICTIONARY TOOLS</Link></li>
                 <li><Link to="/terms" className="hover:text-bit-accent transition-all">TERMS OF USE</Link></li>
                 <li><a href="https://github.com/Shubhamnpk/bitlibrary" target="_blank" rel="noopener noreferrer" className="hover:text-bit-accent transition-all">SOURCE CODE</a></li>
               </ul>

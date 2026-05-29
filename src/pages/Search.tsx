@@ -6,7 +6,8 @@ import BookCard from '@/components/BookCard';
 import AudiobookCard from '@/components/AudiobookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, Sparkles, Zap } from 'lucide-react';
+import { BookOpenText, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search, SlidersHorizontal, Sparkles, Volume2, X, Zap } from 'lucide-react';
+import { fetchEnglishDictionaryEntries, type EnglishDictionaryEntry } from '@/services/englishDictionaryService';
 import {
   getAudiobookSearchScore,
   getBookSearchScore,
@@ -120,6 +121,11 @@ const SearchPage: React.FC<SearchPageProps> = ({
   const [activeCategory, setActiveCategory] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
   const [mobileSearchDraft, setMobileSearchDraft] = useState('');
+  const [dictionaryOpen, setDictionaryOpen] = useState(false);
+  const [dictionaryLoading, setDictionaryLoading] = useState(false);
+  const [dictionaryError, setDictionaryError] = useState('');
+  const [dictionaryEntries, setDictionaryEntries] = useState<EnglishDictionaryEntry[]>([]);
+  const dictionaryAudioRef = useRef<HTMLAudioElement | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const activeSearchRequestRef = useRef(0);
 
@@ -219,6 +225,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
 
   const currentQuery = searchParams.get('q')?.trim() || '';
   const isQueryReady = currentQuery.length >= SEARCH_MIN_QUERY_LENGTH;
+  const canLookupDictionary = /^[A-Za-z][A-Za-z'-]*$/.test(currentQuery);
   const availableSources = Array.from(new Set([
     ...searchResults.map((book) => book.source).filter(Boolean),
     ...audiobookResults.map((audiobook) => audiobook.source).filter(Boolean),
@@ -261,15 +268,47 @@ const SearchPage: React.FC<SearchPageProps> = ({
     setActiveSource('all');
     setActiveCategory('all');
     setShowFilters(false);
+    setDictionaryOpen(false);
+    setDictionaryLoading(false);
+    setDictionaryError('');
+    setDictionaryEntries([]);
     setCurrentPage(1);
     setMobileSearchDraft(currentQuery);
   }, [currentQuery]);
+
+  useEffect(() => () => {
+    dictionaryAudioRef.current?.pause();
+  }, []);
 
   const handleMobileSearchSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     const query = mobileSearchDraft.trim();
     if (query.length < SEARCH_MIN_QUERY_LENGTH) return;
     onQuickSearch(query);
+  };
+
+  const handleDictionaryLookup = async () => {
+    if (!canLookupDictionary) return;
+
+    const controller = new AbortController();
+    setDictionaryOpen(true);
+    setDictionaryLoading(true);
+    setDictionaryError('');
+
+    try {
+      setDictionaryEntries(await fetchEnglishDictionaryEntries(currentQuery, controller.signal));
+    } catch {
+      setDictionaryError('Definition lookup is unavailable right now.');
+      setDictionaryEntries([]);
+    } finally {
+      setDictionaryLoading(false);
+    }
+  };
+
+  const playDictionaryAudio = (audioUrl: string) => {
+    dictionaryAudioRef.current?.pause();
+    dictionaryAudioRef.current = new Audio(audioUrl);
+    void dictionaryAudioRef.current.play();
   };
 
   useEffect(() => {
@@ -407,6 +446,20 @@ const SearchPage: React.FC<SearchPageProps> = ({
                     )}
                   </div>
                 )}
+                {isQueryReady && canLookupDictionary && (
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleDictionaryLookup}
+                      disabled={dictionaryLoading}
+                      className="inline-flex items-center gap-2 rounded-full border border-bit-accent/25 bg-bit-accent/10 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {dictionaryLoading ? <Loader2 size={14} className="animate-spin" /> : <BookOpenText size={14} />}
+                      Define "{currentQuery}"
+                    </button>
+                    <span className="text-xs leading-6 text-bit-muted">Optional dictionary lookup. Loads only when clicked.</span>
+                  </div>
+                )}
               </div>
               {isQueryReady && totalResultCount > 0 && (
                 <div className="flex items-center md:self-center">
@@ -503,6 +556,81 @@ const SearchPage: React.FC<SearchPageProps> = ({
                   ))}
                 </div>
               </div>
+            </div>
+          </section>
+        )}
+
+        {dictionaryOpen && (
+          <section className="rounded-[2rem] border border-bit-border bg-bit-panel/30 p-5 shadow-sm animate-fade-in-up md:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[10px] font-mono font-bold uppercase tracking-[0.24em] text-bit-accent">Dictionary</p>
+                <h3 className="mt-2 text-2xl font-display font-bold text-bit-text">Definition for "{currentQuery}"</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDictionaryOpen(false)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-bit-border bg-bit-bg/35 text-bit-muted transition-colors hover:border-bit-accent/35 hover:text-bit-accent"
+                aria-label="Close dictionary result"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-bit-border bg-bit-bg/30 p-4">
+              {dictionaryError ? (
+                <p className="text-sm leading-7 text-red-400">{dictionaryError}</p>
+              ) : dictionaryLoading ? (
+                <div className="flex min-h-28 items-center justify-center gap-3 text-sm text-bit-muted">
+                  <Loader2 size={18} className="animate-spin text-bit-accent" />
+                  Looking up definition...
+                </div>
+              ) : dictionaryEntries.length === 0 ? (
+                <div className="flex min-h-28 flex-col justify-center rounded-xl border border-dashed border-bit-border px-4 py-8 text-center">
+                  <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-bit-muted">No definition found</p>
+                  <p className="mt-2 text-sm leading-7 text-bit-muted">Try another English word.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {dictionaryEntries.slice(0, 2).map((entry, entryIndex) => (
+                    <article key={`${entry.word}-${entryIndex}`} className="rounded-xl border border-bit-border bg-bit-panel/35 p-4">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-2xl font-display font-bold text-bit-text">{entry.word}</h4>
+                        {entry.audio && (
+                          <button
+                            type="button"
+                            onClick={() => playDictionaryAudio(entry.audio as string)}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-bit-border bg-bit-bg/35 text-bit-muted transition-colors hover:border-bit-accent/35 hover:text-bit-accent"
+                            aria-label={`Play pronunciation for ${entry.word}`}
+                            title="Play pronunciation"
+                          >
+                            <Volume2 size={15} />
+                          </button>
+                        )}
+                      </div>
+                      {entry.phonetic && <p className="mt-1 text-sm text-bit-muted">{entry.phonetic}</p>}
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        {entry.meanings.slice(0, 4).map((meaning) => (
+                          <section key={meaning.partOfSpeech} className="border-t border-bit-border/70 pt-4">
+                            <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-accent">{meaning.partOfSpeech}</p>
+                            <ol className="mt-3 space-y-3">
+                              {meaning.definitions.slice(0, 2).map((definition, index) => (
+                                <li key={`${definition.definition}-${index}`} className="text-sm leading-7 text-bit-muted">
+                                  <span className="mr-2 font-mono text-[10px] text-bit-accent">{index + 1}.</span>
+                                  <span className="text-bit-text">{definition.definition}</span>
+                                  {definition.example && (
+                                    <p className="mt-1 pl-6 text-xs italic leading-6 text-bit-muted">"{definition.example}"</p>
+                                  )}
+                                </li>
+                              ))}
+                            </ol>
+                          </section>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         )}

@@ -17,8 +17,10 @@
     "@ksedline/turnjs": "^0.1.0",
     "axios": "^1.13.6",
     "convex": "^1.34.0",
+    "dictionary-ne": "^2.0.0",
     "jquery": "^1.12.4",
     "lucide-react": "^0.562.0",
+    "nspell": "^2.1.5",
     "pdfjs-dist": "^5.7.284",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
@@ -28,6 +30,7 @@
   "devDependencies": {
     "@types/jquery": "^4.0.0",
     "@types/node": "^22.14.0",
+    "@types/nspell": "^2.1.6",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.0",
