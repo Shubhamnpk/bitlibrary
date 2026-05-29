@@ -139,10 +139,10 @@ const Library: React.FC<LibraryProps> = ({
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-10 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+      <div className="mb-6 flex flex-col gap-4 sm:mb-10 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h1 className="mb-2 text-4xl font-display font-bold tracking-tight text-bit-text">My Library</h1>
-          <p className="max-w-2xl text-sm leading-7 text-bit-muted">
+          <h1 className="mb-1 text-2xl font-display font-bold tracking-tight text-bit-text sm:mb-2 sm:text-4xl">My Library</h1>
+          <p className="hidden max-w-2xl text-sm leading-7 text-bit-muted sm:block">
             Your saved books, favorite audiobooks, and recently viewed items are kept here on this device.
           </p>
         </div>

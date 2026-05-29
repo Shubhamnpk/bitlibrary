@@ -206,8 +206,8 @@ const CurriculumShelf: React.FC<{
          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
                <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Education</p>
-               <h2 className="mt-2 text-3xl font-display font-bold tracking-tight text-bit-text">Nepali curriculum books</h2>
-               <p className="mt-2 max-w-2xl text-sm leading-7 text-bit-muted">
+               <h2 className="mt-1 text-2xl font-display font-bold tracking-tight text-bit-text sm:mt-2 sm:text-3xl">Nepali curriculum books</h2>
+               <p className="mt-2 hidden max-w-2xl text-sm leading-7 text-bit-muted sm:block">
                   A focused row for CDC Nepal and CEHRD books. Browse the full class-wise collection in Curriculum.
                </p>
             </div>
@@ -549,9 +549,9 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
                ] : []),
             ]}
          />
-         <div className="mb-12">
-            <h1 className="text-5xl font-display font-bold text-bit-text mb-4 tracking-tight">Book Archive</h1>
-            <p className="text-bit-muted font-mono text-sm max-w-xl">
+         <div className="mb-6 sm:mb-12">
+            <h1 className="mb-1 text-2xl font-display font-bold tracking-tight text-bit-text sm:mb-4 sm:text-5xl">Book Archive</h1>
+            <p className="hidden max-w-xl text-sm font-mono text-bit-muted sm:block">
                Explore open books by category, discover public-domain classics, and keep moving through the archive with a cleaner reading flow.
             </p>
          </div>
@@ -646,7 +646,7 @@ const BrowseBooks: React.FC<BrowseBooksProps> = ({ onBookClick, onAudiobookClick
 
          {shouldShowShelves && (
             <section className="space-y-12">
-               <div>
+               <div className="hidden md:block">
                   <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Books</p>
                   <h2 className="mt-2 text-3xl font-display font-bold tracking-tight text-bit-text">Browse by category</h2>
                </div>

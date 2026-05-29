@@ -119,6 +119,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
   const [activeSource, setActiveSource] = useState<'all' | Book['source'] | Audiobook['source']>('all');
   const [activeCategory, setActiveCategory] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [mobileSearchDraft, setMobileSearchDraft] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const activeSearchRequestRef = useRef(0);
 
@@ -261,7 +262,15 @@ const SearchPage: React.FC<SearchPageProps> = ({
     setActiveCategory('all');
     setShowFilters(false);
     setCurrentPage(1);
+    setMobileSearchDraft(currentQuery);
   }, [currentQuery]);
+
+  const handleMobileSearchSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = mobileSearchDraft.trim();
+    if (query.length < SEARCH_MIN_QUERY_LENGTH) return;
+    onQuickSearch(query);
+  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -346,16 +355,33 @@ const SearchPage: React.FC<SearchPageProps> = ({
   return (
     <div className="animate-fade-in">
       <div className="mb-12 space-y-8">
-        <section className="relative overflow-hidden rounded-[2rem] border border-bit-border bg-bit-panel/30 p-8 md:p-10 shadow-sm">
+        <section className="relative overflow-hidden rounded-2xl border border-bit-border bg-bit-panel/30 p-5 shadow-sm md:rounded-[2rem] md:p-10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(var(--bit-accent-rgb),0.08),transparent_42%)] pointer-events-none" />
           <div className="absolute -right-16 top-0 h-48 w-48 rounded-full bg-bit-accent/10 blur-3xl pointer-events-none" />
           <div className="relative flex flex-col gap-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div>
                 <p className="text-[10px] font-mono uppercase tracking-[0.28em] text-bit-accent mb-4 font-bold">Search</p>
-                <h2 className="text-4xl md:text-5xl font-display font-bold text-bit-text tracking-tighter">
+                <h2 className="text-3xl md:text-5xl font-display font-bold text-bit-text tracking-tighter">
                   {isQueryReady ? `Results for "${currentQuery}"` : 'Search books and audiobooks'}
                 </h2>
+                <form onSubmit={handleMobileSearchSubmit} className="mt-5 flex items-center gap-2 rounded-2xl border border-bit-border bg-bit-bg/55 p-2 shadow-sm md:hidden">
+                  <Search size={17} className="ml-2 shrink-0 text-bit-accent" />
+                  <input
+                    type="search"
+                    value={mobileSearchDraft}
+                    onChange={(event) => setMobileSearchDraft(event.target.value)}
+                    placeholder="Search books..."
+                    className="min-w-0 flex-1 bg-transparent text-sm text-bit-text placeholder:text-bit-muted/60 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={mobileSearchDraft.trim().length < SEARCH_MIN_QUERY_LENGTH}
+                    className="h-9 shrink-0 rounded-xl bg-bit-accent px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-white shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    Go
+                  </button>
+                </form>
                 {isQueryReady && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium text-bit-muted">
                     {isSearching && totalResultCount === 0 ? (

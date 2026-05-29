@@ -45,7 +45,7 @@ const FloatingScrollButton: React.FC<FloatingScrollButtonProps> = ({ hidden, hid
     <button
       type="button"
       onClick={() => window.scrollTo({ top: targetTop, behavior: 'smooth' })}
-      className="fixed bottom-6 right-4 z-[900] flex h-11 w-11 items-center justify-center rounded-full border border-bit-border bg-bit-panel/85 text-bit-muted shadow-xl shadow-black/20 backdrop-blur-md transition-all hover:border-bit-accent/50 hover:bg-bit-accent hover:text-white sm:bottom-8 sm:right-6"
+      className="fixed bottom-24 right-4 z-[900] flex h-11 w-11 items-center justify-center rounded-full border border-bit-border bg-bit-panel/85 text-bit-muted shadow-xl shadow-black/20 backdrop-blur-md transition-all hover:border-bit-accent/50 hover:bg-bit-accent hover:text-white md:bottom-8 md:right-6"
       aria-label={label}
       title={label}
     >

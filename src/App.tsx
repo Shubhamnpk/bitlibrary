@@ -28,6 +28,8 @@ import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import Seo from '@/components/Seo';
 import FloatingScrollButton from '@/components/FloatingScrollButton';
+import MobileBottomNav from '@/components/MobileBottomNav';
+import MobileProfileModal from '@/components/MobileProfileModal';
 
 const SEARCH_DEBOUNCE_MS = 400;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
@@ -123,6 +125,7 @@ const App: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [isFeaturedLoading, setIsFeaturedLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const { state: localUserState } = useLocalUserState();
 
@@ -268,7 +271,8 @@ const App: React.FC = () => {
     [location.pathname]
   );
   const isLibraryRoute = /^\/(?:library|books|browse|mylibrary)(?:\/|$)/.test(location.pathname);
-  const hideFloatingScrollControls = Boolean(isReaderActive || readerLoading || mobileMenuOpen);
+  const hideFloatingScrollControls = Boolean(isReaderActive || readerLoading || mobileMenuOpen || mobileProfileOpen);
+  const hideMobileBottomNav = Boolean(isReaderActive || readerLoading || mobileMenuOpen || mobileProfileOpen || isNotFoundRoute);
 
   const handleReadBook = useCallback((book: Book) => {
     setActiveBook(book);
@@ -287,6 +291,7 @@ const App: React.FC = () => {
       if (e.key === 'Escape') {
         closeSearchSurface();
         setMobileMenuOpen(false);
+        setMobileProfileOpen(false);
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -379,7 +384,7 @@ const App: React.FC = () => {
 
 
       {/* Main Layout */}
-      <main className={`${isNotFoundRoute ? 'min-h-[100svh] pb-0' : 'min-h-screen pb-20'} relative z-0 ${isReaderActive ? '' : 'pt-16 md:pt-20'}`}>
+      <main className={`${isNotFoundRoute ? 'min-h-[100svh] pb-0' : 'min-h-screen pb-28 md:pb-20'} relative z-0 ${isReaderActive ? '' : 'pt-16 md:pt-20'}`}>
 
         <Routes>
           {/* Home / Discovery */}
@@ -675,6 +680,12 @@ const App: React.FC = () => {
       <FloatingScrollButton
         hidden={hideFloatingScrollControls}
         hideScrollDown={isLibraryRoute}
+      />
+      <MobileBottomNav hidden={hideMobileBottomNav} onProfileClick={() => setMobileProfileOpen(true)} />
+      <MobileProfileModal
+        open={mobileProfileOpen}
+        onClose={() => setMobileProfileOpen(false)}
+        localUserState={localUserState}
       />
 
       {/* Global PiP Overlay */}
