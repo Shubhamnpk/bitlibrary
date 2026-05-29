@@ -17,6 +17,7 @@
     "@ksedline/turnjs": "^0.1.0",
     "axios": "^1.13.6",
     "convex": "^1.34.0",
+    "dictionary-en": "^4.0.0",
     "dictionary-ne": "^2.0.0",
     "jquery": "^1.12.4",
     "lucide-react": "^0.562.0",

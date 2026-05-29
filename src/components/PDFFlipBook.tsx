@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import $ from 'jquery';
 import '@ksedline/turnjs';
-import { Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, ExternalLink, Highlighter, Loader2, RotateCcw, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
+import { Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Headphones, Highlighter, Loader2, Pause, Play, RotateCcw, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import { getPdfProxyUrl } from '@/lib/pdf';
+import { getPdfSpeechSegments, type PdfSpeechItemRange, type PdfSpeechSegment, type PdfSpeechStatus } from '@/lib/pdf-speech';
 import {
   readPdfBackgroundPreset,
   readPdfHighlightColor,
@@ -18,6 +19,7 @@ import {
   type PdfStudyState,
   type PdfTextHighlight,
 } from '@/lib/pdf-reader-storage';
+import { getPreferredSpeechVoiceURI, normalizeSpeechMatchText } from '@/lib/speech';
 
 export {
   readPdfBackgroundPreset,
@@ -71,11 +73,55 @@ interface PDFPageCanvasProps {
   isBookmarked: boolean;
   isHighlighted: boolean;
   textHighlights: PdfTextHighlight[];
+  activeSpeechText?: string;
+  activeSpeechItemRange?: PdfSpeechItemRange | null;
   currentHighlightColor: PdfHighlightColorId;
   onTextSelection: (highlight: Omit<PdfTextHighlight, 'id' | 'createdAt'>) => void;
 }
 
 const EMPTY_TEXT_HIGHLIGHTS: PdfTextHighlight[] = [];
+
+type PdfSpeechHighlightRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type PdfTextSpanMetrics = {
+  element: HTMLElement;
+  text: string;
+  rect: PdfSpeechHighlightRect;
+};
+
+const mergeSpeechHighlightRects = (rects: PdfSpeechHighlightRect[]) => {
+  const sortedRects = [...rects].sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
+  const merged: PdfSpeechHighlightRect[] = [];
+
+  sortedRects.forEach((rect) => {
+    const previous = merged[merged.length - 1];
+    if (!previous) {
+      merged.push({ ...rect });
+      return;
+    }
+
+    const sameLine = Math.abs(previous.y - rect.y) < 0.7;
+    const smallGap = rect.x - (previous.x + previous.width) < 1.4;
+
+    if (sameLine && smallGap) {
+      const right = Math.max(previous.x + previous.width, rect.x + rect.width);
+      const bottom = Math.max(previous.y + previous.height, rect.y + rect.height);
+      previous.x = Math.min(previous.x, rect.x);
+      previous.y = Math.min(previous.y, rect.y);
+      previous.width = right - previous.x;
+      previous.height = bottom - previous.y;
+    } else {
+      merged.push({ ...rect });
+    }
+  });
+
+  return merged;
+};
 
 export interface PdfStudySnapshot {
   currentPage: number;
@@ -279,14 +325,87 @@ const playPageTurnSound = () => {
   source.onended = () => void audioContext.close();
 };
 
-const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, shouldRender, shouldRenderTextLayer, renderScale, targetWidth, targetHeight, isBookmarked, isHighlighted, textHighlights, currentHighlightColor, onTextSelection }) => {
+const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, shouldRender, shouldRenderTextLayer, renderScale, targetWidth, targetHeight, isBookmarked, isHighlighted, textHighlights, activeSpeechText = '', activeSpeechItemRange = null, currentHighlightColor, onTextSelection }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const textLayerRef = useRef<HTMLDivElement | null>(null);
   const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
+  const speechSpanMetricsRef = useRef<PdfTextSpanMetrics[]>([]);
+  const speechHighlightedSpansRef = useRef<HTMLElement[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasRenderedCanvas, setHasRenderedCanvas] = useState(false);
+  const [speechHighlightRects, setSpeechHighlightRects] = useState<PdfSpeechHighlightRect[]>([]);
+
+  const cacheSpeechSpanMetrics = useCallback(() => {
+    const textLayer = textLayerRef.current;
+    const content = contentRef.current;
+    if (!textLayer || !content) {
+      speechSpanMetricsRef.current = [];
+      return;
+    }
+
+    const contentRect = content.getBoundingClientRect();
+    if (contentRect.width <= 0 || contentRect.height <= 0) {
+      speechSpanMetricsRef.current = [];
+      return;
+    }
+
+    speechSpanMetricsRef.current = Array.from(textLayer.querySelectorAll<HTMLElement>('span'))
+      .map((span) => {
+        const text = normalizeSpeechMatchText(span.textContent || '');
+        if (!text) return null;
+
+        const rect = span.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return null;
+
+        return {
+          element: span,
+          text,
+          rect: {
+            x: ((rect.left - contentRect.left) / contentRect.width) * 100,
+            y: ((rect.top - contentRect.top) / contentRect.height) * 100,
+            width: (rect.width / contentRect.width) * 100,
+            height: (rect.height / contentRect.height) * 100,
+          },
+        };
+      })
+      .filter((item): item is PdfTextSpanMetrics => Boolean(item));
+  }, []);
+
+  const clearSpeechHighlight = useCallback(() => {
+    speechHighlightedSpansRef.current.forEach((span) => span.classList.remove('bit-pdf-speech-highlight'));
+    speechHighlightedSpansRef.current = [];
+    setSpeechHighlightRects([]);
+  }, []);
+
+  const applySpeechHighlight = useCallback(() => {
+    speechHighlightedSpansRef.current.forEach((span) => span.classList.remove('bit-pdf-speech-highlight'));
+    speechHighlightedSpansRef.current = [];
+
+    const normalizedActiveText = normalizeSpeechMatchText(activeSpeechText);
+    if ((!normalizedActiveText && !activeSpeechItemRange) || !shouldRenderTextLayer) {
+      setSpeechHighlightRects([]);
+      return;
+    }
+
+    const nextRects: PdfSpeechHighlightRect[] = [];
+    const nextHighlightedSpans: HTMLElement[] = [];
+    const spanMetrics = speechSpanMetricsRef.current;
+
+    spanMetrics.forEach(({ element, text, rect }, spanIndex) => {
+      const isInItemRange = Boolean(activeSpeechItemRange && spanIndex >= activeSpeechItemRange.start && spanIndex <= activeSpeechItemRange.end);
+      const isFallbackMatch = !activeSpeechItemRange && text.length > 2 && normalizedActiveText.includes(text);
+      if (isInItemRange || isFallbackMatch) {
+        element.classList.add('bit-pdf-speech-highlight');
+        nextHighlightedSpans.push(element);
+        nextRects.push(rect);
+      }
+    });
+
+    speechHighlightedSpansRef.current = nextHighlightedSpans;
+    setSpeechHighlightRects(mergeSpeechHighlightRects(nextRects));
+  }, [activeSpeechItemRange, activeSpeechText, shouldRenderTextLayer]);
 
   const clearTextLayerSelection = () => {
     const selection = window.getSelection();
@@ -380,6 +499,8 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
     if (!shouldRender || !shouldRenderTextLayer) {
       clearTextLayerSelection();
       textLayerRef.current?.replaceChildren();
+      speechSpanMetricsRef.current = [];
+      clearSpeechHighlight();
       return;
     }
 
@@ -415,6 +536,8 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
         });
 
         await pdfTextLayer.render();
+        cacheSpeechSpanMetrics();
+        applySpeechHighlight();
         clearTextLayerSelection();
       } catch (textLayerError) {
         if ((textLayerError as { name?: string })?.name !== 'AbortException') {
@@ -431,7 +554,11 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
       pdfTextLayer?.cancel();
       clearTextLayerSelection();
     };
-  }, [document, pageNumber, shouldRender, shouldRenderTextLayer, targetHeight, targetWidth]);
+  }, [applySpeechHighlight, cacheSpeechSpanMetrics, clearSpeechHighlight, document, pageNumber, shouldRender, shouldRenderTextLayer, targetHeight, targetWidth]);
+
+  useEffect(() => {
+    applySpeechHighlight();
+  }, [applySpeechHighlight]);
 
   const handleTextPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!event.isPrimary) return;
@@ -533,6 +660,22 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
                 ))}
               </div>
             ))}
+            {speechHighlightRects.length > 0 && (
+              <div className="pointer-events-none absolute inset-0 z-[4]">
+                {speechHighlightRects.map((rect, index) => (
+                  <span
+                    key={`${pageNumber}-speech-${index}`}
+                    className="absolute rounded-[3px] bg-bit-accent/25 ring-1 ring-bit-accent/30"
+                    style={{
+                      left: `${rect.x}%`,
+                      top: `${rect.y}%`,
+                      width: `${rect.width}%`,
+                      height: `${Math.max(rect.height, 1.2)}%`,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </>
       ) : (
@@ -602,6 +745,13 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [zoom, setZoom] = useState(() => getDefaultZoom());
   const [isPageSliderActive, setIsPageSliderActive] = useState(false);
+  const [pdfSpeechStatus, setPdfSpeechStatus] = useState<PdfSpeechStatus>('idle');
+  const [pdfSpeechVoices, setPdfSpeechVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedPdfSpeechVoiceURI, setSelectedPdfSpeechVoiceURI] = useState('');
+  const [pdfSpeechRate, setPdfSpeechRate] = useState(1);
+  const [pdfSpeechPillPosition, setPdfSpeechPillPosition] = useState<{ x: number; y: number } | null>(null);
+  const [pdfSpeechSegments, setPdfSpeechSegments] = useState<PdfSpeechSegment[]>([]);
+  const [activePdfSpeechSegmentIndex, setActivePdfSpeechSegmentIndex] = useState<number | null>(null);
   const [internalStudyPanelOpen, setInternalStudyPanelOpen] = useState(false);
   const [internalBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
   const [internalHighlightColor] = useState<PdfHighlightColorId>(() => readPdfHighlightColor());
@@ -623,6 +773,10 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const handledStudyActionRef = useRef<number | null>(null);
   const skipNextStudyStateWriteRef = useRef(false);
   const loadedTableOfContentsRequestRef = useRef<string | null>(null);
+  const pdfSpeechStoppedRef = useRef(false);
+  const pdfSpeechPillDragRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
+  const speakPdfSpeechSegmentRef = useRef<((segments: PdfSpeechSegment[], index: number) => void) | null>(null);
+  const pdfSpeechSegmentsCacheRef = useRef(new Map<number, PdfSpeechSegment[]>());
   const proxiedPdfUrl = useMemo(() => getPdfProxyUrl(pdfUrl), [pdfUrl]);
   const sortedBookmarks = useMemo(() => [...studyState.bookmarks].sort((a, b) => a - b), [studyState.bookmarks]);
   const studyPanelOpen = controlledStudyPanelOpen ?? internalStudyPanelOpen;
@@ -648,6 +802,136 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const currentPageHighlighted = studyState.highlights.includes(currentPage);
   const currentPageTextHighlights = textHighlightsByPage.get(currentPage) ?? EMPTY_TEXT_HIGHLIGHTS;
   const sortedTextHighlights = useMemo(() => [...studyState.textHighlights].sort((a, b) => b.createdAt - a.createdAt), [studyState.textHighlights]);
+  const selectedPdfSpeechVoice = useMemo(
+    () => pdfSpeechVoices.find((voice) => voice.voiceURI === selectedPdfSpeechVoiceURI) || null,
+    [pdfSpeechVoices, selectedPdfSpeechVoiceURI]
+  );
+  const activePdfSpeechSegment = activePdfSpeechSegmentIndex === null ? null : pdfSpeechSegments[activePdfSpeechSegmentIndex] || null;
+  const activePdfSpeechText = activePdfSpeechSegment?.text || '';
+  const activePdfSpeechItemRange = activePdfSpeechSegment
+    ? { start: activePdfSpeechSegment.itemStart, end: activePdfSpeechSegment.itemEnd }
+    : null;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      setPdfSpeechVoices(voices);
+      setSelectedPdfSpeechVoiceURI((current) => current || getPreferredSpeechVoiceURI(voices));
+    };
+
+    loadVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+
+    return () => {
+      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+    };
+  }, []);
+
+  const stopPdfSpeech = useCallback(() => {
+    pdfSpeechStoppedRef.current = true;
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setPdfSpeechStatus('idle');
+    setActivePdfSpeechSegmentIndex(null);
+    setPdfSpeechSegments([]);
+  }, []);
+
+  const speakPdfSpeechSegment = useCallback((segments: PdfSpeechSegment[], index: number) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if (index >= segments.length) {
+      stopPdfSpeech();
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(segments[index].text);
+    if (selectedPdfSpeechVoice) utterance.voice = selectedPdfSpeechVoice;
+    utterance.rate = pdfSpeechRate;
+    utterance.onend = () => {
+      if (pdfSpeechStoppedRef.current) return;
+      speakPdfSpeechSegmentRef.current?.(segments, index + 1);
+    };
+    utterance.onerror = () => stopPdfSpeech();
+    setActivePdfSpeechSegmentIndex(index);
+    setPdfSpeechStatus('playing');
+    window.speechSynthesis.speak(utterance);
+  }, [pdfSpeechRate, selectedPdfSpeechVoice, stopPdfSpeech]);
+  speakPdfSpeechSegmentRef.current = speakPdfSpeechSegment;
+
+  const readCurrentPdfPage = useCallback(async () => {
+    if (!document || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    if (pdfSpeechStatus === 'paused') {
+      window.speechSynthesis.resume();
+      setPdfSpeechStatus('playing');
+      return;
+    }
+
+    try {
+      pdfSpeechStoppedRef.current = false;
+      window.speechSynthesis.cancel();
+      setPdfSpeechStatus('loading');
+      let segments = pdfSpeechSegmentsCacheRef.current.get(currentPage);
+
+      if (!segments) {
+        const page = await document.getPage(currentPage);
+        const textContent = await page.getTextContent();
+        const itemTexts = textContent.items
+          .map((item: any) => ('str' in item ? item.str : ''))
+          .map((text: string) => text.replace(/\s+/g, ' ').trim())
+          .filter(Boolean);
+        segments = getPdfSpeechSegments(itemTexts);
+        pdfSpeechSegmentsCacheRef.current.set(currentPage, segments);
+      }
+
+      if (segments.length === 0) {
+        setPdfSpeechStatus('idle');
+        return;
+      }
+
+      setPdfSpeechSegments(segments);
+      speakPdfSpeechSegment(segments, 0);
+    } catch {
+      setPdfSpeechStatus('idle');
+    }
+  }, [currentPage, document, pdfSpeechStatus, speakPdfSpeechSegment]);
+
+  const pausePdfSpeech = useCallback(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.pause();
+    setPdfSpeechStatus('paused');
+  }, []);
+
+  const handlePdfSpeechPillPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('button,select,input,label')) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    pdfSpeechPillDragRef.current = {
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, []);
+
+  const handlePdfSpeechPillPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = pdfSpeechPillDragRef.current;
+    if (!drag) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const maxX = Math.max(12, window.innerWidth - rect.width - 12);
+    const maxY = Math.max(12, window.innerHeight - rect.height - 12);
+    setPdfSpeechPillPosition({
+      x: Math.min(maxX, Math.max(12, event.clientX - drag.offsetX)),
+      y: Math.min(maxY, Math.max(12, event.clientY - drag.offsetY)),
+    });
+  }, []);
+
+  const handlePdfSpeechPillPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    pdfSpeechPillDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
 
   const scheduleZoom = useCallback((nextZoom: number | ((currentZoom: number) => number)) => {
     const nextValue = clampZoom(
@@ -710,6 +994,16 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   useEffect(() => {
     currentPageRef.current = currentPage;
   }, [currentPage]);
+
+  useEffect(() => {
+    stopPdfSpeech();
+  }, [currentPage, pdfUrl, stopPdfSpeech]);
+
+  useEffect(() => {
+    pdfSpeechSegmentsCacheRef.current.clear();
+  }, [document, pdfUrl]);
+
+  useEffect(() => () => stopPdfSpeech(), [stopPdfSpeech]);
 
   useEffect(() => {
     if (!Number.isFinite(currentPage) || currentPage < 1) return;
@@ -1388,12 +1682,14 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                   pageNumber={currentPage}
                   renderScale={renderScale}
                   shouldRender
-                  shouldRenderTextLayer={studyPanelOpen}
+                  shouldRenderTextLayer={studyPanelOpen || pdfSpeechStatus !== 'idle'}
                   targetWidth={pageRenderWidth}
                   targetHeight={pageRenderHeight}
                   isBookmarked={currentPageBookmarked}
                   isHighlighted={currentPageHighlighted}
                   textHighlights={currentPageTextHighlights}
+                  activeSpeechText={activePdfSpeechText}
+                  activeSpeechItemRange={activePdfSpeechItemRange}
                   currentHighlightColor={highlightColor}
                   onTextSelection={addTextHighlight}
                 />
@@ -1403,7 +1699,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                 {Array.from({ length: pageCount }, (_, index) => {
                   const pageNumber = index + 1;
                   const shouldRender = Math.abs(pageNumber - currentPage) <= renderWindow;
-                  const shouldRenderTextLayer = studyPanelOpen && Math.abs(pageNumber - currentPage) <= textLayerWindow;
+                  const isCurrentSpeechPage = pdfSpeechStatus !== 'idle' && pageNumber === currentPage;
+                  const shouldRenderTextLayer = (studyPanelOpen && Math.abs(pageNumber - currentPage) <= textLayerWindow) || isCurrentSpeechPage;
                   return (
                     <div key={pageNumber} className="bit-turn-page bg-white">
                       <MemoPDFPageCanvas
@@ -1417,6 +1714,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                         isBookmarked={studyState.bookmarks.includes(pageNumber)}
                         isHighlighted={studyState.highlights.includes(pageNumber)}
                         textHighlights={textHighlightsByPage.get(pageNumber) ?? EMPTY_TEXT_HIGHLIGHTS}
+                        activeSpeechText={isCurrentSpeechPage ? activePdfSpeechText : ''}
+                        activeSpeechItemRange={isCurrentSpeechPage ? activePdfSpeechItemRange : null}
                         currentHighlightColor={highlightColor}
                         onTextSelection={addTextHighlight}
                       />
@@ -1451,6 +1750,61 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
         </button>
 
       </div>
+
+      {pdfSpeechStatus !== 'idle' && (
+        <div
+          className={`pointer-events-auto fixed z-[10060] hidden items-center gap-2 rounded-full border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/25 backdrop-blur-xl md:flex ${pdfSpeechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'}`}
+          style={pdfSpeechPillPosition ? { left: pdfSpeechPillPosition.x, top: pdfSpeechPillPosition.y } : { left: '50%', bottom: '5rem', transform: 'translateX(-50%)' }}
+          onPointerDown={handlePdfSpeechPillPointerDown}
+          onPointerMove={handlePdfSpeechPillPointerMove}
+          onPointerUp={handlePdfSpeechPillPointerUp}
+          onPointerCancel={handlePdfSpeechPillPointerUp}
+          aria-label="Read aloud controls"
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bit-accent/12 text-bit-accent" title="Drag read aloud controls" aria-hidden="true">
+            <GripVertical size={16} />
+          </div>
+          <button
+            type="button"
+            onClick={pdfSpeechStatus === 'playing' ? pausePdfSpeech : readCurrentPdfPage}
+            disabled={!document || pdfSpeechStatus === 'loading'}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-bit-accent/35 bg-bit-accent/10 text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-wait disabled:opacity-50"
+            aria-label={pdfSpeechStatus === 'playing' ? 'Pause read aloud' : 'Resume read aloud'}
+            title={pdfSpeechStatus === 'playing' ? 'Pause' : 'Resume'}
+          >
+            {pdfSpeechStatus === 'loading' ? <Loader2 size={14} className="animate-spin" /> : pdfSpeechStatus === 'playing' ? <Pause size={14} /> : <Play size={14} />}
+          </button>
+          <select
+            value={selectedPdfSpeechVoiceURI}
+            onChange={(event) => setSelectedPdfSpeechVoiceURI(event.target.value)}
+            className="h-8 w-32 cursor-pointer rounded-full border border-bit-border bg-bit-bg/75 px-3 text-[11px] text-bit-text outline-none transition-all hover:border-bit-accent/35 focus:border-bit-accent"
+            aria-label="Read aloud voice"
+          >
+            {pdfSpeechVoices.length === 0 ? (
+              <option value="">System voice</option>
+            ) : (
+              pdfSpeechVoices.map((voice) => (
+                <option key={voice.voiceURI} value={voice.voiceURI}>
+                  {voice.name}
+                </option>
+              ))
+            )}
+          </select>
+          <label className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-bg/60 px-3 py-1 text-[10px] font-mono font-bold text-bit-muted">
+            <span className="tabular-nums">{pdfSpeechRate.toFixed(1)}x</span>
+            <input
+              type="range"
+              min={0.7}
+              max={1.4}
+              step={0.1}
+              value={pdfSpeechRate}
+              onChange={(event) => setPdfSpeechRate(Number(event.target.value))}
+              className="h-6 w-20 accent-bit-accent"
+              aria-label="Read aloud speed"
+            />
+          </label>
+        </div>
+      )}
 
       <div className="relative z-[10050] flex flex-col gap-2 border-t border-bit-border/55 bg-bit-panel/35 px-3 py-2.5 shadow-[0_-18px_45px_rgba(0,0,0,0.18)] backdrop-blur-xl sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-3 md:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(18rem,30rem)_minmax(0,1fr)] lg:gap-4">
         <p className="hidden min-w-0 text-[10px] font-mono uppercase tracking-[0.22em] text-bit-muted lg:line-clamp-1 lg:block">
@@ -1520,6 +1874,16 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           >
             <Highlighter size={15} />
           </button>
+          <button
+            type="button"
+            onClick={pdfSpeechStatus !== 'idle' ? stopPdfSpeech : readCurrentPdfPage}
+            disabled={!document}
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition-all ${pdfSpeechStatus === 'playing' || pdfSpeechStatus === 'paused' ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-bg/60 text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent'} disabled:cursor-wait disabled:opacity-50`}
+            aria-label={pdfSpeechStatus !== 'idle' ? 'Stop read aloud' : 'Open read aloud controls'}
+            title={pdfSpeechStatus !== 'idle' ? 'Stop read aloud' : 'Read aloud'}
+          >
+            {pdfSpeechStatus === 'loading' ? <Loader2 size={14} className="animate-spin" /> : <Headphones size={14} />}
+          </button>
           <div className="flex items-center gap-1 rounded-full border border-bit-border bg-bit-bg/60 p-1">
             <button
               type="button"
@@ -1565,3 +1929,4 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 };
 
 export default PDFFlipBook;
+

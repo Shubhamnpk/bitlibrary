@@ -240,6 +240,27 @@ export const isAudioBookResource = (book: Book) => (
   || book.subjects?.some((subject) => /audio|drama|listening/i.test(subject))
 );
 
+const isReadableArchiveOrFileUrl = (url?: string): boolean => (
+  Boolean(url)
+  && (
+    /^https:\/\/archive\.org\/embed\/[^/?#]+/i.test(url || '')
+    || /\.pdf(?:$|[?#])/i.test(url || '')
+    || /\.epub(?:$|[?#])/i.test(url || '')
+    || /\.djvu(?:$|[?#])/i.test(url || '')
+  )
+);
+
+export const isReadableSearchBook = (book: Book): boolean => {
+  if (!book?.id) return false;
+
+  const isOpenLibraryOrArchive = book.id.startsWith('ol-') || book.id.startsWith('ia-');
+  if (!isOpenLibraryOrArchive) return true;
+
+  return isReadableArchiveOrFileUrl(book.externalUrl)
+    || isReadableArchiveOrFileUrl(book.downloadUrl)
+    || Boolean(book.chapterPdfUrls?.some((chapter) => isReadableArchiveOrFileUrl(chapter.pdfUrl)));
+};
+
 export const getBookSearchScore = (book: Book, query: string): number => {
   const intent = getSearchIntent(query);
   const title = normalizeForSearch(toSearchableText(book.title));

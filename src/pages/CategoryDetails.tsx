@@ -14,7 +14,7 @@ import { BookGridSkeleton } from '@/components/Skeletons';
 import { ArrowLeft, Library, Zap, Info, ChevronRight, LayoutGrid, SlidersHorizontal } from 'lucide-react';
 import Seo from '@/components/Seo';
 import { createItemListSchema, truncate } from '@/lib/seo';
-import { mergeUniqueBooks, rankBooks } from '@/lib/searchOptimization';
+import { isReadableSearchBook, mergeUniqueBooks, rankBooks } from '@/lib/searchOptimization';
 
 const CATEGORY_MAX_RESULTS = 120;
 
@@ -39,7 +39,7 @@ const loadCategorySources = async (category: string, signal?: AbortSignal) => {
     ...settledBooks(itResult),
     ...settledBooks(openLibraryResult),
     ...settledBooks(archiveResult),
-  ];
+  ].filter(isReadableSearchBook);
 
   return {
     books: rankBooks(mergeUniqueBooks(yobook.books, gutendex.books, supplemental), category).slice(0, CATEGORY_MAX_RESULTS),

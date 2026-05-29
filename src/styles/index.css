@@ -398,6 +398,12 @@
   background: var(--bit-pdf-selection-color, rgba(250, 204, 21, 0.38));
 }
 
+.bit-pdf-page .textLayer .bit-pdf-speech-highlight {
+  border-radius: 3px;
+  background: rgba(var(--bit-accent-rgb), 0.26);
+  box-shadow: 0 0 0 2px rgba(var(--bit-accent-rgb), 0.18);
+}
+
 .bit-pdf-page .textLayer .endOfContent {
   position: absolute;
   inset: 100% 0 0;

@@ -14,6 +14,7 @@ import { BookGridSkeleton } from '@/components/Skeletons';
 import { ArrowLeft, User, Calendar, Zap, Info, Library } from 'lucide-react';
 import Seo from '@/components/Seo';
 import { createItemListSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
+import { isReadableSearchBook } from '@/lib/searchOptimization';
 
 const AUTHOR_PROVIDER_TIMEOUT_MS = 5500;
 
@@ -136,7 +137,7 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
       void withTimeout(provider.run(), provider.timeout, [])
         .then((results) => {
           if (cancelled) return;
-          const matchedResults = results.filter((book) => bookMatchesAuthor(book, authorName));
+          const matchedResults = results.filter((book) => isReadableSearchBook(book) && bookMatchesAuthor(book, authorName));
           if (matchedResults.length === 0) return;
 
           foundAnyResults = true;

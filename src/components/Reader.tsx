@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Book, ChapterAudio } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap, Headphones, Play } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap, GripVertical, Headphones, Play, Pause, Volume2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PDFFlipBook, { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS, readPdfBackgroundPreset, readPdfHighlightColor, type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
 import AppSelect from './AppSelect';
 import { downloadPdfOptimized, getBestPdfSourceUrl, getPdfProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
 import { saveBook } from '@/lib/local-user';
 import { fetchYoBookGradeAudio, getYoBookAudioSubjectForBook } from '@/services/bookService';
+import { getPreferredSpeechVoiceURI, getSpeechSegments, type TextToSpeechStatus } from '@/lib/speech';
 
 interface ReaderProps {
   book: Book;
@@ -61,6 +62,13 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [chapterAudioRequested, setChapterAudioRequested] = useState(false);
   const [chapterAudioExpanded, setChapterAudioExpanded] = useState(false);
   const [selectedChapterAudioIndex, setSelectedChapterAudioIndex] = useState<number | null>(null);
+  const [speechVoices, setSpeechVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedSpeechVoiceURI, setSelectedSpeechVoiceURI] = useState('');
+  const [speechRate, setSpeechRate] = useState(1);
+  const [speechPitch, setSpeechPitch] = useState(1);
+  const [speechStatus, setSpeechStatus] = useState<TextToSpeechStatus>('idle');
+  const [activeSpeechSegmentIndex, setActiveSpeechSegmentIndex] = useState<number | null>(null);
+  const [speechPillPosition, setSpeechPillPosition] = useState<{ x: number; y: number } | null>(null);
   const [pdfStudyAction, setPdfStudyAction] = useState<PdfStudyAction | null>(null);
   const [pdfHighlightMode, setPdfHighlightMode] = useState(false);
   const [expandedHighlightPages, setExpandedHighlightPages] = useState<Record<number, boolean>>({});
@@ -80,6 +88,10 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const contentRef = useRef<HTMLDivElement>(null);
   const preloadedPdfChapterUrlsRef = useRef(new Set<string>());
   const autoSavedStudyBookRef = useRef<string | null>(null);
+  const speechStoppedRef = useRef(false);
+  const speechSegmentRefs = useRef<Array<HTMLSpanElement | null>>([]);
+  const speakSpeechSegmentRef = useRef<((index: number) => void) | null>(null);
+  const speechPillDragRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
   const pdfChapters = useMemo(
     () => book.chapterPdfUrls?.filter((entry) => isPdfLikeUrl(entry.pdfUrl)) || [],
     [book.chapterPdfUrls]
@@ -94,10 +106,113 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const readerUrl = activePdfChapter?.pdfUrl || (isPdfReader && isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl || externalReaderUrl : externalReaderUrl);
   const pdfDownloadUrl = getBestPdfSourceUrl(book);
   const downloadUrl = pdfDownloadUrl || book.downloadUrl;
+  const speechSegments = useMemo(() => getSpeechSegments(content), [content]);
+  const selectedSpeechVoice = speechVoices.find((voice) => voice.voiceURI === selectedSpeechVoiceURI) || null;
   const handleDownload = async () => {
     if (!pdfDownloadUrl) return;
     await downloadPdfOptimized(pdfDownloadUrl, book.title);
   };
+  const stopSpeech = useCallback(() => {
+    speechStoppedRef.current = true;
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeechStatus('idle');
+    setActiveSpeechSegmentIndex(null);
+  }, []);
+  const speakSpeechSegment = useCallback((index: number) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || speechSegments.length === 0) return;
+    if (index >= speechSegments.length) {
+      stopSpeech();
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(speechSegments[index]);
+    if (selectedSpeechVoice) utterance.voice = selectedSpeechVoice;
+    utterance.rate = speechRate;
+    utterance.pitch = speechPitch;
+    utterance.onend = () => {
+      if (speechStoppedRef.current) return;
+      speakSpeechSegmentRef.current?.(index + 1);
+    };
+    utterance.onerror = () => stopSpeech();
+    speechStoppedRef.current = false;
+    setActiveSpeechSegmentIndex(index);
+    setSpeechStatus('playing');
+    window.speechSynthesis.speak(utterance);
+  }, [selectedSpeechVoice, speechPitch, speechRate, speechSegments, stopSpeech]);
+  speakSpeechSegmentRef.current = speakSpeechSegment;
+  const startSpeech = () => {
+    if (speechStatus === 'paused' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.resume();
+      setSpeechStatus('playing');
+      return;
+    }
+    speechStoppedRef.current = false;
+    speakSpeechSegment(activeSpeechSegmentIndex ?? 0);
+  };
+  const pauseSpeech = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.pause();
+    setSpeechStatus('paused');
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      setSpeechVoices(voices);
+      setSelectedSpeechVoiceURI((current) => current || getPreferredSpeechVoiceURI(voices));
+    };
+
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    return () => {
+      if (window.speechSynthesis.onvoiceschanged === loadVoices) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => () => stopSpeech(), [stopSpeech]);
+
+  useEffect(() => {
+    stopSpeech();
+  }, [book.id, chapter, isExternal, stopSpeech]);
+
+  useEffect(() => {
+    if (activeSpeechSegmentIndex === null) return;
+    speechSegmentRefs.current[activeSpeechSegmentIndex]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [activeSpeechSegmentIndex]);
+  const handleSpeechPillPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('button,select,input,label')) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    speechPillDragRef.current = {
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, []);
+  const handleSpeechPillPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = speechPillDragRef.current;
+    if (!drag) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const maxX = Math.max(12, window.innerWidth - rect.width - 12);
+    const maxY = Math.max(12, window.innerHeight - rect.height - 12);
+    setSpeechPillPosition({
+      x: Math.min(maxX, Math.max(12, event.clientX - drag.offsetX)),
+      y: Math.min(maxY, Math.max(12, event.clientY - drag.offsetY)),
+    });
+  }, []);
+  const handleSpeechPillPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    speechPillDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
   const goToPdfChapter = (index: number) => {
     if (index < 0 || index >= pdfChapters.length) return;
     setSelectedPdfChapterIndex(index);
@@ -416,6 +531,20 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           )}
 
           <div className="flex items-center gap-1 rounded-xl border border-bit-border bg-bit-panel/50 p-1 shadow-sm">
+            {!isExternal && (
+              <>
+                <button
+                  type="button"
+                  onClick={speechStatus !== 'idle' ? stopSpeech : startSpeech}
+                  disabled={speechSegments.length === 0}
+                  className="rounded-lg p-2.5 text-bit-accent transition-all hover:bg-bit-panel hover:text-bit-text disabled:cursor-not-allowed disabled:opacity-40 sm:border-r sm:border-bit-border sm:p-3 group"
+                  title={speechStatus !== 'idle' ? 'Stop read aloud' : 'Read aloud'}
+                  aria-label={speechStatus !== 'idle' ? 'Stop read aloud' : 'Read aloud'}
+                >
+                  <Headphones size={17} className="sm:size-[18px]" />
+                </button>
+              </>
+            )}
             {isExternal && (
               <a 
                 href={readerUrl}
@@ -765,9 +894,26 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                     </div>
                   </section>
                 ) : (
-                  <p className="rounded-xl border border-dashed border-bit-border bg-bit-panel/25 px-4 py-8 text-center text-sm leading-6 text-bit-muted">
-                    Bookmarks and highlights are available for PDF books.
-                  </p>
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <Headphones size={16} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Read aloud</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={speechStatus !== 'idle' ? stopSpeech : startSpeech}
+                        disabled={speechSegments.length === 0}
+                        className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-bit-accent/25 bg-bit-accent/10 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Headphones size={14} />
+                        {speechStatus !== 'idle' ? 'Stop' : 'Play'}
+                      </button>
+                    </div>
+                    <p className="mt-3 text-xs leading-6 text-bit-muted">
+                      Voice, speed, and pitch options are in the Look tab.
+                    </p>
+                  </section>
                 )}
 
                 {isPdfReader && (
@@ -942,6 +1088,76 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 {!isExternal && (
                   <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
                     <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <Headphones size={16} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Read aloud</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={speechStatus !== 'idle' ? stopSpeech : startSpeech}
+                        disabled={speechSegments.length === 0}
+                        className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-bit-accent/25 bg-bit-accent/10 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Headphones size={14} />
+                        {speechStatus !== 'idle' ? 'Stop' : 'Play'}
+                      </button>
+                    </div>
+
+                    <div className="mt-4 space-y-4">
+                      <AppSelect
+                        label="Voice"
+                        value={selectedSpeechVoiceURI}
+                        onChange={setSelectedSpeechVoiceURI}
+                        options={[
+                          { value: '', label: 'Default voice' },
+                          ...speechVoices.map((voice) => ({
+                            value: voice.voiceURI,
+                            label: `${voice.name}${voice.lang ? ` (${voice.lang})` : ''}`,
+                          })),
+                        ]}
+                        className="w-full bg-bit-bg/40"
+                        selectClassName="max-w-[12rem]"
+                        ariaLabel="Select read aloud voice"
+                      />
+
+                      <label className="block">
+                        <span className="flex items-center justify-between text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-bit-muted">
+                          Speed
+                          <span className="text-bit-accent">{speechRate.toFixed(1)}x</span>
+                        </span>
+                        <input
+                          type="range"
+                          min="0.6"
+                          max="1.6"
+                          step="0.1"
+                          value={speechRate}
+                          onChange={(event) => setSpeechRate(Number(event.target.value))}
+                          className="mt-2 w-full accent-bit-accent"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="flex items-center justify-between text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-bit-muted">
+                          Pitch
+                          <span className="text-bit-accent">{speechPitch.toFixed(1)}</span>
+                        </span>
+                        <input
+                          type="range"
+                          min="0.7"
+                          max="1.4"
+                          step="0.1"
+                          value={speechPitch}
+                          onChange={(event) => setSpeechPitch(Number(event.target.value))}
+                          className="mt-2 w-full accent-bit-accent"
+                        />
+                      </label>
+                    </div>
+                  </section>
+                )}
+
+                {!isExternal && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
                       <Type size={16} />
                       <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Text size</p>
                     </div>
@@ -1052,12 +1268,50 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               style={{ fontSize: `${fontSize}px` }}
               className={`prose-bit max-w-none transition-all duration-300 font-serif ${isImmersive ? 'opacity-100' : 'opacity-90'}`}
             >
-              <ReactMarkdown>{content}</ReactMarkdown>
+              {speechStatus !== 'idle' || activeSpeechSegmentIndex !== null ? (
+                <div className="whitespace-pre-wrap leading-[1.9]">
+                  {speechSegments.map((segment, index) => (
+                    <span
+                      key={`${segment}-${index}`}
+                      ref={(node) => {
+                        speechSegmentRefs.current[index] = node;
+                      }}
+                      className={`rounded-md px-1 transition-colors duration-200 ${activeSpeechSegmentIndex === index ? 'bg-bit-accent/20 text-bit-text ring-1 ring-bit-accent/30' : 'text-bit-muted/90'}`}
+                    >
+                      {segment}
+                      {' '}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <ReactMarkdown>{content}</ReactMarkdown>
+              )}
               {loading && content.length > 0 && <span className="inline-block w-2.5 h-5 bg-bit-accent animate-pulse ml-1 align-baseline"></span>}
             </div>
 
             {!loading && (
-              <div className="mt-24 flex items-center justify-between pt-12 border-t border-bit-border opacity-40 hover:opacity-100 transition-opacity text-[10px] font-mono tracking-[0.4em] text-bit-muted">
+              <div className="mt-16 border-t border-bit-border pt-6">
+                <div className="mb-8 flex flex-col gap-3 rounded-xl border border-bit-border bg-bit-bg/35 p-3 opacity-80 transition-opacity hover:opacity-100 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 text-bit-accent">
+                    <Headphones size={16} />
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">
+                      Read aloud
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={speechStatus !== 'idle' ? stopSpeech : startSpeech}
+                      disabled={speechSegments.length === 0}
+                      className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-bit-accent/25 bg-bit-accent/10 px-4 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
+                    >
+                      <Headphones size={14} />
+                      {speechStatus !== 'idle' ? 'Stop' : 'Play'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between opacity-40 hover:opacity-100 transition-opacity text-[10px] font-mono tracking-[0.4em] text-bit-muted">
                 <button
                   disabled={chapter <= 1}
                   onClick={() => setChapter(c => c - 1)}
@@ -1072,11 +1326,67 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 >
                   SYNC_NEXT <ChevronRight size={16} />
                 </button>
+                </div>
               </div>
             )}
           </div>
         )}
       </main>
+
+      {!isExternal && speechStatus !== 'idle' && (
+        <div
+          className={`pointer-events-auto fixed z-[10010] hidden items-center gap-2 rounded-full border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/25 backdrop-blur-xl md:flex ${speechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'}`}
+          style={speechPillPosition ? { left: speechPillPosition.x, top: speechPillPosition.y } : { left: '50%', bottom: '1.5rem', transform: 'translateX(-50%)' }}
+          onPointerDown={handleSpeechPillPointerDown}
+          onPointerMove={handleSpeechPillPointerMove}
+          onPointerUp={handleSpeechPillPointerUp}
+          onPointerCancel={handleSpeechPillPointerUp}
+          aria-label="Read aloud controls"
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bit-accent/12 text-bit-accent" title="Drag read aloud controls" aria-hidden="true">
+            <GripVertical size={16} />
+          </div>
+          <button
+            type="button"
+            onClick={speechStatus === 'playing' ? pauseSpeech : startSpeech}
+            disabled={speechSegments.length === 0}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-bit-accent/35 bg-bit-accent/10 text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label={speechStatus === 'playing' ? 'Pause read aloud' : 'Resume read aloud'}
+            title={speechStatus === 'playing' ? 'Pause' : 'Resume'}
+          >
+            {speechStatus === 'playing' ? <Pause size={14} /> : <Play size={14} />}
+          </button>
+          <select
+            value={selectedSpeechVoiceURI}
+            onChange={(event) => setSelectedSpeechVoiceURI(event.target.value)}
+            className="h-8 w-32 cursor-pointer rounded-full border border-bit-border bg-bit-bg/75 px-3 text-[11px] text-bit-text outline-none transition-all hover:border-bit-accent/35 focus:border-bit-accent"
+            aria-label="Read aloud voice"
+          >
+            {speechVoices.length === 0 ? (
+              <option value="">System voice</option>
+            ) : (
+              speechVoices.map((voice) => (
+                <option key={voice.voiceURI} value={voice.voiceURI}>
+                  {voice.name}
+                </option>
+              ))
+            )}
+          </select>
+          <label className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-bg/60 px-3 py-1 text-[10px] font-mono font-bold text-bit-muted">
+            <span className="tabular-nums">{speechRate.toFixed(1)}x</span>
+            <input
+              type="range"
+              min={0.7}
+              max={1.4}
+              step={0.1}
+              value={speechRate}
+              onChange={(event) => setSpeechRate(Number(event.target.value))}
+              className="h-6 w-20 accent-bit-accent"
+              aria-label="Read aloud speed"
+            />
+          </label>
+        </div>
+      )}
 
       {/* Floating Rescue Controls - Accessible in immersive */}
       {isImmersive && (
@@ -1134,3 +1444,4 @@ export const ReaderSkeleton: React.FC = () => {
 };
 
 export default Reader;
+

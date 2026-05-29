@@ -9,6 +9,7 @@ const ALLOWED_PDF_HOSTS = new Set([
   'yobook-api.vercel.app',
   'pustakalaya.org',
   'www.pustakalaya.org',
+  'shisiradhikari.com.np',
 ]);
 
 const ALLOWED_PDF_DOMAIN_SUFFIXES = [

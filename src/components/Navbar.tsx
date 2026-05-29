@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap, User, ChevronDown, Bookmark, Headphones, History, Settings, FileText } from 'lucide-react';
+import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap, User, ChevronDown, Bookmark, Headphones, History, Settings, FileText, Mic } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 
 interface NavbarProps {
@@ -51,6 +51,7 @@ const Navbar: React.FC<NavbarProps> = ({
   navigateToSearch
 }) => {
   const [profileOpen, setProfileOpen] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const displayName = localUserState.profile.displayName || 'Reader';
   const profileInitials = useMemo(() => {
@@ -84,6 +85,28 @@ const Navbar: React.FC<NavbarProps> = ({
     };
   }, [profileOpen]);
 
+  const handleVoiceSearch = () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition || voiceListening) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = /[\u0900-\u097F]/u.test(searchQuery) ? 'ne-NP' : 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => setVoiceListening(true);
+    recognition.onend = () => setVoiceListening(false);
+    recognition.onerror = () => setVoiceListening(false);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results?.[0]?.[0]?.transcript?.trim() || '';
+      if (!transcript) return;
+      setSearchQuery(transcript);
+      navigateToSearch(transcript, { persistRecent: true });
+      setMobileMenuOpen(false);
+    };
+    recognition.start();
+  };
+
   if (isReaderActive) return null;
 
   return (
@@ -115,9 +138,18 @@ const Navbar: React.FC<NavbarProps> = ({
                 value={searchQuery}
                 onFocus={() => setIsSearchFocused(true)}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-bit-panel/30 border border-bit-border rounded-full py-2 pl-10 pr-24 text-sm focus:outline-none focus:border-bit-accent/50 focus:bg-bit-panel/50 transition-all placeholder:text-bit-muted/50"
+                className="w-full bg-bit-panel/30 border border-bit-border rounded-full py-2 pl-10 pr-32 text-sm focus:outline-none focus:border-bit-accent/50 focus:bg-bit-panel/50 transition-all placeholder:text-bit-muted/50"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleVoiceSearch}
+                  className={`text-bit-muted transition-colors hover:text-bit-accent ${voiceListening ? 'text-bit-accent' : ''}`}
+                  aria-label="Search by voice"
+                  title="Search by voice"
+                >
+                  <Mic size={15} />
+                </button>
                 {trimmedSearchQuery && (
                   <button
                     type="button"
@@ -361,6 +393,15 @@ const Navbar: React.FC<NavbarProps> = ({
                   placeholder="Search books or authors..."
                   className="flex-1 rounded-xl border border-bit-border bg-bit-bg/60 px-3 py-2 text-sm text-bit-text placeholder:text-bit-muted/60 focus:outline-none focus:border-bit-accent/40"
                 />
+                <button
+                  type="button"
+                  onClick={handleVoiceSearch}
+                  className={`rounded-xl border border-bit-border px-3 py-2 transition-all ${voiceListening ? 'bg-bit-accent text-white' : 'bg-bit-panel/35 text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent'}`}
+                  aria-label="Search by voice"
+                  title="Search by voice"
+                >
+                  <Mic size={15} />
+                </button>
                 <button
                   type="submit"
                   className="rounded-xl bg-bit-accent text-white px-3 py-2 text-[10px] font-mono uppercase tracking-widest"

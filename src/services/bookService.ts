@@ -12,7 +12,7 @@ const YOBOOK_BASE = 'https://yobook-api.vercel.app';
 
 // --- Browser Cache Configuration ---
 const CACHE_TTL = 6 * 60 * 60 * 1000;
-const CACHE_STORAGE_PREFIX = 'bitlibrary-book-cache-v3';
+const CACHE_STORAGE_PREFIX = 'bitlibrary-book-cache-v4';
 const cache: Record<string, { data: any, timestamp: number }> = {};
 
 const getStorageKey = (key: string) => `${CACHE_STORAGE_PREFIX}:${key}`;
@@ -128,6 +128,68 @@ const isPdfLikeResourceUrl = (url?: string): boolean => (
     || /[?&]ext=pdf(?:&|$)/i.test(url || '')
   )
 );
+
+const ARCHIVE_READABLE_FORMATS = new Set([
+  'text pdf',
+  'pdf',
+  'epub',
+  'djvu',
+  'djvutxt',
+  'full text',
+]);
+
+const getArchiveFormats = (item: any): string[] => {
+  const formatValues = [
+    ...(Array.isArray(item?.format) ? item.format : (item?.format ? [item.format] : [])),
+    ...(Array.isArray(item?.files) ? item.files.map((file: any) => file?.format) : []),
+  ];
+
+  return formatValues
+    .filter((format: unknown): format is string => typeof format === 'string')
+    .map((format) => format.trim().toLowerCase());
+};
+
+const hasArchiveReadableFormat = (item: any): boolean => (
+  getArchiveFormats(item).some((format) => ARCHIVE_READABLE_FORMATS.has(format))
+);
+
+const getArchiveDirectFileUrl = (identifier: string, item: any): string | undefined => {
+  if (!identifier || !Array.isArray(item?.files)) return undefined;
+
+  const files = item.files.filter((file: any) => typeof file?.name === 'string');
+  const preferredFile = files.find((file: any) => file.format === 'Text PDF' || /\.pdf$/i.test(file.name))
+    || files.find((file: any) => file.format === 'PDF')
+    || files.find((file: any) => file.format === 'EPUB' || /\.epub$/i.test(file.name))
+    || files.find((file: any) => file.format === 'DjVu' || /\.djvu$/i.test(file.name));
+
+  return preferredFile ? `https://archive.org/download/${identifier}/${encodeURIComponent(preferredFile.name)}` : undefined;
+};
+
+const hasOpenLibraryReadableAccess = (item: any): boolean => {
+  const ebookAccess = typeof item?.ebook_access === 'string' ? item.ebook_access : '';
+  return (
+    item?.has_fulltext === true
+    && (
+      item?.public_scan_b === true
+      || ebookAccess === 'public'
+      || ebookAccess === 'borrowable'
+    )
+  );
+};
+
+const getOpenLibraryArchiveId = (item: any): string | undefined => {
+  if (typeof item?.lending_identifier_s === 'string' && item.lending_identifier_s.trim()) {
+    return item.lending_identifier_s.trim();
+  }
+
+  if (Array.isArray(item?.ia)) {
+    return item.ia.find((identifier: unknown): identifier is string => (
+      typeof identifier === 'string' && identifier.trim().length > 0
+    ));
+  }
+
+  return undefined;
+};
 
 export const isPriorCurriculumEdition = (book: Pick<Book, 'title' | 'description' | 'keywords' | 'bookshelves'>): boolean => {
   const text = [
@@ -407,8 +469,9 @@ const mapOpenLibraryToBook = (item: any): Book => {
       ? `https://covers.openlibrary.org/b/isbn/${item.isbn[0]}-L.jpg`
       : `https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=400`;
 
-  const externalUrl = (item.ia && item.ia.length > 0)
-    ? `https://archive.org/embed/${item.ia[0]}`
+  const archiveId = getOpenLibraryArchiveId(item);
+  const externalUrl = archiveId
+    ? `https://archive.org/embed/${archiveId}`
     : `https://openlibrary.org${item.key}`;
 
   const firstSentence = toText(item.first_sentence, 'Historical volume from Open Library Archive.');
@@ -427,7 +490,7 @@ const mapOpenLibraryToBook = (item: any): Book => {
     popularity: item.ratings_average ? Math.round(item.ratings_average * 20) : undefined,
     downloads: item.ratings_count || 0,
     externalUrl,
-    downloadUrl: (item.ia && item.ia.length > 0) ? `https://archive.org/download/${item.ia[0]}` : undefined
+    sourceUrl: `https://openlibrary.org${item.key}`,
   };
 };
 
@@ -458,8 +521,27 @@ const fetchOpenLibraryAuthor = async (authorKey?: string): Promise<Author | null
   }
 };
 
+const fetchOpenLibrarySearchDocForWork = async (workId: string, title: string): Promise<any | null> => {
+  if (!workId || title.trim().length < 3) return null;
+
+  try {
+    const fields = 'key,title,ebook_access,has_fulltext,public_scan_b,ia,lending_identifier_s';
+    const response = await fetch(`${OPEN_LIBRARY_BASE}/search.json?q=${encodeURIComponent(title)}&limit=10&fields=${fields}`);
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const docs = Array.isArray(data.docs) ? data.docs : [];
+    return docs.find((doc: any) => doc.key === `/works/${workId}` && hasOpenLibraryReadableAccess(doc) && getOpenLibraryArchiveId(doc)) || null;
+  } catch {
+    return null;
+  }
+};
+
 const mapOpenLibraryWorkToBook = async (item: any): Promise<Book> => {
   const workId = getOpenLibraryKeyId(item.key);
+  const title = toText(item.title, 'Untitled Open Library Work');
+  const readableSearchDoc = workId ? await fetchOpenLibrarySearchDocForWork(workId, title) : null;
+  const archiveId = readableSearchDoc ? getOpenLibraryArchiveId(readableSearchDoc) : undefined;
   const authorKeys = (Array.isArray(item.authors) ? item.authors : [])
     .map((entry: any) => entry?.author?.key)
     .filter((key: unknown): key is string => typeof key === 'string')
@@ -475,7 +557,7 @@ const mapOpenLibraryWorkToBook = async (item: any): Promise<Book> => {
 
   return {
     id: `ol-${workId}`,
-    title: toText(item.title, 'Untitled Open Library Work'),
+    title,
     author,
     authors: authors.length ? authors : [{ name: author }],
     category: subjects[0] || 'Library Volume',
@@ -484,7 +566,8 @@ const mapOpenLibraryWorkToBook = async (item: any): Promise<Book> => {
     year: Number.isFinite(year) ? year : undefined,
     source: 'Open Library',
     subjects: subjects.slice(0, 12),
-    externalUrl: workId ? `${OPEN_LIBRARY_BASE}/works/${workId}` : OPEN_LIBRARY_BASE,
+    externalUrl: archiveId ? `https://archive.org/embed/${archiveId}` : (workId ? `${OPEN_LIBRARY_BASE}/works/${workId}` : OPEN_LIBRARY_BASE),
+    sourceUrl: workId ? `${OPEN_LIBRARY_BASE}/works/${workId}` : OPEN_LIBRARY_BASE,
     downloads: 0,
   };
 };
@@ -504,32 +587,35 @@ const mapITToBook = (item: any): Book => {
 
 const mapArchiveToBook = (item: any): Book => {
   if (!item) return {} as Book;
-  
-  const creator = item.creator || 'Unknown Archivist';
-  const author = Array.isArray(creator) ? creator.join(', ') : (typeof creator === 'string' ? creator : 'Unknown Archivist');
-  const id = item.identifier;
-  const coverUrl = `https://archive.org/services/img/${id}`;
-  const externalUrl = `https://archive.org/embed/${id}`;
-  const downloadUrl = `https://archive.org/download/${id}`;
 
-  const subjectArray = Array.isArray(item.subject) 
-    ? item.subject 
-    : (typeof item.subject === 'string' ? [item.subject] : []);
+  const metadata = item.metadata && item.files ? item.metadata : item;
+  const creator = metadata.creator || 'Unknown Archivist';
+  const author = Array.isArray(creator) ? creator.join(', ') : (typeof creator === 'string' ? creator : 'Unknown Archivist');
+  const id = metadata.identifier;
+  const coverUrl = `https://archive.org/services/img/${id}`;
+  const detailUrl = `https://archive.org/details/${id}`;
+  const externalUrl = hasArchiveReadableFormat(item) ? `https://archive.org/embed/${id}` : detailUrl;
+  const downloadUrl = getArchiveDirectFileUrl(id, item);
+
+  const subjectArray = Array.isArray(metadata.subject) 
+    ? metadata.subject 
+    : (typeof metadata.subject === 'string' ? [metadata.subject] : []);
 
   return {
     id: `ia-${id}`,
-    title: item.title || 'Untitled Archive',
+    title: metadata.title || 'Untitled Archive',
     author: author,
     authors: Array.isArray(creator) ? creator.map((n: any) => ({ name: String(n) })) : [{ name: String(author) }],
     category: subjectArray[0] || 'Historical Archive',
-    description: toText(item.description, 'De-centralized archival node from Internet Archive.'),
+    description: toText(metadata.description, 'De-centralized archival node from Internet Archive.'),
     coverUrl,
-    year: parseInt(String(item.date || '').split('-')[0]) || undefined,
+    year: parseInt(String(metadata.date || '').split('-')[0]) || undefined,
     source: 'Open Library', // Grouping with Open Library since they share IA identifiers
     subjects: subjectArray.filter((s: unknown): s is string => typeof s === 'string').slice(0, 5),
-    downloads: parseInt(item.downloads || 0),
+    downloads: parseInt(metadata.downloads || 0),
     externalUrl,
-    downloadUrl
+    downloadUrl,
+    sourceUrl: detailUrl,
   };
 };
 
@@ -1099,13 +1185,16 @@ export const searchOpenLibrary = async (query: string, signal?: AbortSignal): Pr
   }
 
   try {
-    const response = await fetch(`${OPEN_LIBRARY_BASE}/search.json?q=${encodeURIComponent(query)}&limit=10`, { signal });
+    const response = await fetch(`${OPEN_LIBRARY_BASE}/search.json?q=${encodeURIComponent(query)}&limit=20&fields=key,title,author_name,cover_i,isbn,subject,first_sentence,first_publish_year,ratings_average,ratings_count,ebook_access,has_fulltext,public_scan_b,ia,lending_identifier_s`, { signal });
     if (!response.ok) {
       markProviderFailure('openlibrary', response.status);
       return [];
     }
     const data = await response.json();
-    const books = (data.docs || []).map(mapOpenLibraryToBook);
+    const books = (data.docs || [])
+      .filter(hasOpenLibraryReadableAccess)
+      .filter((item: any) => Boolean(getOpenLibraryArchiveId(item)))
+      .map(mapOpenLibraryToBook);
     setInCache(cacheKey, books);
     markProviderSuccess('openlibrary');
     return books;
@@ -1128,7 +1217,8 @@ export const searchInternetArchive = async (query: string, signal?: AbortSignal)
   }
 
   try {
-    const url = `${INTERNET_ARCHIVE_BASE}?q=${encodeURIComponent(query)} AND mediatype:texts&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=date&fl[]=description&fl[]=subject&fl[]=mediatype&rows=10&page=1&output=json`;
+    const archiveQuery = `${query} AND mediatype:texts AND (format:"Text PDF" OR format:EPUB OR format:PDF OR format:DjVuTXT)`;
+    const url = `${INTERNET_ARCHIVE_BASE}?q=${encodeURIComponent(archiveQuery)}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=date&fl[]=description&fl[]=subject&fl[]=mediatype&fl[]=format&rows=20&page=1&output=json`;
     const response = await fetch(url, { signal });
     if (!response.ok) {
       markProviderFailure('internetarchive', response.status);
@@ -1137,6 +1227,7 @@ export const searchInternetArchive = async (query: string, signal?: AbortSignal)
     const data = await response.json();
     const books = (data.response?.docs || [])
       .filter((item: any) => item.mediatype === 'texts')
+      .filter(hasArchiveReadableFormat)
       .map(mapArchiveToBook);
     setInCache(cacheKey, books);
     markProviderSuccess('internetarchive');
@@ -1204,7 +1295,8 @@ export const fetchBookById = async (id: string): Promise<Book | null> => {
       const response = await fetch(`https://archive.org/metadata/${iaId}`);
       if (!response.ok) return null;
       const data = await response.json();
-      const result = mapArchiveToBook(data.metadata);
+      if (!hasArchiveReadableFormat(data)) return null;
+      const result = mapArchiveToBook(data);
       setInCache(cacheKey, result);
       return result;
     }
@@ -1216,6 +1308,7 @@ export const fetchBookById = async (id: string): Promise<Book | null> => {
       if (!response.ok) return null;
       const data = await response.json();
       const result = await mapOpenLibraryWorkToBook(data);
+      if (!/^https:\/\/archive\.org\/embed\//i.test(result.externalUrl || '')) return null;
       setInCache(cacheKey, result);
       return result;
     }
