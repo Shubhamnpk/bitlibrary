@@ -94,6 +94,10 @@ type PdfTextSpanMetrics = {
   rect: PdfSpeechHighlightRect;
 };
 
+type PdfSpeechPlaybackSegment = PdfSpeechSegment & {
+  pageNumber: number;
+};
+
 const mergeSpeechHighlightRects = (rects: PdfSpeechHighlightRect[]) => {
   const sortedRects = [...rects].sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
   const merged: PdfSpeechHighlightRect[] = [];
@@ -750,8 +754,9 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const [selectedPdfSpeechVoiceURI, setSelectedPdfSpeechVoiceURI] = useState('');
   const [pdfSpeechRate, setPdfSpeechRate] = useState(1);
   const [pdfSpeechPillPosition, setPdfSpeechPillPosition] = useState<{ x: number; y: number } | null>(null);
-  const [pdfSpeechSegments, setPdfSpeechSegments] = useState<PdfSpeechSegment[]>([]);
+  const [pdfSpeechSegments, setPdfSpeechSegments] = useState<PdfSpeechPlaybackSegment[]>([]);
   const [activePdfSpeechSegmentIndex, setActivePdfSpeechSegmentIndex] = useState<number | null>(null);
+  const [pdfSpeechAdvancePending, setPdfSpeechAdvancePending] = useState(false);
   const [internalStudyPanelOpen, setInternalStudyPanelOpen] = useState(false);
   const [internalBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
   const [internalHighlightColor] = useState<PdfHighlightColorId>(() => readPdfHighlightColor());
@@ -774,10 +779,21 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const skipNextStudyStateWriteRef = useRef(false);
   const loadedTableOfContentsRequestRef = useRef<string | null>(null);
   const pdfSpeechStoppedRef = useRef(false);
+  const pdfSpeechRestartingRef = useRef(false);
+  const pdfSpeechIgnoreCancelEventsUntilRef = useRef(0);
+  const pdfSpeechRateRef = useRef(pdfSpeechRate);
+  const pdfSpeechRateRestartTimerRef = useRef<number | null>(null);
   const pdfSpeechPillDragRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
-  const speakPdfSpeechSegmentRef = useRef<((segments: PdfSpeechSegment[], index: number) => void) | null>(null);
+  const speakPdfSpeechSegmentRef = useRef<((segments: PdfSpeechPlaybackSegment[], index: number) => void) | null>(null);
+  const readCurrentPdfPageRef = useRef<(() => Promise<void>) | null>(null);
+  const pdfSpeechSegmentsRef = useRef<PdfSpeechPlaybackSegment[]>([]);
+  const activePdfSpeechSegmentIndexRef = useRef<number | null>(null);
   const pdfSpeechSegmentsCacheRef = useRef(new Map<number, PdfSpeechSegment[]>());
+  const pdfSpeechAutoAdvanceRef = useRef(false);
+  const pdfSpeechAdvanceInProgressRef = useRef(false);
+  const pageCountRef = useRef(1);
   const proxiedPdfUrl = useMemo(() => getPdfProxyUrl(pdfUrl), [pdfUrl]);
+  const pageCount = document?.numPages || 0;
   const sortedBookmarks = useMemo(() => [...studyState.bookmarks].sort((a, b) => a - b), [studyState.bookmarks]);
   const studyPanelOpen = controlledStudyPanelOpen ?? internalStudyPanelOpen;
   const backgroundPreset = controlledBackgroundPreset ?? internalBackgroundPreset;
@@ -811,6 +827,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const activePdfSpeechItemRange = activePdfSpeechSegment
     ? { start: activePdfSpeechSegment.itemStart, end: activePdfSpeechSegment.itemEnd }
     : null;
+  const activePdfSpeechPage = activePdfSpeechSegment?.pageNumber ?? currentPage;
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -830,6 +847,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   }, []);
 
   const stopPdfSpeech = useCallback(() => {
+    pdfSpeechAutoAdvanceRef.current = false;
+    pdfSpeechAdvanceInProgressRef.current = false;
     pdfSpeechStoppedRef.current = true;
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -837,27 +856,39 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     setPdfSpeechStatus('idle');
     setActivePdfSpeechSegmentIndex(null);
     setPdfSpeechSegments([]);
+    pdfSpeechSegmentsRef.current = [];
+    activePdfSpeechSegmentIndexRef.current = null;
+    setPdfSpeechAdvancePending(false);
   }, []);
 
-  const speakPdfSpeechSegment = useCallback((segments: PdfSpeechSegment[], index: number) => {
+  const speakPdfSpeechSegment = useCallback((segments: PdfSpeechPlaybackSegment[], index: number) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     if (index >= segments.length) {
+      const lastSpokenPage = segments[segments.length - 1]?.pageNumber ?? currentPageRef.current;
+      if (pdfSpeechAutoAdvanceRef.current && lastSpokenPage < pageCountRef.current) {
+        setPdfSpeechAdvancePending(true);
+        return;
+      }
       stopPdfSpeech();
       return;
     }
 
     const utterance = new SpeechSynthesisUtterance(segments[index].text);
     if (selectedPdfSpeechVoice) utterance.voice = selectedPdfSpeechVoice;
-    utterance.rate = pdfSpeechRate;
+    utterance.rate = pdfSpeechRateRef.current;
     utterance.onend = () => {
-      if (pdfSpeechStoppedRef.current) return;
+      if (pdfSpeechStoppedRef.current || pdfSpeechRestartingRef.current || Date.now() < pdfSpeechIgnoreCancelEventsUntilRef.current) return;
       speakPdfSpeechSegmentRef.current?.(segments, index + 1);
     };
-    utterance.onerror = () => stopPdfSpeech();
+    utterance.onerror = () => {
+      if (pdfSpeechRestartingRef.current || Date.now() < pdfSpeechIgnoreCancelEventsUntilRef.current) return;
+      stopPdfSpeech();
+    };
+    activePdfSpeechSegmentIndexRef.current = index;
     setActivePdfSpeechSegmentIndex(index);
     setPdfSpeechStatus('playing');
     window.speechSynthesis.speak(utterance);
-  }, [pdfSpeechRate, selectedPdfSpeechVoice, stopPdfSpeech]);
+  }, [selectedPdfSpeechVoice, stopPdfSpeech]);
   speakPdfSpeechSegmentRef.current = speakPdfSpeechSegment;
 
   const readCurrentPdfPage = useCallback(async () => {
@@ -871,37 +902,91 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
     try {
       pdfSpeechStoppedRef.current = false;
+      pdfSpeechAutoAdvanceRef.current = true;
       window.speechSynthesis.cancel();
       setPdfSpeechStatus('loading');
-      let segments = pdfSpeechSegmentsCacheRef.current.get(currentPage);
 
-      if (!segments) {
-        const page = await document.getPage(currentPage);
-        const textContent = await page.getTextContent();
-        const itemTexts = textContent.items
-          .map((item: any) => ('str' in item ? item.str : ''))
-          .map((text: string) => text.replace(/\s+/g, ' ').trim())
-          .filter(Boolean);
-        segments = getPdfSpeechSegments(itemTexts);
-        pdfSpeechSegmentsCacheRef.current.set(currentPage, segments);
+      const pageNumbers = dimensions.display === 'double'
+        ? [currentPage, currentPage + 1].filter((pageNumber) => pageNumber <= pageCount)
+        : [currentPage];
+
+      const playbackSegments: PdfSpeechPlaybackSegment[] = [];
+
+      for (const pageNumber of pageNumbers) {
+        let pageSegments = pdfSpeechSegmentsCacheRef.current.get(pageNumber);
+
+        if (!pageSegments) {
+          const page = await document.getPage(pageNumber);
+          const textContent = await page.getTextContent();
+          const itemTexts = textContent.items
+            .map((item: any) => ('str' in item ? item.str : ''))
+            .map((text: string) => text.replace(/\s+/g, ' ').trim())
+            .filter(Boolean);
+          pageSegments = getPdfSpeechSegments(itemTexts);
+          pdfSpeechSegmentsCacheRef.current.set(pageNumber, pageSegments);
+        }
+
+        playbackSegments.push(...pageSegments.map((segment) => ({ ...segment, pageNumber })));
       }
 
-      if (segments.length === 0) {
+      if (playbackSegments.length === 0) {
         setPdfSpeechStatus('idle');
         return;
       }
 
-      setPdfSpeechSegments(segments);
-      speakPdfSpeechSegment(segments, 0);
+      setPdfSpeechSegments(playbackSegments);
+      pdfSpeechSegmentsRef.current = playbackSegments;
+      speakPdfSpeechSegment(playbackSegments, 0);
     } catch {
       setPdfSpeechStatus('idle');
     }
-  }, [currentPage, document, pdfSpeechStatus, speakPdfSpeechSegment]);
+  }, [currentPage, dimensions.display, document, pageCount, pdfSpeechStatus, speakPdfSpeechSegment]);
+  readCurrentPdfPageRef.current = readCurrentPdfPage;
 
   const pausePdfSpeech = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     window.speechSynthesis.pause();
     setPdfSpeechStatus('paused');
+  }, []);
+
+  const restartCurrentPdfSpeechSegment = useCallback(() => {
+    if (pdfSpeechStatus !== 'playing' || activePdfSpeechSegmentIndexRef.current === null) return;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    pdfSpeechRestartingRef.current = true;
+    pdfSpeechIgnoreCancelEventsUntilRef.current = Date.now() + 500;
+    window.speechSynthesis.cancel();
+    window.setTimeout(() => {
+      pdfSpeechRestartingRef.current = false;
+      pdfSpeechStoppedRef.current = false;
+      speakPdfSpeechSegmentRef.current?.(pdfSpeechSegmentsRef.current, activePdfSpeechSegmentIndexRef.current ?? 0);
+    }, 0);
+  }, [pdfSpeechStatus]);
+
+  useEffect(() => {
+    restartCurrentPdfSpeechSegment();
+  }, [restartCurrentPdfSpeechSegment, selectedPdfSpeechVoiceURI]);
+
+  const handlePdfSpeechRateChange = useCallback((value: number) => {
+    const nextRate = Number(value.toFixed(1));
+    pdfSpeechRateRef.current = nextRate;
+    setPdfSpeechRate(nextRate);
+
+    if (pdfSpeechRateRestartTimerRef.current !== null) {
+      window.clearTimeout(pdfSpeechRateRestartTimerRef.current);
+    }
+
+    if (pdfSpeechStatus !== 'playing' || activePdfSpeechSegmentIndexRef.current === null) return;
+    pdfSpeechRateRestartTimerRef.current = window.setTimeout(() => {
+      pdfSpeechRateRestartTimerRef.current = null;
+      restartCurrentPdfSpeechSegment();
+    }, 35);
+  }, [pdfSpeechStatus, restartCurrentPdfSpeechSegment]);
+
+  useEffect(() => () => {
+    if (pdfSpeechRateRestartTimerRef.current !== null) {
+      window.clearTimeout(pdfSpeechRateRestartTimerRef.current);
+    }
   }, []);
 
   const handlePdfSpeechPillPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -996,6 +1081,15 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   }, [currentPage]);
 
   useEffect(() => {
+    pageCountRef.current = pageCount;
+  }, [pageCount]);
+
+  useEffect(() => {
+    if (pdfSpeechAdvanceInProgressRef.current) {
+      pdfSpeechAdvanceInProgressRef.current = false;
+      void readCurrentPdfPageRef.current?.();
+      return;
+    }
     stopPdfSpeech();
   }, [currentPage, pdfUrl, stopPdfSpeech]);
 
@@ -1360,7 +1454,6 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     };
   }, [dimensions.display, dimensions.height, dimensions.width, document]);
 
-  const pageCount = document?.numPages || 0;
   const canZoomOut = zoom > 1;
   const canZoomIn = zoom < 1.75;
   const canGoPrevious = currentPage > 1 || Boolean(onPreviousBoundary);
@@ -1437,6 +1530,13 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       console.warn('[PDF Turn.js] Next page skipped:', turnError);
     }
   }, [dimensions.display, getBook, onNextBoundary, pageCount]);
+
+  useEffect(() => {
+    if (!pdfSpeechAdvancePending) return;
+    pdfSpeechAdvanceInProgressRef.current = true;
+    setPdfSpeechAdvancePending(false);
+    goNext();
+  }, [goNext, pdfSpeechAdvancePending]);
 
   const goToPage = useCallback((page: number) => {
     if (dimensions.display === 'single') {
@@ -1688,8 +1788,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                   isBookmarked={currentPageBookmarked}
                   isHighlighted={currentPageHighlighted}
                   textHighlights={currentPageTextHighlights}
-                  activeSpeechText={activePdfSpeechText}
-                  activeSpeechItemRange={activePdfSpeechItemRange}
+                  activeSpeechText={activePdfSpeechPage === currentPage ? activePdfSpeechText : ''}
+                  activeSpeechItemRange={activePdfSpeechPage === currentPage ? activePdfSpeechItemRange : null}
                   currentHighlightColor={highlightColor}
                   onTextSelection={addTextHighlight}
                 />
@@ -1699,7 +1799,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                 {Array.from({ length: pageCount }, (_, index) => {
                   const pageNumber = index + 1;
                   const shouldRender = Math.abs(pageNumber - currentPage) <= renderWindow;
-                  const isCurrentSpeechPage = pdfSpeechStatus !== 'idle' && pageNumber === currentPage;
+                  const isCurrentSpeechPage = pdfSpeechStatus !== 'idle' && pageNumber === activePdfSpeechPage;
                   const shouldRenderTextLayer = (studyPanelOpen && Math.abs(pageNumber - currentPage) <= textLayerWindow) || isCurrentSpeechPage;
                   return (
                     <div key={pageNumber} className="bit-turn-page bg-white">
@@ -1794,11 +1894,12 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
             <span className="tabular-nums">{pdfSpeechRate.toFixed(1)}x</span>
             <input
               type="range"
-              min={0.7}
-              max={1.4}
+              min={0.5}
+              max={2.5}
               step={0.1}
               value={pdfSpeechRate}
-              onChange={(event) => setPdfSpeechRate(Number(event.target.value))}
+              onInput={(event) => handlePdfSpeechRateChange(Number(event.currentTarget.value))}
+              onChange={(event) => handlePdfSpeechRateChange(Number(event.currentTarget.value))}
               className="h-6 w-20 accent-bit-accent"
               aria-label="Read aloud speed"
             />

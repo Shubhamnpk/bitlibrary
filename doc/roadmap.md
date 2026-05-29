@@ -19,6 +19,10 @@ Recent roadmap updates now tracked in `src/data/roadmap.json`:
 - **Book details navigation:** The Back button returns to the source page, such as curriculum, search results, author, category, or library, instead of always going to Library.
 - **Book details polish:** Metadata Archive now includes compact curriculum metadata, and chapter audio choices are denser on mobile and desktop.
 - **Page comfort:** A single floating scroll button switches between scroll-down and scroll-up behavior and hides while overlays are open.
+- **Readable-source search filtering:** Internet Archive and Open Library results without readable PDF/EPUB access are hidden from search and book detail paths.
+- **Inline dictionary and spelling help:** Search now expands dictionary results inline, supports English/Nepali correction suggestions, and keeps filter controls in the same result header row.
+- **Voice search:** Search input supports speech-to-text so users can dictate queries like "machine learning."
+- **Reader read-aloud:** Text and PDF readers now have read-aloud controls, voice/speed selection up to 2.5x, movable desktop audio controls, live PDF sentence highlighting, and continuous PDF page/spread playback.
 
 ---
 

@@ -94,7 +94,7 @@
       "area": "Search",
       "icon": "search",
       "version": "v0.5.0",
-      "summary": "Search now feels calmer, source-aware, paginated, and safer under real typing.",
+      "summary": "Search now feels calmer, source-aware, paginated, and safer under real typing, spelling mistakes, and mixed source results.",
       "subGoals": [
         {
           "title": "Wait until the search is clear",
@@ -110,6 +110,18 @@
         },
         {
           "title": "Filter and move through results",
+          "progress": 100
+        },
+        {
+          "title": "Suggest corrections for English and Nepali misspellings",
+          "progress": 100
+        },
+        {
+          "title": "Search by voice",
+          "progress": 100
+        },
+        {
+          "title": "Inline dictionary cards without nested result pages",
           "progress": 100
         }
       ]
@@ -228,7 +240,7 @@
       "area": "Reader",
       "icon": "design",
       "version": "v0.5.0",
-      "summary": "The reader should feel crisp, centered, calm, and usable on mobile and desktop, with side-panel tools staying intentional.",
+      "summary": "The reader should feel crisp, centered, calm, and usable on mobile and desktop, with side-panel tools and bottom controls staying intentional.",
       "subGoals": [
         {
           "title": "Clear and stable pages",
@@ -248,7 +260,11 @@
         },
         {
           "title": "Intentional side-panel tools",
-          "progress": 90
+          "progress": 96
+        },
+        {
+          "title": "Compact bottom reader controls",
+          "progress": 100
         }
       ]
     },
@@ -354,11 +370,11 @@
       "area": "Trust",
       "icon": "trust",
       "version": "v0.5.0",
-      "summary": "Every archive-backed item should make source, license, and access quality clearer.",
+      "summary": "Every archive-backed item should make source, license, access quality, and readable availability clearer.",
       "subGoals": [
         {
           "title": "Show source quality",
-          "progress": 36
+          "progress": 56
         },
         {
           "title": "Show usage rights clearly",
@@ -366,7 +382,11 @@
         },
         {
           "title": "Handle unavailable sources",
-          "progress": 30
+          "progress": 76
+        },
+        {
+          "title": "Hide Internet Archive and Open Library entries without readable files",
+          "progress": 100
         }
       ]
     },
@@ -375,24 +395,40 @@
       "title": "Reader read-aloud tools",
       "area": "Reader",
       "icon": "audio",
-      "version": "Future",
-      "summary": "The PDF reader should support text-to-speech so users can listen to a selected paragraph, a page, or the full document while studying.",
+      "version": "v0.5.0",
+      "summary": "The reader now supports text-to-speech controls for generated text and PDF pages, with continuous PDF page/spread playback, movable desktop controls, live PDF sentence highlighting, and smooth speed changes.",
       "subGoals": [
         {
-          "title": "Selected paragraph read aloud",
-          "progress": 10
+          "title": "Generated text read aloud",
+          "progress": 100
         },
         {
           "title": "Read a full page aloud",
-          "progress": 6
+          "progress": 100
         },
         {
-          "title": "Read the whole PDF aloud",
-          "progress": 2
+          "title": "Live PDF sentence highlighting",
+          "progress": 100
         },
         {
           "title": "Voice, speed, and pause controls",
-          "progress": 6
+          "progress": 100
+        },
+        {
+          "title": "Smooth speech speed changes up to 2.5x",
+          "progress": 100
+        },
+        {
+          "title": "Movable desktop audio control pill",
+          "progress": 100
+        },
+        {
+          "title": "Headphone trigger opens, stops, and closes audio controls",
+          "progress": 100
+        },
+        {
+          "title": "Continue reading through PDF pages and two-page spreads",
+          "progress": 100
         }
       ]
     },

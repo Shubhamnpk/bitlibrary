@@ -89,8 +89,13 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const preloadedPdfChapterUrlsRef = useRef(new Set<string>());
   const autoSavedStudyBookRef = useRef<string | null>(null);
   const speechStoppedRef = useRef(false);
+  const speechRestartingRef = useRef(false);
+  const speechIgnoreCancelEventsUntilRef = useRef(0);
+  const speechRateRef = useRef(speechRate);
+  const speechRateRestartTimerRef = useRef<number | null>(null);
   const speechSegmentRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const speakSpeechSegmentRef = useRef<((index: number) => void) | null>(null);
+  const activeSpeechSegmentIndexRef = useRef<number | null>(null);
   const speechPillDragRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
   const pdfChapters = useMemo(
     () => book.chapterPdfUrls?.filter((entry) => isPdfLikeUrl(entry.pdfUrl)) || [],
@@ -130,18 +135,21 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(speechSegments[index]);
     if (selectedSpeechVoice) utterance.voice = selectedSpeechVoice;
-    utterance.rate = speechRate;
+    utterance.rate = speechRateRef.current;
     utterance.pitch = speechPitch;
     utterance.onend = () => {
-      if (speechStoppedRef.current) return;
+      if (speechStoppedRef.current || speechRestartingRef.current || Date.now() < speechIgnoreCancelEventsUntilRef.current) return;
       speakSpeechSegmentRef.current?.(index + 1);
     };
-    utterance.onerror = () => stopSpeech();
+    utterance.onerror = () => {
+      if (speechRestartingRef.current || Date.now() < speechIgnoreCancelEventsUntilRef.current) return;
+      stopSpeech();
+    };
     speechStoppedRef.current = false;
     setActiveSpeechSegmentIndex(index);
     setSpeechStatus('playing');
     window.speechSynthesis.speak(utterance);
-  }, [selectedSpeechVoice, speechPitch, speechRate, speechSegments, stopSpeech]);
+  }, [selectedSpeechVoice, speechPitch, speechSegments, stopSpeech]);
   speakSpeechSegmentRef.current = speakSpeechSegment;
   const startSpeech = () => {
     if (speechStatus === 'paused' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -184,9 +192,50 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   }, [book.id, chapter, isExternal, stopSpeech]);
 
   useEffect(() => {
+    activeSpeechSegmentIndexRef.current = activeSpeechSegmentIndex;
     if (activeSpeechSegmentIndex === null) return;
     speechSegmentRefs.current[activeSpeechSegmentIndex]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [activeSpeechSegmentIndex]);
+
+  const restartCurrentSpeechSegment = useCallback(() => {
+    if (speechStatus !== 'playing' || activeSpeechSegmentIndexRef.current === null) return;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    speechRestartingRef.current = true;
+    speechIgnoreCancelEventsUntilRef.current = Date.now() + 500;
+    window.speechSynthesis.cancel();
+    window.setTimeout(() => {
+      speechRestartingRef.current = false;
+      speechStoppedRef.current = false;
+      speakSpeechSegmentRef.current?.(activeSpeechSegmentIndexRef.current ?? 0);
+    }, 0);
+  }, [speechStatus]);
+
+  useEffect(() => {
+    restartCurrentSpeechSegment();
+  }, [restartCurrentSpeechSegment, selectedSpeechVoiceURI, speechPitch]);
+
+  const handleSpeechRateChange = useCallback((value: number) => {
+    const nextRate = Number(value.toFixed(1));
+    speechRateRef.current = nextRate;
+    setSpeechRate(nextRate);
+
+    if (speechRateRestartTimerRef.current !== null) {
+      window.clearTimeout(speechRateRestartTimerRef.current);
+    }
+
+    if (speechStatus !== 'playing' || activeSpeechSegmentIndexRef.current === null) return;
+    speechRateRestartTimerRef.current = window.setTimeout(() => {
+      speechRateRestartTimerRef.current = null;
+      restartCurrentSpeechSegment();
+    }, 35);
+  }, [restartCurrentSpeechSegment, speechStatus]);
+
+  useEffect(() => () => {
+    if (speechRateRestartTimerRef.current !== null) {
+      window.clearTimeout(speechRateRestartTimerRef.current);
+    }
+  }, []);
   const handleSpeechPillPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest('button,select,input,label')) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1127,11 +1176,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                         </span>
                         <input
                           type="range"
-                          min="0.6"
-                          max="1.6"
+                          min="0.5"
+                          max="2.5"
                           step="0.1"
                           value={speechRate}
-                          onChange={(event) => setSpeechRate(Number(event.target.value))}
+                          onInput={(event) => handleSpeechRateChange(Number(event.currentTarget.value))}
+                          onChange={(event) => handleSpeechRateChange(Number(event.currentTarget.value))}
                           className="mt-2 w-full accent-bit-accent"
                         />
                       </label>
@@ -1376,11 +1426,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             <span className="tabular-nums">{speechRate.toFixed(1)}x</span>
             <input
               type="range"
-              min={0.7}
-              max={1.4}
+              min={0.5}
+              max={2.5}
               step={0.1}
               value={speechRate}
-              onChange={(event) => setSpeechRate(Number(event.target.value))}
+              onInput={(event) => handleSpeechRateChange(Number(event.currentTarget.value))}
+              onChange={(event) => handleSpeechRateChange(Number(event.currentTarget.value))}
               className="h-6 w-20 accent-bit-accent"
               aria-label="Read aloud speed"
             />
