@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap, User, ChevronDown, Bookmark, Headphones, History, Settings } from 'lucide-react';
+import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap, User, ChevronDown, Bookmark, Headphones, History, Settings, FileText } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 
 interface NavbarProps {
@@ -396,6 +396,10 @@ const Navbar: React.FC<NavbarProps> = ({
                 <Link to="/about" className="flex items-center gap-3 rounded-xl border border-bit-border bg-bit-panel/30 px-3 py-2 text-sm text-bit-muted hover:text-bit-text hover:border-bit-accent/30 transition-all">
                   <Info size={16} />
                   About
+                </Link>
+                <Link to="/sources" className="flex items-center gap-3 rounded-xl border border-bit-border bg-bit-panel/30 px-3 py-2 text-sm text-bit-muted hover:text-bit-text hover:border-bit-accent/30 transition-all">
+                  <FileText size={16} />
+                  Sources & Credits
                 </Link>
               </div>
             </section>

@@ -7,7 +7,7 @@ import AudiobookCard from '@/components/AudiobookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { useSearchParams } from 'react-router-dom';
 import { BookOpenText, ChevronDown, ChevronLeft, ChevronRight, Loader2, Search, SlidersHorizontal, Sparkles, Volume2, X, Zap } from 'lucide-react';
-import { fetchEnglishDictionaryEntries, type EnglishDictionaryEntry } from '@/services/englishDictionaryService';
+import { fetchDictionaryEntries, getDictionaryLanguageForQuery, type DictionaryEntry } from '@/services/dictionaryLookupService';
 import {
   getAudiobookSearchScore,
   getBookSearchScore,
@@ -124,7 +124,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
   const [dictionaryOpen, setDictionaryOpen] = useState(false);
   const [dictionaryLoading, setDictionaryLoading] = useState(false);
   const [dictionaryError, setDictionaryError] = useState('');
-  const [dictionaryEntries, setDictionaryEntries] = useState<EnglishDictionaryEntry[]>([]);
+  const [dictionaryEntries, setDictionaryEntries] = useState<DictionaryEntry[]>([]);
   const dictionaryAudioRef = useRef<HTMLAudioElement | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const activeSearchRequestRef = useRef(0);
@@ -225,7 +225,8 @@ const SearchPage: React.FC<SearchPageProps> = ({
 
   const currentQuery = searchParams.get('q')?.trim() || '';
   const isQueryReady = currentQuery.length >= SEARCH_MIN_QUERY_LENGTH;
-  const canLookupDictionary = /^[A-Za-z][A-Za-z'-]*$/.test(currentQuery);
+  const dictionaryLanguage = getDictionaryLanguageForQuery(currentQuery);
+  const canLookupDictionary = dictionaryLanguage !== null;
   const availableSources = Array.from(new Set([
     ...searchResults.map((book) => book.source).filter(Boolean),
     ...audiobookResults.map((audiobook) => audiobook.source).filter(Boolean),
@@ -296,7 +297,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
     setDictionaryError('');
 
     try {
-      setDictionaryEntries(await fetchEnglishDictionaryEntries(currentQuery, controller.signal));
+      setDictionaryEntries(await fetchDictionaryEntries(currentQuery, controller.signal));
     } catch {
       setDictionaryError('Definition lookup is unavailable right now.');
       setDictionaryEntries([]);
@@ -455,9 +456,11 @@ const SearchPage: React.FC<SearchPageProps> = ({
                       className="inline-flex items-center gap-2 rounded-full border border-bit-accent/25 bg-bit-accent/10 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-wait disabled:opacity-60"
                     >
                       {dictionaryLoading ? <Loader2 size={14} className="animate-spin" /> : <BookOpenText size={14} />}
-                      Define "{currentQuery}"
+                      {dictionaryLanguage === 'nepali' ? 'Search' : 'Define'} "{currentQuery}"
                     </button>
-                    <span className="text-xs leading-6 text-bit-muted">Optional dictionary lookup. Loads only when clicked.</span>
+                    <span className="text-xs leading-6 text-bit-muted">
+                      {dictionaryLanguage === 'nepali' ? 'Uses Yo Shabdakosh for Nepali script.' : 'Uses the English dictionary API.'}
+                    </span>
                   </div>
                 )}
               </div>
@@ -588,7 +591,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
               ) : dictionaryEntries.length === 0 ? (
                 <div className="flex min-h-28 flex-col justify-center rounded-xl border border-dashed border-bit-border px-4 py-8 text-center">
                   <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-bit-muted">No definition found</p>
-                  <p className="mt-2 text-sm leading-7 text-bit-muted">Try another English word.</p>
+                  <p className="mt-2 text-sm leading-7 text-bit-muted">Try another English word or Nepali word in Devanagari script.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -620,6 +623,9 @@ const SearchPage: React.FC<SearchPageProps> = ({
                                   <span className="text-bit-text">{definition.definition}</span>
                                   {definition.example && (
                                     <p className="mt-1 pl-6 text-xs italic leading-6 text-bit-muted">"{definition.example}"</p>
+                                  )}
+                                  {meaning.etymology && (
+                                    <p className="mt-1 pl-6 text-xs leading-6 text-bit-muted">Origin: {meaning.etymology}</p>
                                   )}
                                 </li>
                               ))}

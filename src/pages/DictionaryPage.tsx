@@ -11,10 +11,10 @@ const DictionaryPage: React.FC<DictionaryPageProps> = ({ onBack }) => {
   return (
     <div className="animate-fade-in pb-24 pt-4 md:pt-6">
       <Seo
-        title="English Dictionary | BitLibrary"
-        description="Search English word definitions, examples, phonetics, and pronunciation audio inside BitLibrary."
+        title="Dictionary | BitLibrary"
+        description="Search English definitions and Nepali dictionary entries in Devanagari script inside BitLibrary."
         canonicalPath="/dictionary"
-        keywords={['English dictionary', 'word definitions', 'dictionaryapi.dev', 'pronunciation audio', 'BitLibrary dictionary']}
+        keywords={['English dictionary', 'Nepali dictionary', 'Yo Shabdakosh', 'word definitions', 'BitLibrary dictionary']}
       />
 
       <div className="mx-auto max-w-6xl">
@@ -30,9 +30,9 @@ const DictionaryPage: React.FC<DictionaryPageProps> = ({ onBack }) => {
         <EnglishDictionaryPanel
           autoFocus
           className="min-h-[calc(100svh-10rem)] bg-[linear-gradient(180deg,rgba(var(--bit-accent-rgb),0.045),rgba(var(--bit-panel),0.22))]"
-          eyebrow="English Dictionary"
+          eyebrow="Dictionary"
           heading="Find the word you need."
-          description="Search definitions, pronunciation, examples, and parts of speech."
+          description="Search English words with dictionaryapi.dev or Nepali-script words with Yo Shabdakosh."
           hero
         />
       </div>

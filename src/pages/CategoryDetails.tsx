@@ -1,12 +1,52 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Book } from '@/types/index';
-import { fetchBooksFromGutendex } from '@/services/bookService';
+import {
+  fetchBooksFromGutendex,
+  fetchBooksFromYoBook,
+  searchGoogleBooks,
+  searchInternetArchive,
+  searchITBooks,
+  searchOpenLibrary,
+} from '@/services/bookService';
 import BookCard from '@/components/BookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { ArrowLeft, Library, Zap, Info, ChevronRight, LayoutGrid, SlidersHorizontal } from 'lucide-react';
 import Seo from '@/components/Seo';
 import { createItemListSchema, truncate } from '@/lib/seo';
+import { mergeUniqueBooks, rankBooks } from '@/lib/searchOptimization';
+
+const CATEGORY_MAX_RESULTS = 120;
+
+const settledBooks = (result: PromiseSettledResult<Book[]>) => (
+  result.status === 'fulfilled' ? result.value : []
+);
+
+const loadCategorySources = async (category: string, signal?: AbortSignal) => {
+  const [yobookResult, gutendexResult, googleResult, itResult, openLibraryResult, archiveResult] = await Promise.allSettled([
+    fetchBooksFromYoBook(1, category, signal),
+    fetchBooksFromGutendex(1, category, signal),
+    searchGoogleBooks(category, signal),
+    searchITBooks(category, signal),
+    searchOpenLibrary(category, signal),
+    searchInternetArchive(category, signal),
+  ]);
+
+  const yobook = yobookResult.status === 'fulfilled' ? yobookResult.value : { books: [], next: null };
+  const gutendex = gutendexResult.status === 'fulfilled' ? gutendexResult.value : { books: [], next: null };
+  const supplemental = [
+    ...settledBooks(googleResult),
+    ...settledBooks(itResult),
+    ...settledBooks(openLibraryResult),
+    ...settledBooks(archiveResult),
+  ];
+
+  return {
+    books: rankBooks(mergeUniqueBooks(yobook.books, gutendex.books, supplemental), category).slice(0, CATEGORY_MAX_RESULTS),
+    nextYoBook: yobook.next,
+    nextGutendex: gutendex.next,
+  };
+};
 
 const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookClick }) => {
   const { categoryId } = useParams();
@@ -14,41 +54,67 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
+  const [gutendexPage, setGutendexPage] = useState(1);
+  const [yoBookPage, setYoBookPage] = useState(1);
+  const [hasMoreGutendex, setHasMoreGutendex] = useState(false);
+  const [hasMoreYoBook, setHasMoreYoBook] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
   const decodedCategory = categoryId ? decodeURIComponent(categoryId) : 'All';
 
   useEffect(() => {
+    const controller = new AbortController();
     const loadCategoryBooks = async () => {
       setLoading(true);
       try {
-        const { books: results, next } = await fetchBooksFromGutendex(1, decodedCategory);
+        const { books: results, nextYoBook, nextGutendex } = await loadCategorySources(decodedCategory, controller.signal);
+        if (controller.signal.aborted) return;
         setBooks(results);
-        setHasMore(Boolean(next));
-        setPage(1);
+        setHasMoreYoBook(Boolean(nextYoBook));
+        setHasMoreGutendex(Boolean(nextGutendex));
+        setHasMore(Boolean(nextYoBook || nextGutendex));
+        setYoBookPage(1);
+        setGutendexPage(1);
       } catch (err) {
-        console.error("[Category Sync] Error:", err);
+        if (!controller.signal.aborted) {
+          console.error("[Category Sync] Error:", err);
+        }
       }
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     };
 
     loadCategoryBooks();
+
+    return () => {
+      controller.abort();
+    };
   }, [decodedCategory]);
 
   const handleLoadMore = async () => {
     if (loadingMore || !hasMore) return;
+    const controller = new AbortController();
     setLoadingMore(true);
     try {
-      const nextPage = page + 1;
-      const { books: moreBooks, next } = await fetchBooksFromGutendex(nextPage, decodedCategory);
+      const nextYoBookPage = yoBookPage + 1;
+      const nextGutendexPage = gutendexPage + 1;
+      const [yoBookResult, gutendexResult] = await Promise.allSettled([
+        hasMoreYoBook ? fetchBooksFromYoBook(nextYoBookPage, decodedCategory, controller.signal) : Promise.resolve({ books: [], next: null }),
+        hasMoreGutendex ? fetchBooksFromGutendex(nextGutendexPage, decodedCategory, controller.signal) : Promise.resolve({ books: [], next: null }),
+      ]);
+      const yoBookMore = yoBookResult.status === 'fulfilled' ? yoBookResult.value : { books: [], next: null };
+      const gutendexMore = gutendexResult.status === 'fulfilled' ? gutendexResult.value : { books: [], next: null };
+      const moreBooks = rankBooks(mergeUniqueBooks(yoBookMore.books, gutendexMore.books), decodedCategory);
+
       if (moreBooks.length > 0) {
-        setBooks(prev => [...prev, ...moreBooks]);
-        setPage(nextPage);
-        setHasMore(Boolean(next));
-      } else {
-        setHasMore(false);
+        setBooks(prev => rankBooks(mergeUniqueBooks(prev, moreBooks), decodedCategory).slice(0, CATEGORY_MAX_RESULTS));
       }
+      setYoBookPage(hasMoreYoBook ? nextYoBookPage : yoBookPage);
+      setGutendexPage(hasMoreGutendex ? nextGutendexPage : gutendexPage);
+      setHasMoreYoBook(Boolean(yoBookMore.next));
+      setHasMoreGutendex(Boolean(gutendexMore.next));
+      setHasMore(Boolean(yoBookMore.next || gutendexMore.next));
     } catch (err) {
       console.error("[Category Pagination] Error:", err);
     }
@@ -137,7 +203,7 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
           <h3 className="text-xl font-display font-semibold text-bit-text flex items-center gap-3">
             <Library size={20} className="text-bit-accent" /> Sector Volumes Registry
           </h3>
-          <p className="font-mono text-[10px] text-bit-muted uppercase tracking-[0.2em]">Synchronizing decentralized Gutendex nodes</p>
+          <p className="font-mono text-[10px] text-bit-muted uppercase tracking-[0.2em]">Synchronizing YoBook and open archive sources</p>
         </div>
 
         {loading ? (

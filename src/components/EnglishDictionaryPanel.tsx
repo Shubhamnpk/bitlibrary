@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, BookOpenText, Loader2, Search, Volume2 } from 'lucide-react';
-import { fetchEnglishDictionaryEntries, type EnglishDictionaryEntry } from '@/services/englishDictionaryService';
+import { fetchDictionaryEntries, getDictionaryLanguageForQuery, type DictionaryEntry } from '@/services/dictionaryLookupService';
 
 const SAMPLE_WORD = 'hello';
-const QUICK_WORDS = ['hello', 'knowledge', 'river', 'library', 'curious'];
+const QUICK_WORDS = ['hello', 'knowledge', 'river', 'पुस्तक', 'ज्ञान', 'नदी'];
 
 interface EnglishDictionaryPanelProps {
   className?: string;
@@ -19,13 +19,13 @@ const EnglishDictionaryPanel: React.FC<EnglishDictionaryPanelProps> = ({
   className = '',
   eyebrow = 'English Definitions',
   heading = 'Look up an English word.',
-  description = 'Uses dictionaryapi.dev for live definitions, phonetics, examples, and audio when available.',
+  description = 'Search English definitions or Nepali words in Devanagari script.',
   initialWord = SAMPLE_WORD,
   autoFocus = false,
   hero = false,
 }) => {
   const [word, setWord] = useState(initialWord);
-  const [entries, setEntries] = useState<EnglishDictionaryEntry[]>([]);
+  const [entries, setEntries] = useState<DictionaryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState('');
@@ -45,6 +45,13 @@ const EnglishDictionaryPanel: React.FC<EnglishDictionaryPanelProps> = ({
   const lookupWord = async (nextWord: string) => {
     const trimmed = nextWord.trim();
     if (!trimmed) return;
+    const language = getDictionaryLanguageForQuery(trimmed);
+    if (!language) {
+      setEntries([]);
+      setHasSearched(true);
+      setError('Enter an English word or a Nepali word in Devanagari script.');
+      return;
+    }
 
     const controller = new AbortController();
     setLoading(true);
@@ -52,9 +59,9 @@ const EnglishDictionaryPanel: React.FC<EnglishDictionaryPanelProps> = ({
     setHasSearched(true);
 
     try {
-      setEntries(await fetchEnglishDictionaryEntries(trimmed, controller.signal));
+      setEntries(await fetchDictionaryEntries(trimmed, controller.signal));
     } catch {
-      setError('English definition lookup is unavailable right now.');
+      setError('Dictionary lookup is unavailable right now.');
       setEntries([]);
     } finally {
       setLoading(false);
@@ -94,7 +101,7 @@ const EnglishDictionaryPanel: React.FC<EnglishDictionaryPanelProps> = ({
         </div>
         {!hero && (
           <a
-            href="https://api.dictionaryapi.dev/api/v2/entries/en/hello"
+            href="https://shubhamnpk.github.io/yoshabdakosh/openapi.yaml"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex w-fit items-center gap-2 rounded-full border border-bit-border bg-bit-bg/35 px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.18em] text-bit-muted transition-colors hover:border-bit-accent/35 hover:text-bit-accent"
@@ -105,7 +112,7 @@ const EnglishDictionaryPanel: React.FC<EnglishDictionaryPanelProps> = ({
       </div>
 
       <form onSubmit={handleLookup} className={`mx-auto flex flex-col gap-3 rounded-2xl border border-bit-border bg-bit-bg/50 p-3 shadow-sm sm:flex-row sm:items-center ${hero ? 'mt-8 max-w-3xl' : 'mt-5'}`}>
-        <label htmlFor="english-dictionary-word" className="sr-only">English word</label>
+        <label htmlFor="english-dictionary-word" className="sr-only">Dictionary word</label>
         <div className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-bit-border bg-bit-panel/30 px-3 ${hero ? 'py-3' : 'py-2'}`}>
           <Search size={hero ? 18 : 16} className="shrink-0 text-bit-accent" />
           <input
@@ -114,7 +121,7 @@ const EnglishDictionaryPanel: React.FC<EnglishDictionaryPanelProps> = ({
             type="search"
             value={word}
             onChange={(event) => setWord(event.target.value)}
-            placeholder="Try hello, book, river..."
+            placeholder="Try hello, पुस्तक, नदी..."
             className={`min-w-0 flex-1 bg-transparent text-bit-text outline-none placeholder:text-bit-muted/55 ${hero ? 'text-base' : 'text-sm'}`}
           />
         </div>
@@ -124,7 +131,7 @@ const EnglishDictionaryPanel: React.FC<EnglishDictionaryPanelProps> = ({
           className={`inline-flex items-center justify-center gap-2 rounded-xl bg-bit-accent px-5 text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-white shadow-sm transition-all hover:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 ${hero ? 'h-12' : 'h-10'}`}
         >
           {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-          Define
+          Search
         </button>
       </form>
 
@@ -150,7 +157,7 @@ const EnglishDictionaryPanel: React.FC<EnglishDictionaryPanelProps> = ({
         ) : loading ? (
           <div className="flex min-h-32 items-center justify-center gap-3 text-sm text-bit-muted">
             <Loader2 size={18} className="animate-spin text-bit-accent" />
-            Looking up definition...
+            Searching dictionary...
           </div>
         ) : entries.length > 0 ? (
           <div className="space-y-5">
@@ -190,6 +197,9 @@ const EnglishDictionaryPanel: React.FC<EnglishDictionaryPanelProps> = ({
                             {definition.example && (
                               <p className="mt-1 pl-6 text-xs italic leading-6 text-bit-muted">"{definition.example}"</p>
                             )}
+                            {meaning.etymology && (
+                              <p className="mt-2 pl-6 text-xs leading-6 text-bit-muted">Origin: {meaning.etymology}</p>
+                            )}
                             {definition.synonyms.length > 0 && (
                               <p className="mt-2 pl-6 text-xs leading-6 text-bit-muted">
                                 Synonyms: {definition.synonyms.slice(0, 6).join(', ')}
@@ -207,12 +217,12 @@ const EnglishDictionaryPanel: React.FC<EnglishDictionaryPanelProps> = ({
         ) : hasSearched ? (
           <div className="flex min-h-32 flex-col justify-center rounded-xl border border-dashed border-bit-border px-4 py-8 text-center">
             <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-bit-muted">No definition found</p>
-            <p className="mt-2 text-sm leading-7 text-bit-muted">Try another English word.</p>
+            <p className="mt-2 text-sm leading-7 text-bit-muted">Try another English word or Nepali word in Devanagari script.</p>
           </div>
         ) : (
           <div className="flex min-h-32 flex-col justify-center rounded-xl border border-dashed border-bit-border px-4 py-8 text-center">
             <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-bit-muted">Try it here</p>
-            <p className="mt-2 text-sm leading-7 text-bit-muted">Search a word to get definitions from the public dictionary API.</p>
+            <p className="mt-2 text-sm leading-7 text-bit-muted">Search a word to get definitions from the matching dictionary API.</p>
           </div>
         )}
       </div>
