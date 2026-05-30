@@ -20,6 +20,7 @@ import {
   rankBooks,
   searchYoBookBooksSmart,
 } from '@/lib/searchOptimization';
+import { getSpeechRecognitionConstructor, isSpeechRecognitionContextAllowed, requestMicrophoneForSpeech } from '@/lib/speech';
 
 export const SEARCH_MIN_QUERY_LENGTH = 2;
 const SEARCH_CACHE_KEY = 'bitlibrary-search-cache-v5';
@@ -135,6 +136,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
   const [showFilters, setShowFilters] = useState(false);
   const [mobileSearchDraft, setMobileSearchDraft] = useState('');
   const [speechListening, setSpeechListening] = useState(false);
+  const [speechSearchError, setSpeechSearchError] = useState('');
   const [dictionaryOpen, setDictionaryOpen] = useState(false);
   const [dictionaryLoading, setDictionaryLoading] = useState(false);
   const [dictionaryError, setDictionaryError] = useState('');
@@ -370,25 +372,55 @@ const SearchPage: React.FC<SearchPageProps> = ({
     onQuickSearch(query);
   };
 
-  const handleSpeechSearch = () => {
+  const handleSpeechSearch = async () => {
     if (typeof window === 'undefined') return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition || speechListening) return;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    if (speechListening) return;
+
+    if (!SpeechRecognition) {
+      setSpeechSearchError('Voice search is not supported in this browser.');
+      return;
+    }
+
+    if (!isSpeechRecognitionContextAllowed()) {
+      setSpeechSearchError('Voice search needs HTTPS or localhost in Chrome.');
+      return;
+    }
 
     const recognition = new SpeechRecognition();
     recognition.lang = spellcheckLanguage === 'nepali' ? 'ne-NP' : 'en-US';
+    recognition.continuous = false;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
-    recognition.onstart = () => setSpeechListening(true);
+    recognition.onstart = () => {
+      setSpeechSearchError('');
+      setSpeechListening(true);
+    };
     recognition.onend = () => setSpeechListening(false);
-    recognition.onerror = () => setSpeechListening(false);
+    recognition.onerror = (event) => {
+      setSpeechListening(false);
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setSpeechSearchError('Microphone permission is blocked for this site.');
+      } else if (event.error === 'no-speech') {
+        setSpeechSearchError('No speech was detected. Try again.');
+      } else {
+        setSpeechSearchError('Voice search could not start in this browser.');
+      }
+    };
     recognition.onresult = (event: any) => {
       const transcript = event.results?.[0]?.[0]?.transcript?.trim() || '';
       if (transcript.length < SEARCH_MIN_QUERY_LENGTH) return;
+      setSpeechSearchError('');
       setMobileSearchDraft(transcript);
       onQuickSearch(transcript);
     };
-    recognition.start();
+    try {
+      await requestMicrophoneForSpeech();
+      recognition.start();
+    } catch {
+      setSpeechListening(false);
+      setSpeechSearchError('Microphone permission is blocked for this site.');
+    }
   };
 
   const handleDictionaryLookup = async () => {
@@ -646,7 +678,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
                     onClick={handleSpeechSearch}
                     className={`h-9 w-9 shrink-0 rounded-xl border border-bit-border text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent ${speechListening ? 'bg-bit-accent text-white hover:text-white' : 'bg-bit-panel/35'}`}
                     aria-label="Search by voice"
-                    title="Search by voice"
+                    title={speechSearchError || 'Search by voice'}
                   >
                     <Mic size={15} className="mx-auto" />
                   </button>
@@ -658,6 +690,9 @@ const SearchPage: React.FC<SearchPageProps> = ({
                     Go
                   </button>
                 </form>
+                {speechSearchError && (
+                  <p className="mt-2 text-xs font-medium text-red-500 md:hidden">{speechSearchError}</p>
+                )}
                 {isQueryReady && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium text-bit-muted">
                     {isSearching && totalResultCount === 0 ? (

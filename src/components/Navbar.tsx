@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap, User, ChevronDown, Bookmark, Headphones, History, Settings, FileText, Mic } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
+import { getSpeechRecognitionConstructor, isSpeechRecognitionContextAllowed, requestMicrophoneForSpeech } from '@/lib/speech';
 
 interface NavbarProps {
   isReaderActive: boolean;
@@ -52,6 +53,7 @@ const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceSearchError, setVoiceSearchError] = useState('');
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const displayName = localUserState.profile.displayName || 'Reader';
   const profileInitials = useMemo(() => {
@@ -85,26 +87,56 @@ const Navbar: React.FC<NavbarProps> = ({
     };
   }, [profileOpen]);
 
-  const handleVoiceSearch = () => {
+  const handleVoiceSearch = async () => {
     if (typeof window === 'undefined') return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition || voiceListening) return;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    if (voiceListening) return;
+
+    if (!SpeechRecognition) {
+      setVoiceSearchError('Voice search is not supported in this browser.');
+      return;
+    }
+
+    if (!isSpeechRecognitionContextAllowed()) {
+      setVoiceSearchError('Voice search needs HTTPS or localhost in Chrome.');
+      return;
+    }
 
     const recognition = new SpeechRecognition();
     recognition.lang = /[\u0900-\u097F]/u.test(searchQuery) ? 'ne-NP' : 'en-US';
+    recognition.continuous = false;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
-    recognition.onstart = () => setVoiceListening(true);
+    recognition.onstart = () => {
+      setVoiceSearchError('');
+      setVoiceListening(true);
+    };
     recognition.onend = () => setVoiceListening(false);
-    recognition.onerror = () => setVoiceListening(false);
+    recognition.onerror = (event) => {
+      setVoiceListening(false);
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setVoiceSearchError('Microphone permission is blocked for this site.');
+      } else if (event.error === 'no-speech') {
+        setVoiceSearchError('No speech was detected. Try again.');
+      } else {
+        setVoiceSearchError('Voice search could not start in this browser.');
+      }
+    };
     recognition.onresult = (event: any) => {
       const transcript = event.results?.[0]?.[0]?.transcript?.trim() || '';
       if (!transcript) return;
+      setVoiceSearchError('');
       setSearchQuery(transcript);
       navigateToSearch(transcript, { persistRecent: true });
       setMobileMenuOpen(false);
     };
-    recognition.start();
+    try {
+      await requestMicrophoneForSpeech();
+      recognition.start();
+    } catch {
+      setVoiceListening(false);
+      setVoiceSearchError('Microphone permission is blocked for this site.');
+    }
   };
 
   if (isReaderActive) return null;
@@ -146,7 +178,7 @@ const Navbar: React.FC<NavbarProps> = ({
                   onClick={handleVoiceSearch}
                   className={`text-bit-muted transition-colors hover:text-bit-accent ${voiceListening ? 'text-bit-accent' : ''}`}
                   aria-label="Search by voice"
-                  title="Search by voice"
+                  title={voiceSearchError || 'Search by voice'}
                 >
                   <Mic size={15} />
                 </button>
@@ -183,7 +215,9 @@ const Navbar: React.FC<NavbarProps> = ({
                   <div>
                     <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent">Search Control</p>
                     <p className="text-sm text-bit-muted mt-1">
-                      {trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
+                      {voiceSearchError
+                        ? voiceSearchError
+                        : trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
                         ? `Press Enter to open results for "${trimmedSearchQuery}".`
                         : `Type at least ${SEARCH_MIN_QUERY_LENGTH} characters to start searching.`}
                     </p>
@@ -398,7 +432,7 @@ const Navbar: React.FC<NavbarProps> = ({
                   onClick={handleVoiceSearch}
                   className={`rounded-xl border border-bit-border px-3 py-2 transition-all ${voiceListening ? 'bg-bit-accent text-white' : 'bg-bit-panel/35 text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent'}`}
                   aria-label="Search by voice"
-                  title="Search by voice"
+                  title={voiceSearchError || 'Search by voice'}
                 >
                   <Mic size={15} />
                 </button>
@@ -409,6 +443,9 @@ const Navbar: React.FC<NavbarProps> = ({
                   Go
                 </button>
               </div>
+              {voiceSearchError && (
+                <p className="mt-2 text-xs font-medium text-red-500">{voiceSearchError}</p>
+              )}
             </form>
 
             <section className="rounded-2xl border border-bit-border bg-bit-panel/25 p-3">

@@ -8,7 +8,7 @@ import AppSelect from './AppSelect';
 import { downloadPdfOptimized, getBestPdfSourceUrl, getPdfProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
 import { saveBook } from '@/lib/local-user';
 import { fetchYoBookGradeAudio, getYoBookAudioSubjectForBook } from '@/services/bookService';
-import { getPreferredSpeechVoiceURI, getSpeechSegments, type TextToSpeechStatus } from '@/lib/speech';
+import { getPreferredSpeechVoiceURI, getSpeechSegments, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
 
 interface ReaderProps {
   book: Book;
@@ -148,7 +148,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     speechStoppedRef.current = false;
     setActiveSpeechSegmentIndex(index);
     setSpeechStatus('playing');
-    window.speechSynthesis.speak(utterance);
+    speakUtterance(utterance);
   }, [selectedSpeechVoice, speechPitch, speechSegments, stopSpeech]);
   speakSpeechSegmentRef.current = speakSpeechSegment;
   const startSpeech = () => {
@@ -176,12 +176,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     };
 
     loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
+    const retryHandle = window.setTimeout(loadVoices, 250);
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
 
     return () => {
-      if (window.speechSynthesis.onvoiceschanged === loadVoices) {
-        window.speechSynthesis.onvoiceschanged = null;
-      }
+      window.clearTimeout(retryHandle);
+      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
     };
   }, []);
 

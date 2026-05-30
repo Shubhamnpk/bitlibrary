@@ -1,5 +1,24 @@
 export type TextToSpeechStatus = 'idle' | 'playing' | 'paused';
 
+type BrowserSpeechRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onresult: ((event: any) => void) | null;
+  start: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
 export const getPreferredSpeechVoiceURI = (voices: SpeechSynthesisVoice[]) => {
   const englishVoices = voices.filter((voice) => /^en([-_]|$)/i.test(voice.lang));
   const naturalNamePattern = /natural|online|aria|jenny|guy|google|samantha|daniel/i;
@@ -32,4 +51,31 @@ export const getSpeechSegments = (value: string): string[] => {
   const text = getSpeechText(value);
   if (!text) return [];
   return text.match(/[^.!?\u0964]+[.!?\u0964]?/g)?.map((segment) => segment.trim()).filter(Boolean) || [text];
+};
+
+export const getSpeechRecognitionConstructor = () => {
+  if (typeof window === 'undefined') return null;
+  const speechWindow = window as SpeechRecognitionWindow;
+  return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
+};
+
+export const isSpeechRecognitionContextAllowed = () => {
+  if (typeof window === 'undefined') return false;
+  return window.isSecureContext || ['localhost', '127.0.0.1'].includes(window.location.hostname);
+};
+
+export const requestMicrophoneForSpeech = async () => {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  stream.getTracks().forEach((track) => track.stop());
+};
+
+export const speakUtterance = (utterance: SpeechSynthesisUtterance) => {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+  const synth = window.speechSynthesis;
+  synth.resume();
+  synth.speak(utterance);
+  window.setTimeout(() => synth.resume(), 0);
+  window.setTimeout(() => synth.resume(), 250);
 };

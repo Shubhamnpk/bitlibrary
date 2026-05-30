@@ -19,7 +19,7 @@ import {
   type PdfStudyState,
   type PdfTextHighlight,
 } from '@/lib/pdf-reader-storage';
-import { getPreferredSpeechVoiceURI, normalizeSpeechMatchText } from '@/lib/speech';
+import { getPreferredSpeechVoiceURI, normalizeSpeechMatchText, speakUtterance } from '@/lib/speech';
 
 export {
   readPdfBackgroundPreset,
@@ -839,9 +839,11 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     };
 
     loadVoices();
+    const retryHandle = window.setTimeout(loadVoices, 250);
     window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
 
     return () => {
+      window.clearTimeout(retryHandle);
       window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
     };
   }, []);
@@ -887,7 +889,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     activePdfSpeechSegmentIndexRef.current = index;
     setActivePdfSpeechSegmentIndex(index);
     setPdfSpeechStatus('playing');
-    window.speechSynthesis.speak(utterance);
+    speakUtterance(utterance);
   }, [selectedPdfSpeechVoice, stopPdfSpeech]);
   speakPdfSpeechSegmentRef.current = speakPdfSpeechSegment;
 
