@@ -45,7 +45,7 @@ export interface Book {
   sourceUrl?: string;
   chapterPdfUrls?: ChapterPdf[];
   providerSource?: string;
-  source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library' | 'YoBook';
+  source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library' | 'YoBook' | 'arXiv' | 'Semantic Scholar' | 'PubMed Central' | 'Unpaywall';
 }
 
 export interface AudiobookTrack {

@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Audiobook, Book } from '@/types/index';
-import { searchBooksInGutendex, searchGoogleBooks, searchITBooks, searchOpenLibrary, searchInternetArchive } from '@/services/bookService';
+import { searchAcademicResearch, searchBooksInGutendex, searchGoogleBooks, searchITBooks, searchOpenLibrary, searchInternetArchive } from '@/services/bookService';
 import { searchAudiobooks } from '@/services/audiobookService';
 import BookCard from '@/components/BookCard';
 import AudiobookCard from '@/components/AudiobookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { useSearchParams } from 'react-router-dom';
-import { BookOpenText, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Loader2, Mic, Search, SlidersHorizontal, Sparkles, SpellCheck, Volume2, Zap } from 'lucide-react';
+import { BookOpenText, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Loader2, Mic, Microscope, Search, SlidersHorizontal, Sparkles, SpellCheck, Volume2, Zap } from 'lucide-react';
 import { fetchDictionaryEntries, getDictionaryLanguageForQuery, type DictionaryEntry, type DictionaryLanguage } from '@/services/dictionaryLookupService';
 import type { EnglishSpellcheckResult } from '@/services/englishSpellcheckService';
 import type { NepaliSpellcheckResult } from '@/services/nepaliSpellcheckService';
@@ -73,13 +73,15 @@ const pruneSearchCache = (cache: Record<string, SearchCacheEntry>) => {
   return Object.fromEntries(freshEntries);
 };
 
-const readSearchCache = (query: string): Book[] | null => {
+const getSearchCacheQueryKey = (query: string, includeResearch: boolean) => `${query.trim().toLowerCase()}:${includeResearch ? 'research' : 'standard'}`;
+
+const readSearchCache = (query: string, includeResearch: boolean): Book[] | null => {
   if (typeof window === 'undefined') return null;
 
   try {
     const cache = pruneSearchCache(readSearchCacheState());
     window.localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(cache));
-    const entry = cache[query.trim().toLowerCase()];
+    const entry = cache[getSearchCacheQueryKey(query, includeResearch)];
     if (!entry) return null;
     return entry.results || null;
   } catch {
@@ -87,12 +89,12 @@ const readSearchCache = (query: string): Book[] | null => {
   }
 };
 
-const writeSearchCache = (query: string, results: Book[]) => {
+const writeSearchCache = (query: string, includeResearch: boolean, results: Book[]) => {
   if (typeof window === 'undefined') return;
 
   try {
     const current = readSearchCacheState();
-    current[query.trim().toLowerCase()] = {
+    current[getSearchCacheQueryKey(query, includeResearch)] = {
       results,
       timestamp: Date.now(),
     };
@@ -138,6 +140,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
   const [speechListening, setSpeechListening] = useState(false);
   const [speechSearchError, setSpeechSearchError] = useState('');
   const [dictionaryOpen, setDictionaryOpen] = useState(false);
+  const [researchEnabled, setResearchEnabled] = useState(false);
   const [dictionaryLoading, setDictionaryLoading] = useState(false);
   const [dictionaryError, setDictionaryError] = useState('');
   const [dictionaryEntries, setDictionaryEntries] = useState<DictionaryEntry[]>([]);
@@ -177,7 +180,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
     const controller = new AbortController();
 
     const performSearch = async () => {
-      const cachedResults = readSearchCache(query);
+      const cachedResults = readSearchCache(query, researchEnabled);
       if (cachedResults && cachedResults.length > 0) {
         const limitedCachedResults = cachedResults.filter(isReadableSearchBook).slice(0, SEARCH_MAX_RESULTS);
         setSearchResults(limitedCachedResults);
@@ -215,6 +218,9 @@ const SearchPage: React.FC<SearchPageProps> = ({
         // Secondary sources
         searchITBooks(query, controller.signal).then(updateResults),
         searchInternetArchive(query, controller.signal).then(updateResults),
+        ...(researchEnabled ? [
+          searchAcademicResearch(query, controller.signal).then(updateResults),
+        ] : []),
         searchAudiobooks(query, 24).then(updateAudiobookResults),
       ];
 
@@ -233,15 +239,15 @@ const SearchPage: React.FC<SearchPageProps> = ({
     return () => {
       controller.abort();
     };
-  }, [onQuerySync, onResultsChange, onSearchingChange, searchParams]);
+  }, [onQuerySync, onResultsChange, onSearchingChange, researchEnabled, searchParams]);
 
   useEffect(() => {
     onResultsChange(searchResults);
     const query = searchParams.get('q')?.trim() || '';
     if (query) {
-      writeSearchCache(query, searchResults);
+      writeSearchCache(query, researchEnabled, searchResults);
     }
-  }, [onResultsChange, searchParams, searchResults]);
+  }, [onResultsChange, researchEnabled, searchParams, searchResults]);
 
   const currentQuery = searchParams.get('q')?.trim() || '';
   const isQueryReady = currentQuery.length >= SEARCH_MIN_QUERY_LENGTH;
@@ -716,6 +722,20 @@ const SearchPage: React.FC<SearchPageProps> = ({
                 )}
                 {isQueryReady && (canLookupDictionary || totalResultCount > 0) && (
                   <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setResearchEnabled((value) => !value)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-[0.18em] transition-all ${
+                        researchEnabled
+                          ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20'
+                          : 'border-bit-border bg-bit-panel/50 text-bit-muted hover:border-bit-accent/40 hover:bg-bit-accent/10 hover:text-bit-text'
+                      }`}
+                      aria-pressed={researchEnabled}
+                      title="Search arXiv, Semantic Scholar, PubMed Central, and Unpaywall open-access links"
+                    >
+                      <Microscope size={14} />
+                      Research APIs
+                    </button>
                     {canLookupDictionary && (
                       <button
                         type="button"

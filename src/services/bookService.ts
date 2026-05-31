@@ -9,6 +9,10 @@ const OPEN_LIBRARY_BASE = 'https://openlibrary.org';
 const INTERNET_ARCHIVE_BASE = 'https://archive.org/advancedsearch.php';
 const GUTENDEX_DEV_PROXY_BASE = '/api/gutendex/books';
 const YOBOOK_BASE = 'https://yobook-api.vercel.app';
+const ARXIV_API_BASE = 'https://export.arxiv.org/api/query';
+const SEMANTIC_SCHOLAR_BASE = 'https://api.semanticscholar.org/graph/v1';
+const NCBI_EUTILS_BASE = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils';
+const UNPAYWALL_BASE = 'https://api.unpaywall.org/v2';
 
 // --- Browser Cache Configuration ---
 const CACHE_TTL = 6 * 60 * 60 * 1000;
@@ -62,7 +66,7 @@ const isAbortError = (error: unknown): boolean => {
   return (error as { name?: string })?.name === 'AbortError';
 };
 const getGutendexBase = () => ((import.meta as any).env?.DEV ? GUTENDEX_DEV_PROXY_BASE : GUTENDEX_BASE);
-type ProviderName = 'gutendex' | 'google' | 'itbookstore' | 'openlibrary' | 'internetarchive' | 'yobook';
+type ProviderName = 'gutendex' | 'google' | 'itbookstore' | 'openlibrary' | 'internetarchive' | 'yobook' | 'arxiv' | 'semanticscholar' | 'pubmedcentral' | 'unpaywall';
 type ProviderHealth = { disabledUntil: number; failures: number; lastWarnAt: number };
 const PROVIDER_COOLDOWN_DEFAULT_MS = 3 * 60 * 1000;
 const PROVIDER_HEALTH: Record<ProviderName, ProviderHealth> = {
@@ -72,6 +76,10 @@ const PROVIDER_HEALTH: Record<ProviderName, ProviderHealth> = {
   openlibrary: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
   internetarchive: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
   yobook: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
+  arxiv: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
+  semanticscholar: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
+  pubmedcentral: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
+  unpaywall: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
 };
 const isProviderInCooldown = (provider: ProviderName): boolean => {
   return Date.now() < PROVIDER_HEALTH[provider].disabledUntil;
@@ -617,6 +625,157 @@ const mapArchiveToBook = (item: any): Book => {
     downloadUrl,
     sourceUrl: detailUrl,
   };
+};
+
+const getEnvValue = (key: string): string => (
+  String(((import.meta as any).env?.[key] || '')).trim()
+);
+
+const getAcademicCoverUrl = (source: string) => {
+  const seed = encodeURIComponent(source);
+  return `https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&q=80&w=400&seed=${seed}`;
+};
+
+const normalizeDoi = (value?: string | null): string | undefined => {
+  const doi = (value || '').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '');
+  return doi && /^10\.\S+\/\S+/.test(doi) ? doi : undefined;
+};
+
+const getFirstXmlText = (entry: Element, tagName: string): string => {
+  return entry.getElementsByTagName(tagName)[0]?.textContent?.replace(/\s+/g, ' ').trim() || '';
+};
+
+const getArxivId = (idUrl: string) => idUrl.split('/abs/').pop()?.trim() || idUrl.split('/').pop()?.trim() || idUrl;
+
+const mapArxivEntryToBook = (entry: Element): Book => {
+  const idUrl = getFirstXmlText(entry, 'id');
+  const arxivId = getArxivId(idUrl);
+  const authors = Array.from(entry.getElementsByTagName('author'))
+    .map((author) => getFirstXmlText(author, 'name'))
+    .filter(Boolean);
+  const links = Array.from(entry.getElementsByTagName('link'));
+  const pdfUrl = links.find((link) => (
+    link.getAttribute('title') === 'pdf'
+    || link.getAttribute('type') === 'application/pdf'
+  ))?.getAttribute('href') || `https://arxiv.org/pdf/${arxivId}`;
+  const primaryCategory = Array.from(entry.getElementsByTagName('arxiv:primary_category'))[0]?.getAttribute('term')
+    || Array.from(entry.getElementsByTagName('category'))[0]?.getAttribute('term')
+    || 'Research Paper';
+  const publishedYear = parseInt(getFirstXmlText(entry, 'published').slice(0, 4), 10);
+  const doi = normalizeDoi(getFirstXmlText(entry, 'arxiv:doi') || getFirstXmlText(entry, 'doi'));
+
+  return {
+    id: `arxiv-${arxivId}`,
+    title: getFirstXmlText(entry, 'title') || 'Untitled arXiv Paper',
+    author: authors.join(', ') || 'Unknown Authors',
+    authors: authors.map((name) => ({ name })),
+    category: primaryCategory,
+    description: getFirstXmlText(entry, 'summary') || 'Academic preprint from arXiv.',
+    coverUrl: getAcademicCoverUrl('arxiv'),
+    year: Number.isFinite(publishedYear) ? publishedYear : undefined,
+    source: 'arXiv',
+    subjects: [primaryCategory],
+    keywords: [arxivId, ...(doi ? [doi] : [])],
+    externalUrl: pdfUrl,
+    downloadUrl: pdfUrl,
+    sourceUrl: idUrl || `https://arxiv.org/abs/${arxivId}`,
+    downloads: 0,
+  };
+};
+
+const mapSemanticScholarPaperToBook = (paper: any): Book => {
+  const authors = Array.isArray(paper.authors) ? paper.authors.map((author: any) => toText(author?.name)).filter(Boolean) : [];
+  const fieldsOfStudy = Array.isArray(paper.fieldsOfStudy) ? paper.fieldsOfStudy.filter((field: unknown): field is string => typeof field === 'string') : [];
+  const doi = normalizeDoi(paper.externalIds?.DOI);
+  const openPdfUrl = toText(paper.openAccessPdf?.url);
+
+  return {
+    id: `s2-${paper.paperId}`,
+    title: toText(paper.title, 'Untitled Semantic Scholar Paper'),
+    author: authors.join(', ') || 'Unknown Authors',
+    authors: authors.map((name: string) => ({ name })),
+    category: fieldsOfStudy[0] || toText(paper.venue, 'Research Paper'),
+    description: toText(paper.abstract, 'Academic paper indexed by Semantic Scholar.'),
+    coverUrl: getAcademicCoverUrl('semantic-scholar'),
+    year: Number.isFinite(Number(paper.year)) ? Number(paper.year) : undefined,
+    source: 'Semantic Scholar',
+    subjects: fieldsOfStudy.slice(0, 8),
+    keywords: [paper.paperId, ...(doi ? [doi] : [])].filter(Boolean),
+    externalUrl: openPdfUrl || paper.url,
+    downloadUrl: openPdfUrl || undefined,
+    sourceUrl: paper.url,
+    downloads: Number(paper.citationCount || 0),
+  };
+};
+
+const getPmcArticleId = (item: any, type: string): string | undefined => {
+  const ids = Array.isArray(item?.articleids) ? item.articleids : [];
+  return ids.find((entry: any) => String(entry?.idtype || '').toLowerCase() === type)?.value;
+};
+
+const mapPmcSummaryToBook = (item: any): Book => {
+  const authors = Array.isArray(item.authors) ? item.authors.map((author: any) => toText(author?.name)).filter(Boolean) : [];
+  const pmcid = getPmcArticleId(item, 'pmc') || `PMC${item.uid}`;
+  const doi = normalizeDoi(getPmcArticleId(item, 'doi'));
+  const year = parseInt(String(item.pubdate || '').match(/\d{4}/)?.[0] || '', 10);
+  const articleUrl = `https://pmc.ncbi.nlm.nih.gov/articles/${pmcid}/`;
+
+  return {
+    id: `pmc-${item.uid}`,
+    title: toText(item.title, 'Untitled PubMed Central Article'),
+    author: authors.join(', ') || 'Unknown Authors',
+    authors: authors.map((name: string) => ({ name })),
+    category: toText(item.fulljournalname, 'Biomedical Research'),
+    description: [
+      toText(item.fulljournalname),
+      toText(item.pubdate),
+      doi ? `DOI: ${doi}` : '',
+    ].filter(Boolean).join(' | ') || 'Open biomedical article from PubMed Central.',
+    coverUrl: getAcademicCoverUrl('pubmed-central'),
+    year: Number.isFinite(year) ? year : undefined,
+    source: 'PubMed Central',
+    subjects: [toText(item.fulljournalname, 'Biomedical Research')],
+    keywords: [pmcid, ...(doi ? [doi] : [])],
+    externalUrl: articleUrl,
+    sourceUrl: articleUrl,
+    downloads: 0,
+  };
+};
+
+const fetchUnpaywallPdfUrl = async (doi: string, signal?: AbortSignal): Promise<string | null> => {
+  const email = getEnvValue('VITE_UNPAYWALL_EMAIL');
+  if (!email || isProviderInCooldown('unpaywall')) return null;
+
+  try {
+    const response = await fetch(`${UNPAYWALL_BASE}/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`, { signal });
+    if (!response.ok) {
+      markProviderFailure('unpaywall', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const location = data.best_oa_location || {};
+    markProviderSuccess('unpaywall');
+    return location.url_for_pdf || location.url || data.oa_locations?.find((entry: any) => entry?.url_for_pdf || entry?.url)?.url_for_pdf || null;
+  } catch (error) {
+    if (!isAbortError(error)) markProviderFailure('unpaywall');
+    return null;
+  }
+};
+
+const enrichWithUnpaywall = async (books: Book[], signal?: AbortSignal): Promise<Book[]> => {
+  const email = getEnvValue('VITE_UNPAYWALL_EMAIL');
+  if (!email) return books;
+
+  const enriched = await Promise.all(books.map(async (book, index) => {
+    if (book.downloadUrl || index >= 12) return book;
+    const doi = book.keywords?.map(normalizeDoi).find(Boolean);
+    if (!doi) return book;
+    const oaUrl = await fetchUnpaywallPdfUrl(doi, signal);
+    return oaUrl ? { ...book, downloadUrl: oaUrl, externalUrl: book.externalUrl || oaUrl, providerSource: 'Unpaywall' } : book;
+  }));
+
+  return enriched;
 };
 
 const mapYoBookToBook = (item: any): Book => {
@@ -1239,6 +1398,156 @@ export const searchInternetArchive = async (query: string, signal?: AbortSignal)
     }
     return [];
   }
+};
+
+export const searchArxivPapers = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `arxiv-search-${normalizeCacheKey(query)}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('arxiv')) {
+    warnProviderCooldown('arxiv');
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams({
+      search_query: `all:${query}`,
+      start: '0',
+      max_results: '12',
+      sortBy: 'relevance',
+      sortOrder: 'descending',
+    });
+    const response = await fetch(`${ARXIV_API_BASE}?${params.toString()}`, { signal });
+    if (!response.ok) {
+      markProviderFailure('arxiv', response.status);
+      return [];
+    }
+
+    const xml = await response.text();
+    const document = new DOMParser().parseFromString(xml, 'application/xml');
+    const result = await enrichWithUnpaywall(
+      Array.from(document.getElementsByTagName('entry')).map(mapArxivEntryToBook),
+      signal,
+    );
+    setInCache(cacheKey, result);
+    markProviderSuccess('arxiv');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('arxiv');
+      console.error('arXiv search failed:', error);
+    }
+    return [];
+  }
+};
+
+export const searchSemanticScholarPapers = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `semantic-scholar-search-${normalizeCacheKey(query)}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('semanticscholar')) {
+    warnProviderCooldown('semanticscholar');
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams({
+      query,
+      limit: '12',
+      fields: 'title,abstract,authors,year,venue,externalIds,url,openAccessPdf,fieldsOfStudy,citationCount,isOpenAccess',
+    });
+    const response = await fetch(`${SEMANTIC_SCHOLAR_BASE}/paper/search?${params.toString()}`, { signal });
+    if (!response.ok) {
+      markProviderFailure('semanticscholar', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const books = (Array.isArray(data.data) ? data.data : [])
+      .filter((paper: any) => paper?.paperId && paper?.title)
+      .map(mapSemanticScholarPaperToBook);
+    const result = await enrichWithUnpaywall(books, signal);
+    setInCache(cacheKey, result);
+    markProviderSuccess('semanticscholar');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('semanticscholar');
+      console.error('Semantic Scholar search failed:', error);
+    }
+    return [];
+  }
+};
+
+export const searchPubMedCentralArticles = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `pmc-search-${normalizeCacheKey(query)}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('pubmedcentral')) {
+    warnProviderCooldown('pubmedcentral');
+    return [];
+  }
+
+  try {
+    const searchParams = new URLSearchParams({
+      db: 'pmc',
+      term: query,
+      retmode: 'json',
+      retmax: '12',
+      sort: 'relevance',
+    });
+    const searchResponse = await fetch(`${NCBI_EUTILS_BASE}/esearch.fcgi?${searchParams.toString()}`, { signal });
+    if (!searchResponse.ok) {
+      markProviderFailure('pubmedcentral', searchResponse.status);
+      return [];
+    }
+
+    const searchData = await searchResponse.json();
+    const ids = Array.isArray(searchData.esearchresult?.idlist) ? searchData.esearchresult.idlist : [];
+    if (ids.length === 0) {
+      markProviderSuccess('pubmedcentral');
+      setInCache(cacheKey, []);
+      return [];
+    }
+
+    const summaryParams = new URLSearchParams({
+      db: 'pmc',
+      id: ids.join(','),
+      retmode: 'json',
+    });
+    const summaryResponse = await fetch(`${NCBI_EUTILS_BASE}/esummary.fcgi?${summaryParams.toString()}`, { signal });
+    if (!summaryResponse.ok) {
+      markProviderFailure('pubmedcentral', summaryResponse.status);
+      return [];
+    }
+
+    const summaryData = await summaryResponse.json();
+    const resultEntries = summaryData.result || {};
+    const books = ids
+      .map((id: string) => resultEntries[id])
+      .filter(Boolean)
+      .map(mapPmcSummaryToBook);
+    const result = await enrichWithUnpaywall(books, signal);
+    setInCache(cacheKey, result);
+    markProviderSuccess('pubmedcentral');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('pubmedcentral');
+      console.error('PubMed Central search failed:', error);
+    }
+    return [];
+  }
+};
+
+export const searchAcademicResearch = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const results = await Promise.allSettled([
+    searchArxivPapers(query, signal),
+    searchSemanticScholarPapers(query, signal),
+    searchPubMedCentralArticles(query, signal),
+  ]);
+
+  return results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
 };
 
 const LEGACY_SHELF_IDS: Record<string, string> = {

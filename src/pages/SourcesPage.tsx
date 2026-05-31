@@ -1,12 +1,12 @@
 import React from 'react';
-import { ArrowLeft, ArrowUpRight, BookOpenText, Database, FileAudio, FileText, Image, Library, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, BookOpenText, Database, FileAudio, FileText, Image, Library, Microscope, Sparkles } from 'lucide-react';
 import Seo from '@/components/Seo';
 
 interface SourcesPageProps {
   onBack: () => void;
 }
 
-type SourceCategory = 'books' | 'audio' | 'dictionary' | 'media' | 'ai' | 'software';
+type SourceCategory = 'books' | 'research' | 'audio' | 'dictionary' | 'media' | 'ai' | 'software';
 
 interface SourceCredit {
   category: SourceCategory;
@@ -21,6 +21,7 @@ const categoryConfig: Record<SourceCategory, {
   icon: React.ComponentType<{ size?: number; className?: string }>;
 }> = {
   books: { label: 'Books and catalog metadata', icon: Library },
+  research: { label: 'Academic research metadata', icon: Microscope },
   audio: { label: 'Audiobooks and audio files', icon: FileAudio },
   dictionary: { label: 'Dictionary and language tools', icon: BookOpenText },
   media: { label: 'Images and media helpers', icon: Image },
@@ -77,6 +78,34 @@ const sourceCredits: SourceCredit[] = [
     role: 'Curriculum labels and educational-source context.',
     credit: 'Used as source context when connected catalog records identify school books, teacher guides, or curriculum resources.',
     url: 'https://moecdc.gov.np',
+  },
+  {
+    category: 'research',
+    name: 'arXiv API',
+    role: 'Preprint search for physics, mathematics, computer science, quantitative biology, and related fields.',
+    credit: 'Used only when Research APIs is enabled in search; provides paper metadata, authors, abstracts, subject classes, and PDF links.',
+    url: 'https://info.arxiv.org/help/api/index.html',
+  },
+  {
+    category: 'research',
+    name: 'Semantic Scholar API',
+    role: 'Scholarly paper discovery, citation counts, abstracts, fields of study, and open-access PDF metadata.',
+    credit: 'Used only in opt-in research search to widen academic discovery beyond book catalogs.',
+    url: 'https://www.semanticscholar.org/product/api',
+  },
+  {
+    category: 'research',
+    name: 'PubMed Central API',
+    role: 'Open biomedical and life-science article discovery through NCBI E-utilities.',
+    credit: 'Used only in opt-in research search for PMC records, article metadata, journal names, dates, and source article links.',
+    url: 'https://www.ncbi.nlm.nih.gov/pmc/tools/developers/',
+  },
+  {
+    category: 'research',
+    name: 'Unpaywall API',
+    role: 'Open-access DOI resolution for scholarly articles.',
+    credit: 'Used only when a Unpaywall contact email is configured; enriches DOI-bearing academic results with open-access links when available.',
+    url: 'https://unpaywall.org/products/api',
   },
   {
     category: 'audio',
