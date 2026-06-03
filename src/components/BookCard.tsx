@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Book } from '@/types/index';
-import { BookOpen, Bookmark, BarChart } from 'lucide-react';
+import { BookOpen, Bookmark, BarChart, Files } from 'lucide-react';
 import { toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import { HighlightedText } from './HighlightedText';
 
@@ -25,6 +25,20 @@ const BookCard: React.FC<BookCardProps> = ({
   const navigate = useNavigate();
   const { state } = useLocalUserState();
   const isSaved = state.savedBooks.some((entry) => entry.id === book.id);
+  const questionPaperCount = book.questionPaperCount || book.question_papers?.length || 0;
+  const isQuestionPaperCollection = questionPaperCount > 0;
+  const hasDirectReadableFile = Boolean(
+    book.externalUrl
+    || book.downloadUrl
+    || book.resourceLinks?.length
+    || book.chapterPdfUrls?.length
+    || book.audioUrl
+  );
+  const resourceFormats = Array.from(new Set(
+    (book.resourceLinks || [])
+      .map((link) => link.format)
+      .filter((format) => ['pdf', 'text', 'xml', 'epub', 'html', 'package'].includes(format))
+  )).slice(0, 4);
 
   // Generate a deterministic aesthetic gradient based on ID
   const gradients = [
@@ -37,9 +51,9 @@ const BookCard: React.FC<BookCardProps> = ({
   const bgGradient = gradients[book.title.length % gradients.length];
 
   // Optimization: Image Proxy for better performance & WebP compression
-  const proxiedCoverUrl = book.coverUrl 
+  const proxiedCoverUrl = book.coverUrl && /^https?:\/\//i.test(book.coverUrl)
     ? `https://images.weserv.nl/?url=${encodeURIComponent(book.coverUrl)}&w=300&h=450&fit=cover&output=webp`
-    : null;
+    : book.coverUrl || null;
 
   return (
     <div
@@ -105,9 +119,16 @@ const BookCard: React.FC<BookCardProps> = ({
             <Bookmark size={16} className={isSaved ? 'fill-current' : ''} />
           </button>
 
+          {isQuestionPaperCollection && (
+            <div className="absolute bottom-3 left-3 z-30 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded border border-bit-accent/30 bg-bit-bg/85 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-widest text-bit-accent shadow-sm backdrop-blur-md">
+              <Files size={12} />
+              {questionPaperCount} {questionPaperCount === 1 ? 'Paper' : 'Papers'}
+            </div>
+          )}
+
           {/* Cinematic Overlay & Action HUD Stack */}
           <div className="absolute inset-0 bg-bit-panel/90 opacity-0 group-hover:opacity-100 backdrop-blur-[6px] transition-all duration-500 flex flex-col items-center justify-center p-6 gap-3 z-20">
-            {onRead && (
+            {onRead && hasDirectReadableFile && (
               <button
                 onClick={(e) => { e.stopPropagation(); onRead(book); }}
                 className="w-full py-3 bg-bit-accent text-white rounded-xl shadow-lg shadow-bit-accent/30 flex items-center justify-center gap-3 transform -translate-y-4 group-hover:translate-y-0 transition-all duration-500 hover:scale-105 active:scale-95 border-2 border-bit-accent/10 group/btn"
@@ -139,8 +160,25 @@ const BookCard: React.FC<BookCardProps> = ({
                 onClick={(e) => { e.stopPropagation(); onAuthorClick?.(book.author); }}
                 className={`${variant === 'compact' ? 'line-clamp-1' : 'line-clamp-2 min-h-[2rem]'} text-left text-[9px] text-bit-muted/70 hover:text-bit-accent font-mono tracking-widest uppercase transition-colors`}
               >
-                By <HighlightedText text={book.author} query={searchQuery} />
+                {book.collection_name ? 'Collection ' : 'By '}<HighlightedText text={book.collection_name || book.author} query={searchQuery} />
               </button>
+              {(resourceFormats.length > 0 || isQuestionPaperCollection) && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {isQuestionPaperCollection && (
+                    <span className="rounded-full border border-bit-accent/30 bg-bit-accent/10 px-2 py-0.5 text-[8px] font-mono font-bold uppercase tracking-widest text-bit-accent">
+                      {questionPaperCount} {questionPaperCount === 1 ? 'Paper' : 'Papers'}
+                    </span>
+                  )}
+                  {resourceFormats.map((format) => (
+                    <span
+                      key={format}
+                      className="rounded-full border border-bit-border bg-bit-bg/60 px-2 py-0.5 text-[8px] font-mono font-bold uppercase tracking-widest text-bit-accent"
+                    >
+                      {format}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {variant === 'full' && (

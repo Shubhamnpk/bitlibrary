@@ -83,6 +83,22 @@ To build a robust, scalable, and $0-cost library, we can leverage these public A
     - Base URL: `https://api.unpaywall.org/v2/{doi}`
     - Requires `email={contact_email}`. In BitLibrary this is configured with `VITE_UNPAYWALL_EMAIL`.
     - Used as enrichment for DOI-bearing academic records, not as a general keyword search source.
+- **Europe PMC REST API**
+    - Base URL: `https://www.ebi.ac.uk/europepmc/webservices/rest/search`
+    - Search parameter: `query={query}`
+    - Results are displayed only when Europe PMC provides a usable PDF, text, XML, HTML, or EPUB resource.
+- **OpenAlex API**
+    - Base URL: `https://api.openalex.org/works`
+    - Search parameter: `search={query}`
+    - Useful fields: `title`, `authorships`, `publication_year`, `topics`, `abstract_inverted_index`, `best_oa_location`, `cited_by_count`.
+- **Crossref REST API**
+    - Base URL: `https://api.crossref.org/works`
+    - Search parameter: `query={query}`
+    - Useful fields: `DOI`, `title`, `author`, `published`, `subject`, `abstract`, `URL`, `is-referenced-by-count`.
+- **DataCite REST API**
+    - Base URL: `https://api.datacite.org/dois`
+    - Search parameter: `query={query}`
+    - Best for datasets, software, reports, preprints, and non-article research outputs with DOI metadata.
 
 **Integration rule:** These sources are intentionally not part of the default search pipeline. Users must enable the Research APIs toggle before BitLibrary calls them.
 

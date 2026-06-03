@@ -16,6 +16,29 @@ export interface ChapterAudio {
   url: string;
 }
 
+export interface QuestionPaper {
+  title: string;
+  year?: string;
+  readUrl?: string;
+  url?: string;
+  downloadUrl?: string;
+  sourceUrl?: string;
+  coverUrl?: string;
+  fileSize?: string;
+}
+
+export type ResourceFormat = 'pdf' | 'text' | 'xml' | 'epub' | 'html' | 'package' | 'source' | 'unknown';
+
+export interface ResourceLink {
+  url: string;
+  format: ResourceFormat;
+  provider: string;
+  label?: string;
+  relation?: 'reader' | 'download' | 'landing' | 'doi' | 'metadata' | 'source';
+  embeddable?: boolean;
+  downloadable?: boolean;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -34,6 +57,7 @@ export interface Book {
   bookshelves?: string[];
   externalUrl?: string;
   downloadUrl?: string;
+  resourceLinks?: ResourceLink[];
   audioUrl?: string;
   gutenbergId?: number;
   grade?: number;
@@ -44,8 +68,11 @@ export interface Book {
   detailUrl?: string;
   sourceUrl?: string;
   chapterPdfUrls?: ChapterPdf[];
+  collection_name?: string;
+  question_papers?: QuestionPaper[];
+  questionPaperCount?: number;
   providerSource?: string;
-  source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library' | 'YoBook' | 'arXiv' | 'Semantic Scholar' | 'PubMed Central' | 'Unpaywall';
+  source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library' | 'YoBook' | 'arXiv' | 'Semantic Scholar' | 'PubMed Central' | 'Europe PMC' | 'OpenAlex' | 'Crossref' | 'DataCite' | 'Unpaywall' | (string & {});
 }
 
 export interface AudiobookTrack {

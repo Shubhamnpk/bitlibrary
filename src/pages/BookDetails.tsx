@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Book, ChapterAudio, ViewState } from '@/types/index';
+import { Book, ChapterAudio, QuestionPaper, ViewState } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
 import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronLeft, ChevronRight, Share, Info, Maximize2, Library, Download, Bookmark, ExternalLink, Headphones, X } from 'lucide-react';
@@ -58,11 +58,19 @@ const isSameCurriculumFamily = (book: Book, candidate: Book) => (
   )
 );
 
+const isQuestionPaperCollection = (book: Book) => (
+  Array.isArray(book.question_papers) && book.question_papers.length > 0
+);
+
+const getQuestionPaperReadUrl = (paper: QuestionPaper) => (
+  paper.readUrl || paper.url || paper.downloadUrl || ''
+);
+
 interface BookDetailsProps {
   book: Book;
   allBooks: Book[];
   onClose: () => void;
-  onRead: (id?: string) => void;
+  onRead: (id?: string, book?: Book) => void;
   onBookClick: (book: Book) => void;
   onAuthorClick?: (name: string) => void;
   onCategoryClick?: (category: string) => void;
@@ -85,9 +93,37 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const [isExpanded, setIsExpanded] = useState(false);
   const pdfDownloadUrl = getBestPdfSourceUrl(book);
   const downloadUrl = pdfDownloadUrl || book.downloadUrl;
+  const questionPaperCollection = isQuestionPaperCollection(book);
+  const questionPapers = book.question_papers || [];
+  const hasTopLevelReadableFile = Boolean(downloadUrl || book.externalUrl || book.resourceLinks?.length || book.chapterPdfUrls?.length || book.audioUrl);
+  const displayCurriculum = book.curriculum === 'CDC Nepal' ? undefined : book.curriculum;
   const handleDownload = async () => {
     if (!pdfDownloadUrl) return;
     await downloadPdfOptimized(pdfDownloadUrl, book.title);
+  };
+  const handleReadQuestionPaper = (paper: QuestionPaper, index: number) => {
+    const paperUrl = getQuestionPaperReadUrl(paper);
+    if (!paperUrl) return;
+
+    onRead(undefined, {
+      ...book,
+      id: `${book.id}-question-paper-${index}`,
+      title: paper.title,
+      author: book.collection_name || book.author,
+      authors: [{ name: book.collection_name || book.author }],
+      description: [book.title, paper.year, paper.fileSize].filter(Boolean).join(' - ') || paper.title,
+      coverUrl: paper.coverUrl || book.coverUrl,
+      year: paper.year && /^\d{1,4}$/.test(paper.year) ? Number(paper.year) : undefined,
+      pages: undefined,
+      externalUrl: paperUrl,
+      downloadUrl: paperUrl,
+      sourceUrl: paper.sourceUrl || book.sourceUrl,
+      detailUrl: paper.sourceUrl || book.detailUrl,
+      resourceLinks: undefined,
+      chapterPdfUrls: undefined,
+      question_papers: undefined,
+      questionPaperCount: undefined,
+    });
   };
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -400,16 +436,18 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent transition-all duration-500 sm:group-hover:via-black/20" />
-            <div className="absolute inset-0 z-10 hidden items-center justify-center opacity-0 backdrop-blur-[4px] transition-all duration-700 sm:flex sm:group-hover:opacity-100">
-              <button
-                onClick={(e) => { e.stopPropagation(); onRead(); }}
-                className="px-8 py-4 bg-bit-accent text-white flex items-center gap-4 rounded-full shadow-[0_0_60px_rgba(var(--bit-accent-rgb),0.6)] transform scale-75 group-hover:scale-100 transition-all duration-700 hover:scale-105 active:scale-95 border-4 border-black/10 group/btn relative overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-white opacity-0 group-hover/btn:opacity-20 transition-opacity" />
-                <BookOpen size={24} className="relative z-10" />
-                <span className="text-xs font-mono font-bold tracking-[0.2em] relative z-10 uppercase">READ</span>
-              </button>
-            </div>
+            {!questionPaperCollection && hasTopLevelReadableFile && (
+              <div className="absolute inset-0 z-10 hidden items-center justify-center opacity-0 backdrop-blur-[4px] transition-all duration-700 sm:flex sm:group-hover:opacity-100">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRead(); }}
+                  className="px-8 py-4 bg-bit-accent text-white flex items-center gap-4 rounded-full shadow-[0_0_60px_rgba(var(--bit-accent-rgb),0.6)] transform scale-75 group-hover:scale-100 transition-all duration-700 hover:scale-105 active:scale-95 border-4 border-black/10 group/btn relative overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-white opacity-0 group-hover/btn:opacity-20 transition-opacity" />
+                  <BookOpen size={24} className="relative z-10" />
+                  <span className="text-xs font-mono font-bold tracking-[0.2em] relative z-10 uppercase">READ</span>
+                </button>
+              </div>
+            )}
             <div className="absolute inset-0 flex flex-col justify-end p-5 sm:p-8">
               <div className="mb-3 flex flex-wrap items-center gap-2 sm:mb-4">
                 <button
@@ -421,7 +459,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               </div>
               <h1 className="mb-4 line-clamp-3 text-2xl font-display font-bold leading-tight tracking-tight text-white transition-colors duration-500 group-hover:text-bit-accent sm:mb-6 sm:text-4xl md:text-5xl">{book.title}</h1>
               <div className="mb-5 flex flex-wrap gap-x-3 gap-y-3 border-l-2 border-bit-accent/30 py-1 pl-4 italic sm:mb-10 sm:gap-x-4 sm:gap-y-6">
-                <span className="text-base text-white/70 font-sans sm:text-xl">by</span>
+                <span className="text-base text-white/70 font-sans sm:text-xl">{book.collection_name ? 'in' : 'by'}</span>
                 {book.authors && book.authors.length > 0 ? (
                   book.authors.map((author, idx) => (
                     <button
@@ -440,22 +478,24 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                     </button>
                   ))
                 ) : (
-                  <span className="text-base text-white/70 font-sans sm:text-xl">{book.author}</span>
+                  <span className="text-base text-white/70 font-sans sm:text-xl">{book.collection_name || book.author}</span>
                 )}
               </div>
               <div className="flex items-center gap-2 text-[10px] text-white/45 font-mono sm:text-xs">
                 <span className="flex items-center gap-1"><Calendar size={12} /> {book.year || 'N/A'}</span>
                 <span className="mx-2">•</span>
-                <span className="flex items-center gap-1"><BookOpen size={12} /> {book.pages || 'INF'} Pages</span>
+                <span className="flex items-center gap-1"><BookOpen size={12} /> {questionPaperCollection ? `${questionPapers.length} Papers` : `${book.pages || 'INF'} Pages`}</span>
               </div>
             </div>
           </div>
-          <button
-            onClick={() => onRead()}
-            className="mt-4 flex w-full items-center justify-center gap-3 rounded-xl bg-bit-accent px-5 py-3 text-xs font-mono font-bold uppercase tracking-widest text-white shadow-lg shadow-bit-accent/20 transition-all active:scale-95 sm:hidden"
-          >
-            <BookOpen size={17} /> Read
-          </button>
+          {!questionPaperCollection && hasTopLevelReadableFile && (
+            <button
+              onClick={() => onRead()}
+              className="mt-4 flex w-full items-center justify-center gap-3 rounded-xl bg-bit-accent px-5 py-3 text-xs font-mono font-bold uppercase tracking-widest text-white shadow-lg shadow-bit-accent/20 transition-all active:scale-95 sm:hidden"
+            >
+              <BookOpen size={17} /> Read
+            </button>
+          )}
         </div>
 
         <div className="lg:col-span-8">
@@ -493,20 +533,22 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                   <h3 className="flex items-center gap-2 text-xl font-display font-semibold text-bit-text">
                     <Info size={18} className="text-bit-accent" /> Summary
                   </h3>
-                  <div className="grid grid-cols-2 gap-3 sm:flex">
-                    {pdfDownloadUrl ? (
-                      <button type="button" onClick={handleDownload} className="flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent shadow-sm transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white active:scale-95 sm:px-6 group/dl">
-                        <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
+                  {!questionPaperCollection && (
+                    <div className="grid grid-cols-2 gap-3 sm:flex">
+                      {pdfDownloadUrl ? (
+                        <button type="button" onClick={handleDownload} className="flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent shadow-sm transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white active:scale-95 sm:px-6 group/dl">
+                          <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
+                        </button>
+                      ) : downloadUrl && (
+                        <a href={downloadUrl} download={book.title} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent shadow-sm transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white active:scale-95 sm:px-6 group/dl">
+                          <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
+                        </a>
+                      )}
+                      <button onClick={() => onRead()} className={`${downloadUrl ? 'hidden sm:flex' : 'col-span-2 hidden sm:flex'} items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
+                        <BookOpen size={16} /> read
                       </button>
-                    ) : downloadUrl && (
-                      <a href={downloadUrl} download={book.title} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent shadow-sm transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white active:scale-95 sm:px-6 group/dl">
-                        <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
-                      </a>
-                    )}
-                    <button onClick={() => onRead()} className={`${downloadUrl ? 'hidden sm:flex' : 'col-span-2 hidden sm:flex'} items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
-                      <BookOpen size={16} /> read
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
                 <div className="max-w-3xl text-base leading-8 text-bit-muted sm:text-lg sm:leading-relaxed">
                   {descLoading ? (
@@ -543,6 +585,59 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                 </div>
               </section>
 
+              {questionPaperCollection && (
+                <section className="mb-12">
+                  <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">{book.collection_name || 'Question paper collection'}</p>
+                      <h3 className="mt-1 text-xl font-display font-semibold text-bit-text">Question papers</h3>
+                    </div>
+                    <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted">
+                      {questionPapers.length} {questionPapers.length === 1 ? 'paper' : 'papers'}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {questionPapers.map((paper, index) => {
+                      const paperUrl = getQuestionPaperReadUrl(paper);
+                      return (
+                        <div key={`${paper.title}-${paper.year || index}`} className="group flex gap-4 rounded-lg border border-bit-border bg-bit-panel/25 p-3 transition-all hover:border-bit-accent/40 hover:bg-bit-panel/40">
+                          <div className="h-24 w-16 shrink-0 overflow-hidden rounded border border-bit-border bg-bit-bg/60">
+                            {paper.coverUrl ? (
+                              <img src={paper.coverUrl} alt="" className="h-full w-full object-cover opacity-80 transition-opacity group-hover:opacity-100" loading="lazy" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-bit-accent/70">
+                                <BookOpen size={22} />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <h4 className="line-clamp-2 text-sm font-semibold leading-5 text-bit-text group-hover:text-bit-accent">{paper.title}</h4>
+                            <p className="mt-1 text-[9px] font-mono font-bold uppercase tracking-widest text-bit-muted">
+                              {[paper.year, paper.fileSize].filter(Boolean).join(' / ') || 'Question paper'}
+                            </p>
+                            <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                              <button
+                                type="button"
+                                onClick={() => handleReadQuestionPaper(paper, index)}
+                                disabled={!paperUrl}
+                                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-bit-accent px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-white transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45"
+                              >
+                                <BookOpen size={14} /> Read
+                              </button>
+                              {paper.sourceUrl && (
+                                <a href={paper.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-bit-border bg-bit-bg/40 px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent">
+                                  <ExternalLink size={14} /> Source
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
               <section className="mb-12">
                 <h3 className="text-xl font-display font-semibold text-bit-text mb-6">Metadata Archive</h3>
                 <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
@@ -568,10 +663,10 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                       <p className="text-xl font-display font-bold text-bit-text">Class {book.grade}</p>
                     </div>
                   )}
-                  {book.curriculum && (
+                  {displayCurriculum && (
                     <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
                       <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Curriculum</p>
-                      <p className="line-clamp-2 text-sm font-display font-bold text-bit-text">{book.curriculum}</p>
+                      <p className="line-clamp-2 text-sm font-display font-bold text-bit-text">{displayCurriculum}</p>
                     </div>
                   )}
                 </div>

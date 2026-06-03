@@ -4,7 +4,10 @@ export const isPdfLikeUrl = (url?: string): boolean => (
   Boolean(url)
   && (
     /\.pdf(?:$|[?#])/i.test(url || '')
+    || /\/pdf\/?$/i.test(url || '')
+    || /\/api\/getpdf(?:$|[?#])/i.test(url || '')
     || /[?&]ext=pdf(?:&|$)/i.test(url || '')
+    || /[?&](?:format|type)=pdf(?:&|$)/i.test(url || '')
   )
 );
 
@@ -13,13 +16,24 @@ export const getPdfProxyUrl = (url: string): string => {
   return `/api/pdf-proxy?url=${encodeURIComponent(url)}`;
 };
 
+export const getReaderProxyUrl = (url: string): string => {
+  if (!/^https?:\/\//i.test(url)) return url;
+  return `/api/pdf-proxy?url=${encodeURIComponent(url)}&reader=1`;
+};
+
 export const getPdfProxyDownloadUrl = (url: string, title: string): string => {
   if (!/^https?:\/\//i.test(url)) return url;
   return `/api/pdf-proxy?url=${encodeURIComponent(url)}&download=1&filename=${encodeURIComponent(getSafePdfFilename(title))}`;
 };
 
-export const getBestPdfSourceUrl = (book: Pick<Book, 'downloadUrl' | 'externalUrl' | 'sourceUrl' | 'detailUrl'>): string | undefined => (
-  [book.downloadUrl, book.externalUrl, book.sourceUrl, book.detailUrl].find(isPdfLikeUrl)
+export const getBestPdfSourceUrl = (book: Pick<Book, 'downloadUrl' | 'externalUrl' | 'sourceUrl' | 'detailUrl' | 'resourceLinks'>): string | undefined => (
+  [
+    ...(book.resourceLinks || []).filter((link) => link.format === 'pdf').map((link) => link.url),
+    book.downloadUrl,
+    book.externalUrl,
+    book.sourceUrl,
+    book.detailUrl,
+  ].find(isPdfLikeUrl)
 );
 
 const getSafePdfFilename = (title: string) => {

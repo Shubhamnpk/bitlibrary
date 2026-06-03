@@ -1,5 +1,6 @@
 ﻿import { Author, Book } from '@/types/index';
 import { INITIAL_BOOKS } from '@/constants';
+import type { ResourceFormat, ResourceLink } from '@/types/index';
 import { ChapterAudio } from '@/types/index';
 
 const GUTENDEX_BASE = 'https://gutendex.com/books';
@@ -13,10 +14,13 @@ const ARXIV_API_BASE = 'https://export.arxiv.org/api/query';
 const SEMANTIC_SCHOLAR_BASE = 'https://api.semanticscholar.org/graph/v1';
 const NCBI_EUTILS_BASE = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils';
 const UNPAYWALL_BASE = 'https://api.unpaywall.org/v2';
+const OPENALEX_BASE = 'https://api.openalex.org/works';
+const CROSSREF_BASE = 'https://api.crossref.org/works';
+const DATACITE_BASE = 'https://api.datacite.org/dois';
 
 // --- Browser Cache Configuration ---
 const CACHE_TTL = 6 * 60 * 60 * 1000;
-const CACHE_STORAGE_PREFIX = 'bitlibrary-book-cache-v4';
+const CACHE_STORAGE_PREFIX = 'bitlibrary-book-cache-v11';
 const cache: Record<string, { data: any, timestamp: number }> = {};
 
 const getStorageKey = (key: string) => `${CACHE_STORAGE_PREFIX}:${key}`;
@@ -61,12 +65,64 @@ const setInCache = (key: string, data: any) => {
   }
 };
 
+const findBookInValue = (value: unknown, id: string, depth = 0): Book | null => {
+  if (!value || depth > 5) return null;
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const result = findBookInValue(entry, id, depth + 1);
+      if (result) return result;
+    }
+    return null;
+  }
+  if (typeof value !== 'object') return null;
+
+  const record = value as Record<string, unknown>;
+  if (record.id === id && typeof record.title === 'string') return record as unknown as Book;
+
+  for (const nested of ['data', 'results', 'books', 'recentlyViewed']) {
+    const result = findBookInValue(record[nested], id, depth + 1);
+    if (result) return result;
+  }
+
+  for (const nested of Object.values(record)) {
+    const result = findBookInValue(nested, id, depth + 1);
+    if (result) return result;
+  }
+
+  return null;
+};
+
+const findCachedBookById = (id: string): Book | null => {
+  for (const item of Object.values(cache)) {
+    const result = findBookInValue(item.data, id);
+    if (result) return result;
+  }
+
+  if (typeof window === 'undefined') return null;
+
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index) || '';
+      if (!key.startsWith(CACHE_STORAGE_PREFIX) && !key.startsWith('bitlibrary-research-cache') && key !== 'bitlibrary-local-user-v1') continue;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      const result = findBookInValue(parsed?.data ?? parsed, id);
+      if (result) return result;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
 const normalizeCacheKey = (value: string) => value.trim().toLowerCase();
 const isAbortError = (error: unknown): boolean => {
   return (error as { name?: string })?.name === 'AbortError';
 };
 const getGutendexBase = () => ((import.meta as any).env?.DEV ? GUTENDEX_DEV_PROXY_BASE : GUTENDEX_BASE);
-type ProviderName = 'gutendex' | 'google' | 'itbookstore' | 'openlibrary' | 'internetarchive' | 'yobook' | 'arxiv' | 'semanticscholar' | 'pubmedcentral' | 'unpaywall';
+type ProviderName = 'gutendex' | 'google' | 'itbookstore' | 'openlibrary' | 'internetarchive' | 'yobook' | 'arxiv' | 'semanticscholar' | 'pubmedcentral' | 'europepmc' | 'openalex' | 'crossref' | 'datacite' | 'unpaywall';
 type ProviderHealth = { disabledUntil: number; failures: number; lastWarnAt: number };
 const PROVIDER_COOLDOWN_DEFAULT_MS = 3 * 60 * 1000;
 const PROVIDER_HEALTH: Record<ProviderName, ProviderHealth> = {
@@ -79,6 +135,10 @@ const PROVIDER_HEALTH: Record<ProviderName, ProviderHealth> = {
   arxiv: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
   semanticscholar: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
   pubmedcentral: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
+  europepmc: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
+  openalex: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
+  crossref: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
+  datacite: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
   unpaywall: { disabledUntil: 0, failures: 0, lastWarnAt: 0 },
 };
 const isProviderInCooldown = (provider: ProviderName): boolean => {
@@ -122,6 +182,11 @@ const toText = (value: unknown, fallback = ''): string => {
   return String(value);
 };
 
+const toOptionalText = (value: unknown): string | undefined => {
+  const text = toText(value, '').trim();
+  return text || undefined;
+};
+
 const getAbsoluteYoBookAssetUrl = (url?: string | null): string | undefined => {
   if (!url) return undefined;
   if (/^https?:\/\//i.test(url)) return url;
@@ -135,6 +200,28 @@ const isPdfLikeResourceUrl = (url?: string): boolean => (
     /\.pdf(?:$|[?#])/i.test(url || '')
     || /[?&]ext=pdf(?:&|$)/i.test(url || '')
   )
+);
+
+const mapQuestionPapers = (items: unknown) => (
+  Array.isArray(items)
+    ? items
+      .map((paper: any) => {
+        const title = toText(paper?.title, '').trim();
+        if (!title) return null;
+
+        return {
+          title,
+          year: toOptionalText(paper?.year),
+          readUrl: getAbsoluteYoBookAssetUrl(paper?.readUrl),
+          url: getAbsoluteYoBookAssetUrl(paper?.url),
+          downloadUrl: getAbsoluteYoBookAssetUrl(paper?.downloadUrl),
+          sourceUrl: getAbsoluteYoBookAssetUrl(paper?.sourceUrl),
+          coverUrl: getAbsoluteYoBookAssetUrl(paper?.coverUrl),
+          fileSize: toOptionalText(paper?.fileSize),
+        };
+      })
+      .filter((paper): paper is NonNullable<typeof paper> => Boolean(paper))
+    : []
 );
 
 const ARCHIVE_READABLE_FORMATS = new Set([
@@ -631,10 +718,197 @@ const getEnvValue = (key: string): string => (
   String(((import.meta as any).env?.[key] || '')).trim()
 );
 
+const getResearchProxyUrl = (provider: string, params: Record<string, string>): string => {
+  const searchParams = new URLSearchParams({ provider, ...params });
+  return `/api/research-proxy?${searchParams.toString()}`;
+};
+
 const getAcademicCoverUrl = (source: string) => {
   const seed = encodeURIComponent(source);
   return `https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&q=80&w=400&seed=${seed}`;
 };
+
+const stripMarkup = (value: string) => value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+const stableResearchId = (prefix: string, value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash) + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return `${prefix}-${Math.abs(hash).toString(36)}`;
+};
+
+const encodeResearchIdPart = (value: string) => encodeURIComponent(value).replace(/%/g, '~');
+const decodeResearchIdPart = (value: string) => decodeURIComponent(value.replace(/~/g, '%'));
+
+const getEuropePmcBookId = (item: any) => {
+  const pmcid = toText(item.pmcid);
+  const externalId = toText(item.id || item.pmid);
+  const doi = normalizeDoi(item.doi);
+  if (pmcid) return `epmc-${encodeResearchIdPart(pmcid)}`;
+  if (externalId) return `epmc-ext-${encodeResearchIdPart(externalId)}`;
+  if (doi) return `epmc-doi-${encodeResearchIdPart(doi)}`;
+  return stableResearchId('epmc', toText(item.title));
+};
+
+const getOpenAlexBookId = (work: any) => {
+  const workId = toText(work.id).replace(/^https:\/\/openalex\.org\//i, '');
+  const doi = normalizeDoi(work.doi);
+  if (workId) return `openalex-${encodeResearchIdPart(workId)}`;
+  if (doi) return `openalex-doi-${encodeResearchIdPart(doi)}`;
+  return stableResearchId('openalex', toText(work.display_name || work.title));
+};
+
+const getCrossrefBookId = (item: any) => {
+  const doi = normalizeDoi(item.DOI);
+  if (doi) return `crossref-doi-${encodeResearchIdPart(doi)}`;
+  return stableResearchId('crossref', item.URL || toText(Array.isArray(item.title) ? item.title[0] : item.title));
+};
+
+const getDataCiteBookId = (item: any) => {
+  const doi = normalizeDoi(item.attributes?.doi || item.id);
+  if (doi) return `datacite-doi-${encodeResearchIdPart(doi)}`;
+  return stableResearchId('datacite', item.id || toText(item.attributes?.title));
+};
+
+const isResearchPdfUrl = (url?: string) => /\.pdf(?:$|[?#])/i.test(url || '') || /\/pdf\/?$/i.test(url || '') || /\/api\/getpdf(?:$|[?#])/i.test(url || '') || /[?&](?:format|type|ext)=pdf(?:&|$)/i.test(url || '');
+const isResearchEpubUrl = (url?: string) => /\.epub(?:$|[?#])/i.test(url || '') || /[?&](?:format|type|ext)=epub(?:&|$)/i.test(url || '');
+const isResearchXmlUrl = (url?: string) => /\.xml(?:$|[?#])/i.test(url || '') || /fulltextxml/i.test(url || '') || /[?&](?:format|type|ext)=xml(?:&|$)/i.test(url || '');
+const isResearchTextUrl = (url?: string) => /\.txt(?:$|[?#])/i.test(url || '') || /[?&](?:format|type|ext)=(?:txt|text)(?:&|$)/i.test(url || '');
+const isResearchPackageUrl = (url?: string) => /\.(?:tar\.gz|tgz|zip|gz)(?:$|[?#])/i.test(url || '');
+const RESEARCH_READER_BLOCKED_HOSTS = new Set([
+  'academic.oup.com',
+  'mdpi.com',
+  'pmc.ncbi.nlm.nih.gov',
+  'www.mdpi.com',
+  'www.ncbi.nlm.nih.gov',
+]);
+
+const isBlockedResearchReaderUrl = (url: string): boolean => {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return RESEARCH_READER_BLOCKED_HOSTS.has(hostname);
+  } catch {
+    return true;
+  }
+};
+
+const normalizeResearchUrl = (value?: string) => {
+  const url = toText(value);
+  if (!url) return '';
+  if (/^ftp:\/\/ftp\.ncbi\.nlm\.nih\.gov\//i.test(url)) {
+    return url.replace(/^ftp:\/\/ftp\.ncbi\.nlm\.nih\.gov/i, 'https://ftp.ncbi.nlm.nih.gov');
+  }
+  return url;
+};
+
+const getResearchFormat = (url: string, type = '', label = ''): ResourceFormat => {
+  const signature = `${type} ${label}`.toLowerCase();
+  const hostname = (() => {
+    try {
+      return new URL(url).hostname.toLowerCase();
+    } catch {
+      return '';
+    }
+  })();
+  if (hostname === 'doi.org' || hostname === 'dx.doi.org' || signature.includes('doi') || signature.includes('landing') || signature.includes('source page')) return 'source';
+  if (isResearchPdfUrl(url) || signature.includes('pdf') || signature.includes('application/pdf')) return 'pdf';
+  if (isResearchEpubUrl(url) || signature.includes('epub')) return 'epub';
+  if (isResearchXmlUrl(url) || signature.includes('xml') || signature.includes('jats') || signature.includes('bioc')) return 'xml';
+  if (isResearchPackageUrl(url) || signature.includes('tgz') || signature.includes('tar') || signature.includes('package')) return 'package';
+  if (/html?/i.test(signature) || signature.includes('fulltext') || signature.includes('full text') || /\.html?(?:$|[?#])/i.test(url)) return 'html';
+  if (isResearchTextUrl(url) || signature.includes('text/plain') || signature === 'text' || signature.includes(' plain text')) return 'text';
+  return 'unknown';
+};
+
+const isEmbeddableResearchResource = (url: string, format: ResourceFormat) => {
+  if (format === 'pdf' || format === 'text' || format === 'xml') return true;
+  if (format === 'html') return !isBlockedResearchReaderUrl(url);
+  return false;
+};
+
+const buildResearchResourceLinks = (
+  items: Array<{ url?: string; type?: string; label?: string; provider?: string; relation?: ResourceLink['relation'] }>,
+  provider: string,
+): ResourceLink[] => {
+  const seen = new Set<string>();
+  return items
+    .map((item) => {
+      const url = normalizeResearchUrl(item.url);
+      const type = toText(item.type);
+      const label = toText(item.label);
+      const format = getResearchFormat(url, type, label);
+      const relation = item.relation || (format === 'source' || format === 'html' || format === 'unknown' ? 'source' : 'download');
+      return {
+        url,
+        format,
+        provider: item.provider || provider,
+        label: label || type || format,
+        relation,
+        embeddable: isEmbeddableResearchResource(url, format),
+        downloadable: ['pdf', 'text', 'xml', 'epub', 'package'].includes(format),
+      };
+    })
+    .filter((item) => {
+      if (!/^https?:\/\//i.test(item.url)) return false;
+      const key = item.url.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const chooseResearchResourceUrls = (resourceLinks: ResourceLink[]) => {
+  const byFormat = (formats: ResourceFormat[], predicate: (link: ResourceLink) => boolean = () => true) => (
+    formats.flatMap((format) => resourceLinks.filter((link) => (
+      link.format === format
+      && link.relation !== 'source'
+      && link.relation !== 'doi'
+      && link.relation !== 'metadata'
+      && predicate(link)
+    )))[0]
+  );
+  const reader = byFormat(['pdf', 'text', 'xml'], (link) => link.embeddable !== false)
+    || byFormat(['html'], (link) => link.embeddable === true)
+    || byFormat(['epub']);
+  const download = byFormat(['pdf', 'text', 'xml', 'epub', 'package'], (link) => link.downloadable !== false);
+
+  return {
+    readerUrl: reader?.url,
+    downloadUrl: download?.url,
+  };
+};
+
+const choosePmcResourceUrls = (resourceLinks: ResourceLink[]) => {
+  const byFormat = (formats: ResourceFormat[], predicate: (link: ResourceLink) => boolean = () => true) => (
+    formats.flatMap((format) => resourceLinks.filter((link) => (
+      link.format === format
+      && link.relation !== 'source'
+      && link.relation !== 'doi'
+      && link.relation !== 'metadata'
+      && predicate(link)
+    )))[0]
+  );
+  const reader = byFormat(['xml', 'text'], (link) => link.embeddable !== false)
+    || byFormat(['html'], (link) => link.embeddable === true)
+    || byFormat(['pdf'], (link) => link.embeddable !== false);
+  const download = byFormat(['pdf', 'xml', 'text', 'epub', 'package'], (link) => link.downloadable !== false);
+
+  return {
+    readerUrl: reader?.url,
+    downloadUrl: download?.url,
+  };
+};
+
+const hasUsableResearchResource = (book: Book): boolean => (
+  (book.resourceLinks || []).some((link) => (
+    ['pdf', 'text', 'xml', 'html', 'epub'].includes(link.format)
+    && link.relation !== 'source'
+    && link.relation !== 'doi'
+    && (link.embeddable !== false || link.downloadable !== false)
+  ))
+);
 
 const normalizeDoi = (value?: string | null): string | undefined => {
   const doi = (value || '').trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '');
@@ -646,6 +920,10 @@ const getFirstXmlText = (entry: Element, tagName: string): string => {
 };
 
 const getArxivId = (idUrl: string) => idUrl.split('/abs/').pop()?.trim() || idUrl.split('/').pop()?.trim() || idUrl;
+const getArxivPdfUrl = (arxivId: string, href?: string | null) => {
+  const url = normalizeResearchUrl(href || `https://arxiv.org/pdf/${arxivId}`);
+  return /\.pdf(?:$|[?#])/i.test(url) ? url : `${url.replace(/\/$/, '')}.pdf`;
+};
 
 const mapArxivEntryToBook = (entry: Element): Book => {
   const idUrl = getFirstXmlText(entry, 'id');
@@ -654,15 +932,21 @@ const mapArxivEntryToBook = (entry: Element): Book => {
     .map((author) => getFirstXmlText(author, 'name'))
     .filter(Boolean);
   const links = Array.from(entry.getElementsByTagName('link'));
-  const pdfUrl = links.find((link) => (
+  const pdfUrl = getArxivPdfUrl(arxivId, links.find((link) => (
     link.getAttribute('title') === 'pdf'
     || link.getAttribute('type') === 'application/pdf'
-  ))?.getAttribute('href') || `https://arxiv.org/pdf/${arxivId}`;
+  ))?.getAttribute('href'));
   const primaryCategory = Array.from(entry.getElementsByTagName('arxiv:primary_category'))[0]?.getAttribute('term')
     || Array.from(entry.getElementsByTagName('category'))[0]?.getAttribute('term')
     || 'Research Paper';
   const publishedYear = parseInt(getFirstXmlText(entry, 'published').slice(0, 4), 10);
   const doi = normalizeDoi(getFirstXmlText(entry, 'arxiv:doi') || getFirstXmlText(entry, 'doi'));
+  const resourceLinks = buildResearchResourceLinks([
+    { url: pdfUrl, type: 'application/pdf', label: 'PDF', provider: 'arXiv', relation: 'download' },
+    { url: idUrl || `https://arxiv.org/abs/${arxivId}`, label: 'source page', provider: 'arXiv', relation: 'source' },
+    ...(doi ? [{ url: `https://doi.org/${doi}`, label: 'doi', provider: 'DOI', relation: 'doi' as const }] : []),
+  ], 'arXiv');
+  const readable = chooseResearchResourceUrls(resourceLinks);
 
   return {
     id: `arxiv-${arxivId}`,
@@ -676,8 +960,9 @@ const mapArxivEntryToBook = (entry: Element): Book => {
     source: 'arXiv',
     subjects: [primaryCategory],
     keywords: [arxivId, ...(doi ? [doi] : [])],
-    externalUrl: pdfUrl,
-    downloadUrl: pdfUrl,
+    externalUrl: readable.readerUrl,
+    downloadUrl: readable.downloadUrl,
+    resourceLinks,
     sourceUrl: idUrl || `https://arxiv.org/abs/${arxivId}`,
     downloads: 0,
   };
@@ -688,6 +973,12 @@ const mapSemanticScholarPaperToBook = (paper: any): Book => {
   const fieldsOfStudy = Array.isArray(paper.fieldsOfStudy) ? paper.fieldsOfStudy.filter((field: unknown): field is string => typeof field === 'string') : [];
   const doi = normalizeDoi(paper.externalIds?.DOI);
   const openPdfUrl = toText(paper.openAccessPdf?.url);
+  const resourceLinks = buildResearchResourceLinks([
+    { url: openPdfUrl, type: 'application/pdf', label: 'PDF', provider: 'Semantic Scholar', relation: 'download' },
+    { url: paper.url, label: 'source page', provider: 'Semantic Scholar', relation: 'source' },
+    ...(doi ? [{ url: `https://doi.org/${doi}`, label: 'doi', provider: 'DOI', relation: 'doi' as const }] : []),
+  ], 'Semantic Scholar');
+  const readable = chooseResearchResourceUrls(resourceLinks);
 
   return {
     id: `s2-${paper.paperId}`,
@@ -701,11 +992,295 @@ const mapSemanticScholarPaperToBook = (paper: any): Book => {
     source: 'Semantic Scholar',
     subjects: fieldsOfStudy.slice(0, 8),
     keywords: [paper.paperId, ...(doi ? [doi] : [])].filter(Boolean),
-    externalUrl: openPdfUrl || paper.url,
-    downloadUrl: openPdfUrl || undefined,
+    externalUrl: readable.readerUrl,
+    downloadUrl: readable.downloadUrl,
+    resourceLinks,
     sourceUrl: paper.url,
     downloads: Number(paper.citationCount || 0),
   };
+};
+
+const decodeOpenAlexAbstract = (abstractIndex: any): string => {
+  if (!abstractIndex || typeof abstractIndex !== 'object') return '';
+  const words: Array<[string, number]> = [];
+  Object.entries(abstractIndex).forEach(([word, positions]) => {
+    if (!Array.isArray(positions)) return;
+    positions.forEach((position) => {
+      if (Number.isFinite(position)) words.push([word, Number(position)]);
+    });
+  });
+
+  return words.sort((a, b) => a[1] - b[1]).map(([word]) => word).join(' ');
+};
+
+const mapOpenAlexWorkToBook = (work: any): Book => {
+  const authors = (Array.isArray(work.authorships) ? work.authorships : [])
+    .map((entry: any) => toText(entry?.author?.display_name))
+    .filter(Boolean);
+  const topics = [
+    ...(Array.isArray(work.topics) ? work.topics.map((topic: any) => toText(topic?.display_name)) : []),
+    ...(Array.isArray(work.concepts) ? work.concepts.map((concept: any) => toText(concept?.display_name)) : []),
+  ].filter(Boolean);
+  const doi = normalizeDoi(work.doi);
+  const sourceUrl = toText(work.primary_location?.landing_page_url) || toText(work.id) || (doi ? `https://doi.org/${doi}` : undefined);
+  const openAlexLocations = [
+    work.best_oa_location,
+    work.primary_location,
+    ...(Array.isArray(work.locations) ? work.locations : []),
+  ].filter(Boolean);
+  const resourceLinks = buildResearchResourceLinks([
+    ...openAlexLocations.flatMap((location: any) => ([
+      { url: location?.pdf_url || location?.url_for_pdf, type: 'application/pdf', label: 'PDF', provider: 'OpenAlex', relation: 'download' as const },
+      { url: location?.landing_page_url || location?.url, type: location?.is_oa ? 'text/html' : '', label: location?.is_oa ? 'open access html' : 'source page', provider: 'OpenAlex', relation: location?.is_oa ? 'reader' as const : 'source' as const },
+    ])),
+    { url: sourceUrl, label: 'source page', provider: 'OpenAlex', relation: 'source' },
+    ...(doi ? [{ url: `https://doi.org/${doi}`, label: 'doi', provider: 'DOI', relation: 'doi' as const }] : []),
+  ], 'OpenAlex');
+  const readable = chooseResearchResourceUrls(resourceLinks);
+
+  return {
+    id: getOpenAlexBookId(work),
+    title: toText(work.title || work.display_name, 'Untitled OpenAlex Work'),
+    author: authors.join(', ') || 'Unknown Authors',
+    authors: authors.map((name: string) => ({ name })),
+    category: topics[0] || toText(work.primary_location?.source?.display_name, 'Research Work'),
+    description: decodeOpenAlexAbstract(work.abstract_inverted_index) || 'Scholarly work indexed by OpenAlex.',
+    coverUrl: getAcademicCoverUrl('openalex'),
+    year: Number.isFinite(Number(work.publication_year)) ? Number(work.publication_year) : undefined,
+    source: 'OpenAlex',
+    subjects: topics.slice(0, 8),
+    keywords: [toText(work.id), ...(doi ? [doi] : [])].filter(Boolean),
+    externalUrl: readable.readerUrl,
+    downloadUrl: readable.downloadUrl,
+    resourceLinks,
+    sourceUrl,
+    downloads: Number(work.cited_by_count || 0),
+  };
+};
+
+const getCrossrefDateYear = (item: any): number | undefined => {
+  const dateParts = item?.published?.['date-parts'] || item?.published_print?.['date-parts'] || item?.published_online?.['date-parts'];
+  const year = Number(Array.isArray(dateParts) ? dateParts[0]?.[0] : undefined);
+  return Number.isFinite(year) ? year : undefined;
+};
+
+const CROSSREF_BOOK_TYPES = new Set([
+  'book',
+  'book-chapter',
+  'book-part',
+  'book-section',
+  'edited-book',
+  'monograph',
+  'reference-book',
+  'reference-entry',
+]);
+
+const chooseCrossrefResourceUrls = (resourceLinks: ResourceLink[]) => {
+  const findByFormat = (formats: ResourceFormat[]) => (
+    formats.flatMap((format) => resourceLinks.filter((link) => (
+      link.format === format
+      && link.relation !== 'source'
+      && link.relation !== 'doi'
+      && link.relation !== 'metadata'
+      && link.embeddable !== false
+    )))[0]
+  );
+  const reader = findByFormat(['xml', 'text', 'html']) || findByFormat(['pdf']);
+  const download = resourceLinks.find((link) => link.format === 'pdf' && !['source', 'doi', 'metadata'].includes(link.relation || '') && link.downloadable !== false)
+    || resourceLinks.find((link) => ['xml', 'text', 'epub', 'package'].includes(link.format) && !['source', 'doi', 'metadata'].includes(link.relation || '') && link.downloadable !== false);
+
+  return {
+    readerUrl: reader?.url,
+    downloadUrl: download?.url,
+  };
+};
+
+const mapCrossrefWorkToBook = (item: any): Book => {
+  const authors = (Array.isArray(item.author) ? item.author : [])
+    .map((author: any) => [author.given, author.family].filter(Boolean).join(' ').trim())
+    .filter(Boolean);
+  const title = Array.isArray(item.title) ? item.title[0] : item.title;
+  const subjects = Array.isArray(item.subject) ? item.subject.filter((subject: unknown): subject is string => typeof subject === 'string') : [];
+  const doi = normalizeDoi(item.DOI);
+  const sourceUrl = item.URL || (doi ? `https://doi.org/${doi}` : undefined);
+  const resourceLinks = buildResearchResourceLinks([
+    ...(Array.isArray(item.link) ? item.link : []).map((link: any) => ({
+      url: link?.URL || link?.url,
+      type: link?.['content-type'] || link?.contentType,
+      label: link?.['intended-application'] || link?.type || 'full text',
+      provider: 'Crossref',
+      relation: 'download' as const,
+    })),
+    { url: sourceUrl, label: 'source page', provider: 'Crossref', relation: 'source' },
+    ...(doi ? [{ url: `https://doi.org/${doi}`, label: 'doi', provider: 'DOI', relation: 'doi' as const }] : []),
+  ], 'Crossref');
+  const readable = chooseCrossrefResourceUrls(resourceLinks);
+
+  return {
+    id: getCrossrefBookId(item),
+    title: toText(title, 'Untitled Crossref Work'),
+    author: authors.join(', ') || 'Unknown Authors',
+    authors: authors.map((name: string) => ({ name })),
+    category: subjects[0] || toText(item.type, 'Research Work'),
+    description: stripMarkup(toText(item.abstract, 'Scholarly metadata record from Crossref.')),
+    coverUrl: getAcademicCoverUrl('crossref'),
+    year: getCrossrefDateYear(item),
+    source: 'Crossref',
+    subjects: subjects.slice(0, 8),
+    keywords: [doi, item.URL].filter(Boolean),
+    externalUrl: readable.readerUrl,
+    downloadUrl: readable.downloadUrl,
+    resourceLinks,
+    sourceUrl,
+    downloads: Number(item['is-referenced-by-count'] || 0),
+  };
+};
+
+const mapEuropePmcWorkToBook = (item: any): Book => {
+  const authors = Array.isArray(item?.authorList?.author)
+    ? item.authorList.author.map((author: any) => toText(author?.fullName)).filter(Boolean)
+    : toText(item.authorString).split(',').map((author) => author.trim()).filter(Boolean);
+  const doi = normalizeDoi(item.doi);
+  const pmcid = toText(item.pmcid);
+  const sourceUrl = toText(item.fullTextUrl) || (pmcid ? `https://pmc.ncbi.nlm.nih.gov/articles/${pmcid}/` : `https://europepmc.org/article/${toText(item.source, 'MED')}/${toText(item.id)}`);
+  const fullTextEntries = Array.isArray(item?.fullTextUrlList?.fullTextUrl) ? item.fullTextUrlList.fullTextUrl : [];
+  const resourceLinks = buildResearchResourceLinks([
+    ...fullTextEntries.map((entry: any) => ({
+      url: entry?.url,
+      type: entry?.documentStyle,
+      label: [entry?.availability, entry?.site, entry?.documentStyle].filter(Boolean).join(' '),
+      provider: entry?.site || 'Europe PMC',
+      relation: 'download' as const,
+    })),
+    ...(pmcid ? [
+      { url: `https://www.ebi.ac.uk/europepmc/webservices/rest/${pmcid}/fullTextXML`, type: 'application/xml', label: 'Full text XML', provider: 'Europe PMC', relation: 'reader' as const },
+    ] : []),
+    { url: sourceUrl, label: 'source page', provider: 'Europe PMC', relation: 'source' },
+    ...(doi ? [{ url: `https://doi.org/${doi}`, label: 'doi', provider: 'DOI', relation: 'doi' as const }] : []),
+  ], 'Europe PMC');
+  const readable = chooseResearchResourceUrls(resourceLinks);
+
+  return {
+    id: getEuropePmcBookId(item),
+    title: toText(item.title, 'Untitled Europe PMC Article'),
+    author: authors.join(', ') || 'Unknown Authors',
+    authors: authors.map((name: string) => ({ name })),
+    category: toText(item.journalTitle, 'Biomedical Research'),
+    description: stripMarkup(toText(item.abstractText, 'Publication record indexed by Europe PMC.')),
+    coverUrl: getAcademicCoverUrl('europe-pmc'),
+    year: Number.isFinite(Number(item.pubYear)) ? Number(item.pubYear) : undefined,
+    source: 'Europe PMC',
+    subjects: [toText(item.journalTitle, 'Biomedical Research')],
+    keywords: [toText(item.id), pmcid, ...(doi ? [doi] : [])].filter(Boolean),
+    externalUrl: readable.readerUrl,
+    downloadUrl: readable.downloadUrl,
+    resourceLinks,
+    sourceUrl,
+    downloads: Number(item.citedByCount || 0),
+  };
+};
+
+const mapDataCiteDoiToBook = (item: any): Book => {
+  const attributes = item.attributes || {};
+  const authors = (Array.isArray(attributes.creators) ? attributes.creators : [])
+    .map((creator: any) => toText(creator?.name))
+    .filter(Boolean);
+  const title = Array.isArray(attributes.titles) ? attributes.titles[0]?.title : attributes.title;
+  const subjects = (Array.isArray(attributes.subjects) ? attributes.subjects : [])
+    .map((subject: any) => toText(subject?.subject || subject))
+    .filter(Boolean);
+  const description = (Array.isArray(attributes.descriptions) ? attributes.descriptions : [])
+    .map((entry: any) => toText(entry?.description))
+    .find(Boolean);
+  const doi = normalizeDoi(attributes.doi || item.id);
+  const contentUrls = Array.isArray(attributes.contentUrl) ? attributes.contentUrl : (attributes.contentUrl ? [attributes.contentUrl] : []);
+  const relatedUrls = Array.isArray(attributes.relatedIdentifiers)
+    ? attributes.relatedIdentifiers
+    : [];
+  const sourceUrl = toText(attributes.url) || (doi ? `https://doi.org/${doi}` : undefined);
+  const resourceLinks = buildResearchResourceLinks([
+    ...contentUrls.map((url: unknown) => ({ url: toText(url), label: 'content', provider: 'DataCite', relation: 'download' as const })),
+    ...relatedUrls.map((entry: any) => ({
+      url: entry?.relatedIdentifier,
+      type: entry?.relatedIdentifierType,
+      label: entry?.relationType || 'related',
+      provider: 'DataCite',
+      relation: 'metadata' as const,
+    })),
+    { url: sourceUrl, label: 'source page', provider: 'DataCite', relation: 'source' },
+    ...(doi ? [{ url: `https://doi.org/${doi}`, label: 'doi', provider: 'DOI', relation: 'doi' as const }] : []),
+  ], 'DataCite');
+  const readable = chooseResearchResourceUrls(resourceLinks);
+
+  return {
+    id: getDataCiteBookId(item),
+    title: toText(title, 'Untitled DataCite Record'),
+    author: authors.join(', ') || 'Unknown Creators',
+    authors: authors.map((name: string) => ({ name })),
+    category: toText(attributes.types?.resourceTypeGeneral || attributes.types?.resourceType, 'Research Output'),
+    description: stripMarkup(description || 'Research output metadata from DataCite.'),
+    coverUrl: getAcademicCoverUrl('datacite'),
+    year: Number.isFinite(Number(attributes.publicationYear)) ? Number(attributes.publicationYear) : undefined,
+    source: 'DataCite',
+    subjects: subjects.slice(0, 8),
+    keywords: [doi, item.id].filter(Boolean),
+    externalUrl: readable.readerUrl,
+    downloadUrl: readable.downloadUrl,
+    resourceLinks,
+    sourceUrl,
+    downloads: Number(attributes.citationCount || 0),
+  };
+};
+
+const getZenodoRecordIdFromDoi = (doi?: string): string | undefined => {
+  const match = normalizeDoi(doi)?.match(/^10\.5281\/zenodo\.(\d+)$/i);
+  return match?.[1];
+};
+
+const fetchZenodoResourceLinks = async (doi?: string, signal?: AbortSignal): Promise<ResourceLink[]> => {
+  const recordId = getZenodoRecordIdFromDoi(doi);
+  if (!recordId) return [];
+
+  try {
+    const response = await fetch(getResearchProxyUrl('zenodo-record', { recordId }), { signal });
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const files = Array.isArray(data.files) ? data.files : [];
+    return buildResearchResourceLinks(files.map((file: any) => ({
+      url: file?.links?.self,
+      type: file?.type || file?.mimetype,
+      label: file?.key || 'Zenodo file',
+      provider: 'Zenodo',
+      relation: 'download' as const,
+    })), 'Zenodo');
+  } catch {
+    return [];
+  }
+};
+
+const enrichDataCiteWithRepositoryFiles = async (books: Book[], signal?: AbortSignal): Promise<Book[]> => {
+  const enriched = await Promise.all(books.map(async (book) => {
+    const doi = book.keywords?.map(normalizeDoi).find(Boolean);
+    const repositoryLinks = await fetchZenodoResourceLinks(doi, signal);
+    if (repositoryLinks.length === 0) return book;
+
+    const resourceLinks = buildResearchResourceLinks([
+      ...(book.resourceLinks || []),
+      ...repositoryLinks,
+    ], 'DataCite');
+    const readable = chooseResearchResourceUrls(resourceLinks);
+
+    return {
+      ...book,
+      externalUrl: readable.readerUrl || book.externalUrl,
+      downloadUrl: readable.downloadUrl || book.downloadUrl,
+      resourceLinks,
+      providerSource: book.providerSource || 'Zenodo',
+    };
+  }));
+
+  return enriched.filter(hasUsableResearchResource);
 };
 
 const getPmcArticleId = (item: any, type: string): string | undefined => {
@@ -719,6 +1294,14 @@ const mapPmcSummaryToBook = (item: any): Book => {
   const doi = normalizeDoi(getPmcArticleId(item, 'doi'));
   const year = parseInt(String(item.pubdate || '').match(/\d{4}/)?.[0] || '', 10);
   const articleUrl = `https://pmc.ncbi.nlm.nih.gov/articles/${pmcid}/`;
+  const resourceLinks = buildResearchResourceLinks([
+    { url: `https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_xml/${pmcid}/unicode`, type: 'application/xml', label: 'BioC full text XML', provider: 'PubMed Central BioC', relation: 'reader' },
+    { url: `https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/${pmcid}/unicode`, type: 'application/json', label: 'BioC full text JSON', provider: 'PubMed Central BioC', relation: 'download' },
+    { url: `https://pmc.ncbi.nlm.nih.gov/articles/${pmcid}/pdf/`, type: 'application/pdf', label: 'PDF', provider: 'PubMed Central', relation: 'download' },
+    { url: articleUrl, label: 'source page', provider: 'PubMed Central', relation: 'source' },
+    ...(doi ? [{ url: `https://doi.org/${doi}`, label: 'doi', provider: 'DOI', relation: 'doi' as const }] : []),
+  ], 'PubMed Central');
+  const readable = choosePmcResourceUrls(resourceLinks);
 
   return {
     id: `pmc-${item.uid}`,
@@ -736,30 +1319,40 @@ const mapPmcSummaryToBook = (item: any): Book => {
     source: 'PubMed Central',
     subjects: [toText(item.fulljournalname, 'Biomedical Research')],
     keywords: [pmcid, ...(doi ? [doi] : [])],
-    externalUrl: articleUrl,
+    externalUrl: readable.readerUrl,
+    downloadUrl: readable.downloadUrl,
+    resourceLinks,
     sourceUrl: articleUrl,
     downloads: 0,
   };
 };
 
-const fetchUnpaywallPdfUrl = async (doi: string, signal?: AbortSignal): Promise<string | null> => {
+const fetchUnpaywallResourceLinks = async (doi: string, signal?: AbortSignal): Promise<ResourceLink[]> => {
   const email = getEnvValue('VITE_UNPAYWALL_EMAIL');
-  if (!email || isProviderInCooldown('unpaywall')) return null;
+  if (!email || isProviderInCooldown('unpaywall')) return [];
 
   try {
-    const response = await fetch(`${UNPAYWALL_BASE}/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`, { signal });
+    const response = await fetch(getResearchProxyUrl('unpaywall', { doi, email }), { signal });
     if (!response.ok) {
       markProviderFailure('unpaywall', response.status);
-      return null;
+      return [];
     }
 
     const data = await response.json();
     const location = data.best_oa_location || {};
+    const resourceLinks = buildResearchResourceLinks([
+      { url: location.url_for_pdf, type: 'application/pdf', label: 'best open access PDF', provider: 'Unpaywall', relation: 'download' },
+      { url: location.url_for_landing_page || location.url, type: 'text/html', label: 'landing page', provider: 'Unpaywall', relation: 'source' },
+      ...((Array.isArray(data.oa_locations) ? data.oa_locations : []).flatMap((entry: any) => ([
+        { url: entry?.url_for_pdf, type: 'application/pdf', label: [entry?.host_type, entry?.version, 'PDF'].filter(Boolean).join(' '), provider: 'Unpaywall', relation: 'download' as const },
+        { url: entry?.url_for_landing_page || entry?.url, type: 'text/html', label: [entry?.host_type, entry?.version, 'landing page'].filter(Boolean).join(' '), provider: 'Unpaywall', relation: 'source' as const },
+      ]))),
+    ], 'Unpaywall');
     markProviderSuccess('unpaywall');
-    return location.url_for_pdf || location.url || data.oa_locations?.find((entry: any) => entry?.url_for_pdf || entry?.url)?.url_for_pdf || null;
+    return resourceLinks;
   } catch (error) {
     if (!isAbortError(error)) markProviderFailure('unpaywall');
-    return null;
+    return [];
   }
 };
 
@@ -768,11 +1361,23 @@ const enrichWithUnpaywall = async (books: Book[], signal?: AbortSignal): Promise
   if (!email) return books;
 
   const enriched = await Promise.all(books.map(async (book, index) => {
-    if (book.downloadUrl || index >= 12) return book;
+    if (index >= 12) return book;
     const doi = book.keywords?.map(normalizeDoi).find(Boolean);
     if (!doi) return book;
-    const oaUrl = await fetchUnpaywallPdfUrl(doi, signal);
-    return oaUrl ? { ...book, downloadUrl: oaUrl, externalUrl: book.externalUrl || oaUrl, providerSource: 'Unpaywall' } : book;
+    const oaLinks = await fetchUnpaywallResourceLinks(doi, signal);
+    if (oaLinks.length === 0) return book;
+    const resourceLinks = buildResearchResourceLinks([
+      ...(book.resourceLinks || []),
+      ...oaLinks,
+    ], book.source || 'Research');
+    const readable = chooseResearchResourceUrls(resourceLinks);
+    return {
+      ...book,
+      downloadUrl: book.downloadUrl || readable.downloadUrl,
+      externalUrl: book.externalUrl || readable.readerUrl,
+      resourceLinks,
+      providerSource: 'Unpaywall',
+    };
   }));
 
   return enriched;
@@ -783,6 +1388,8 @@ const mapYoBookToBook = (item: any): Book => {
   const subject = toText(item.subject, item.category || 'Textbook');
   const curriculum = toText(item.curriculum, item.country === 'in' || item.source === 'ncert-official' ? 'NCERT' : 'CDC Nepal');
   const language = toText(item.language, 'en');
+  const questionPapers = mapQuestionPapers(item.question_papers);
+  const isQuestionPaperCollection = questionPapers.length > 0;
   const pdfUrl = getAbsoluteYoBookAssetUrl(item.pdfUrl);
   const audioUrl = getAbsoluteYoBookAssetUrl(item.audioUrl);
   const readUrl = getAbsoluteYoBookAssetUrl(item.readUrl);
@@ -802,6 +1409,7 @@ const mapYoBookToBook = (item: any): Book => {
   const sourceKey = toText(item.source, 'yobook');
   const sourceLabel = YOBOOK_SOURCE_LABELS[sourceKey] || sourceKey;
   const category = toText(item.category, subject || 'Educational Resource');
+  const collectionName = toText(item.collection_name, '');
   const keywords = Array.isArray(item.keywords)
     ? item.keywords.filter((keyword: unknown): keyword is string => typeof keyword === 'string')
     : [];
@@ -818,18 +1426,20 @@ const mapYoBookToBook = (item: any): Book => {
     'Pustakalaya',
     ...keywords,
   ].filter((value, index, list): value is string => Boolean(value) && list.indexOf(value as string) === index);
-  const primaryResourceUrl = pdfUrl || chapterPdfUrl || audioUrl || readUrl || sourceUrl;
-  const downloadResourceUrl = pdfUrl || (isPdfLikeResourceUrl(readUrl) ? readUrl : undefined) || chapterPdfUrl || zipUrl || audioUrl;
+  const primaryResourceUrl = isQuestionPaperCollection ? undefined : (pdfUrl || chapterPdfUrl || audioUrl || readUrl || sourceUrl);
+  const downloadResourceUrl = isQuestionPaperCollection ? undefined : (pdfUrl || (isPdfLikeResourceUrl(readUrl) ? readUrl : undefined) || chapterPdfUrl || zipUrl || audioUrl);
 
   return {
     id: `yobook-${item.id}`,
     title: toText(item.title, 'Nepal Educational Resource'),
-    author: toText(item.author, 'Centre for Education and Human Resource Development'),
-    authors: [{ name: toText(item.author, 'Centre for Education and Human Resource Development') }],
+    author: collectionName || toText(item.author, 'Centre for Education and Human Resource Development'),
+    authors: [{ name: collectionName || toText(item.author, 'Centre for Education and Human Resource Development') }],
     category: subject || category,
     description: toText(
       item.description,
-      `${subject || category}${grade ? ` for Class ${grade}` : ''} from ${sourceLabel}.`
+      isQuestionPaperCollection
+        ? `${collectionName || sourceLabel} collection with ${questionPapers.length} question papers.`
+        : `${subject || category}${grade ? ` for Class ${grade}` : ''} from ${sourceLabel}.`
     ),
     coverUrl,
     subjects,
@@ -841,8 +1451,11 @@ const mapYoBookToBook = (item: any): Book => {
     detailUrl,
     sourceUrl,
     chapterPdfUrls,
+    collection_name: collectionName || undefined,
+    question_papers: questionPapers.length > 0 ? questionPapers : undefined,
+    questionPaperCount: questionPapers.length > 0 ? questionPapers.length : undefined,
     providerSource: sourceKey,
-    source: 'YoBook',
+    source: isQuestionPaperCollection ? sourceKey : 'YoBook',
     grade,
     level: typeof item.level === 'number' ? item.level : undefined,
     curriculum,
@@ -1417,7 +2030,7 @@ export const searchArxivPapers = async (query: string, signal?: AbortSignal): Pr
       sortBy: 'relevance',
       sortOrder: 'descending',
     });
-    const response = await fetch(`${ARXIV_API_BASE}?${params.toString()}`, { signal });
+    const response = await fetch(getResearchProxyUrl('arxiv', Object.fromEntries(params)), { signal });
     if (!response.ok) {
       markProviderFailure('arxiv', response.status);
       return [];
@@ -1456,7 +2069,7 @@ export const searchSemanticScholarPapers = async (query: string, signal?: AbortS
       limit: '12',
       fields: 'title,abstract,authors,year,venue,externalIds,url,openAccessPdf,fieldsOfStudy,citationCount,isOpenAccess',
     });
-    const response = await fetch(`${SEMANTIC_SCHOLAR_BASE}/paper/search?${params.toString()}`, { signal });
+    const response = await fetch(getResearchProxyUrl('semanticscholar', Object.fromEntries(params)), { signal });
     if (!response.ok) {
       markProviderFailure('semanticscholar', response.status);
       return [];
@@ -1489,14 +2102,15 @@ export const searchPubMedCentralArticles = async (query: string, signal?: AbortS
   }
 
   try {
+    const searchTerm = `(${query}) AND open access[filter]`;
     const searchParams = new URLSearchParams({
       db: 'pmc',
-      term: query,
+      term: searchTerm,
       retmode: 'json',
       retmax: '12',
       sort: 'relevance',
     });
-    const searchResponse = await fetch(`${NCBI_EUTILS_BASE}/esearch.fcgi?${searchParams.toString()}`, { signal });
+    const searchResponse = await fetch(getResearchProxyUrl('pmc-search', Object.fromEntries(searchParams)), { signal });
     if (!searchResponse.ok) {
       markProviderFailure('pubmedcentral', searchResponse.status);
       return [];
@@ -1515,7 +2129,7 @@ export const searchPubMedCentralArticles = async (query: string, signal?: AbortS
       id: ids.join(','),
       retmode: 'json',
     });
-    const summaryResponse = await fetch(`${NCBI_EUTILS_BASE}/esummary.fcgi?${summaryParams.toString()}`, { signal });
+    const summaryResponse = await fetch(getResearchProxyUrl('pmc-summary', Object.fromEntries(summaryParams)), { signal });
     if (!summaryResponse.ok) {
       markProviderFailure('pubmedcentral', summaryResponse.status);
       return [];
@@ -1526,7 +2140,8 @@ export const searchPubMedCentralArticles = async (query: string, signal?: AbortS
     const books = ids
       .map((id: string) => resultEntries[id])
       .filter(Boolean)
-      .map(mapPmcSummaryToBook);
+      .map(mapPmcSummaryToBook)
+      .filter(hasUsableResearchResource);
     const result = await enrichWithUnpaywall(books, signal);
     setInCache(cacheKey, result);
     markProviderSuccess('pubmedcentral');
@@ -1540,11 +2155,175 @@ export const searchPubMedCentralArticles = async (query: string, signal?: AbortS
   }
 };
 
+export const searchEuropePmcWorks = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `europe-pmc-search-${normalizeCacheKey(query)}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('europepmc')) {
+    warnProviderCooldown('europepmc');
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams({
+      query,
+      format: 'json',
+      pageSize: '12',
+      resultType: 'core',
+      synonym: 'true',
+    });
+    const response = await fetch(getResearchProxyUrl('europepmc', Object.fromEntries(params)), { signal });
+    if (!response.ok) {
+      markProviderFailure('europepmc', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const books = (Array.isArray(data.resultList?.result) ? data.resultList.result : [])
+      .filter((item: any) => item?.id && item?.title)
+      .map(mapEuropePmcWorkToBook)
+      .filter(hasUsableResearchResource);
+    const result = await enrichWithUnpaywall(books, signal);
+    setInCache(cacheKey, result);
+    markProviderSuccess('europepmc');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('europepmc');
+      console.error('Europe PMC search failed:', error);
+    }
+    return [];
+  }
+};
+
+export const searchOpenAlexWorks = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `openalex-search-${normalizeCacheKey(query)}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('openalex')) {
+    warnProviderCooldown('openalex');
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams({
+      search: query,
+      per_page: '12',
+      sort: 'relevance_score:desc',
+    });
+    const email = getEnvValue('VITE_UNPAYWALL_EMAIL');
+    if (email) params.set('mailto', email);
+
+    const response = await fetch(getResearchProxyUrl('openalex', Object.fromEntries(params)), { signal });
+    if (!response.ok) {
+      markProviderFailure('openalex', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const books = (Array.isArray(data.results) ? data.results : [])
+      .filter((work: any) => work?.id && (work?.title || work?.display_name))
+      .map(mapOpenAlexWorkToBook);
+    const result = await enrichWithUnpaywall(books, signal);
+    setInCache(cacheKey, result);
+    markProviderSuccess('openalex');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('openalex');
+      console.error('OpenAlex search failed:', error);
+    }
+    return [];
+  }
+};
+
+export const searchCrossrefWorks = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `crossref-search-${normalizeCacheKey(query)}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('crossref')) {
+    warnProviderCooldown('crossref');
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams({
+      query,
+      rows: '12',
+      sort: 'relevance',
+      order: 'desc',
+      filter: 'has-full-text:true,type:book',
+    });
+    const email = getEnvValue('VITE_UNPAYWALL_EMAIL');
+    if (email) params.set('mailto', email);
+
+    const response = await fetch(getResearchProxyUrl('crossref', Object.fromEntries(params)), { signal });
+    if (!response.ok) {
+      markProviderFailure('crossref', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const books = (Array.isArray(data.message?.items) ? data.message.items : [])
+      .filter((item: any) => item?.title || item?.DOI)
+      .filter((item: any) => CROSSREF_BOOK_TYPES.has(String(item?.type || '').toLowerCase()))
+      .map(mapCrossrefWorkToBook);
+    const result = await enrichWithUnpaywall(books, signal);
+    setInCache(cacheKey, result);
+    markProviderSuccess('crossref');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('crossref');
+      console.error('Crossref search failed:', error);
+    }
+    return [];
+  }
+};
+
+export const searchDataCiteWorks = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `datacite-search-${normalizeCacheKey(query)}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('datacite')) {
+    warnProviderCooldown('datacite');
+    return [];
+  }
+
+  try {
+    const response = await fetch(getResearchProxyUrl('datacite', { query, 'page[size]': '12' }), { signal });
+    if (!response.ok) {
+      markProviderFailure('datacite', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const books = (Array.isArray(data.data) ? data.data : [])
+      .filter((item: any) => item?.id || item?.attributes?.titles)
+      .map(mapDataCiteDoiToBook);
+    const withRepositoryFiles = await enrichDataCiteWithRepositoryFiles(books, signal);
+    const result = await enrichWithUnpaywall(withRepositoryFiles, signal);
+    setInCache(cacheKey, result);
+    markProviderSuccess('datacite');
+    return result;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('datacite');
+      console.error('DataCite search failed:', error);
+    }
+    return [];
+  }
+};
+
 export const searchAcademicResearch = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
   const results = await Promise.allSettled([
     searchArxivPapers(query, signal),
     searchSemanticScholarPapers(query, signal),
     searchPubMedCentralArticles(query, signal),
+    searchEuropePmcWorks(query, signal),
+    searchOpenAlexWorks(query, signal),
+    searchCrossrefWorks(query, signal),
+    searchDataCiteWorks(query, signal),
   ]);
 
   return results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
@@ -1578,13 +2357,84 @@ const resolveLegacyShelfId = (id: string): string => {
   return match ? LEGACY_SHELF_IDS[match] : id;
 };
 
+const LEGACY_RESEARCH_IDS: Record<string, string> = {
+  // Previous Europe PMC links used one-way hashed ids. This one resolves to PMID 41804376 / PMCID PMC12967488.
+  'epmc-rpty25': 'epmc-ext-41804376',
+};
+
+const fetchEuropePmcBookByQuery = async (query: string): Promise<Book | null> => {
+  const params = new URLSearchParams({
+    query,
+    format: 'json',
+    pageSize: '1',
+    resultType: 'core',
+  });
+  const response = await fetch(getResearchProxyUrl('europepmc', Object.fromEntries(params)));
+  if (!response.ok) return null;
+  const data = await response.json();
+  const item = Array.isArray(data?.resultList?.result) ? data.resultList.result[0] : null;
+  return item ? mapEuropePmcWorkToBook(item) : null;
+};
+
+const fetchArxivBookById = async (arxivId: string): Promise<Book | null> => {
+  const response = await fetch(getResearchProxyUrl('arxiv', { id_list: arxivId, max_results: '1' }));
+  if (!response.ok) return null;
+  const xml = await response.text();
+  const document = new DOMParser().parseFromString(xml, 'application/xml');
+  const entry = document.getElementsByTagName('entry')[0];
+  return entry ? mapArxivEntryToBook(entry) : null;
+};
+
+const fetchSemanticScholarBookById = async (paperId: string): Promise<Book | null> => {
+  const fields = 'title,abstract,authors,year,venue,externalIds,url,openAccessPdf,fieldsOfStudy,citationCount,isOpenAccess';
+  const response = await fetch(getResearchProxyUrl('semanticscholar-paper', { paperId, fields }));
+  if (!response.ok) return null;
+  const paper = await response.json();
+  return paper?.paperId && paper?.title ? mapSemanticScholarPaperToBook(paper) : null;
+};
+
+const fetchOpenAlexBookById = async (workId: string): Promise<Book | null> => {
+  const response = await fetch(getResearchProxyUrl('openalex-work', { workId }));
+  if (!response.ok) return null;
+  const work = await response.json();
+  return work?.id ? mapOpenAlexWorkToBook(work) : null;
+};
+
+const fetchOpenAlexBookByDoi = async (doi: string): Promise<Book | null> => {
+  const response = await fetch(getResearchProxyUrl('openalex-work', { workId: `doi:${doi}` }));
+  if (!response.ok) return null;
+  const work = await response.json();
+  return work?.id ? mapOpenAlexWorkToBook(work) : null;
+};
+
+const fetchCrossrefBookByDoi = async (doi: string): Promise<Book | null> => {
+  const response = await fetch(getResearchProxyUrl('crossref-work', { doi }));
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data?.message ? mapCrossrefWorkToBook(data.message) : null;
+};
+
+const fetchDataCiteBookByDoi = async (doi: string): Promise<Book | null> => {
+  const response = await fetch(getResearchProxyUrl('datacite-doi', { doi }));
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data?.data ? mapDataCiteDoiToBook(data.data) : null;
+};
+
 export const fetchBookById = async (id: string): Promise<Book | null> => {
   const resolvedId = resolveLegacyShelfId(id);
   if (resolvedId !== id) return fetchBookById(resolvedId);
+  const legacyResearchId = LEGACY_RESEARCH_IDS[id];
+  if (legacyResearchId) return fetchBookById(legacyResearchId);
 
   const cacheKey = `book-detail-${id}`;
   const cached = getFromCache<Book>(cacheKey);
   if (cached) return cached;
+  const cachedFromCollections = findCachedBookById(id);
+  if (cachedFromCollections) {
+    setInCache(cacheKey, cachedFromCollections);
+    return cachedFromCollections;
+  }
 
   try {
     // Handle Nepali curriculum textbooks from YoBook
@@ -1652,6 +2502,90 @@ export const fetchBookById = async (id: string): Promise<Book | null> => {
       const data = await response.json();
       const result = mapITToBook(data);
       setInCache(cacheKey, result);
+      return result;
+    }
+
+    // Handle arXiv papers from direct research URLs.
+    if (id.startsWith('arxiv-')) {
+      const arxivId = id.replace('arxiv-', '');
+      if (!/^[\w./-]+$/.test(arxivId)) return null;
+      const result = await fetchArxivBookById(arxivId);
+      if (result) setInCache(cacheKey, result);
+      return result;
+    }
+
+    // Handle Semantic Scholar papers from direct research URLs.
+    if (id.startsWith('s2-')) {
+      const paperId = id.replace('s2-', '');
+      if (!/^[\w.:/-]+$/.test(paperId)) return null;
+      const result = await fetchSemanticScholarBookById(paperId);
+      if (result) setInCache(cacheKey, result);
+      return result;
+    }
+
+    // Handle PubMed Central articles from deep links/search result URLs.
+    if (id.startsWith('pmc-')) {
+      const pmcId = id.replace('pmc-', '');
+      if (!/^\d+$/.test(pmcId)) return null;
+      const summaryParams = new URLSearchParams({
+        db: 'pmc',
+        id: pmcId,
+        retmode: 'json',
+      });
+      const response = await fetch(getResearchProxyUrl('pmc-summary', Object.fromEntries(summaryParams)));
+      if (!response.ok) return null;
+      const data = await response.json();
+      const item = data?.result?.[pmcId];
+      if (!item?.uid) return null;
+      const result = mapPmcSummaryToBook(item);
+      setInCache(cacheKey, result);
+      return result;
+    }
+
+    // Handle recoverable Europe PMC articles from direct research URLs.
+    if (/^epmc-PMC/i.test(id) || id.startsWith('epmc-pmc-') || id.startsWith('epmc-ext-') || id.startsWith('epmc-doi-')) {
+      const prefix = /^epmc-PMC/i.test(id) ? 'epmc-' : id.startsWith('epmc-pmc-') ? 'epmc-pmc-' : id.startsWith('epmc-ext-') ? 'epmc-ext-' : 'epmc-doi-';
+      const value = decodeResearchIdPart(id.slice(prefix.length));
+      const query = prefix === 'epmc-ext-'
+        ? `EXT_ID:${value}`
+        : value;
+      const result = await fetchEuropePmcBookByQuery(query);
+      if (result) {
+        setInCache(cacheKey, result);
+        setInCache(`book-detail-${result.id}`, result);
+      }
+      return result;
+    }
+
+    // Handle OpenAlex, Crossref, and DataCite records from recoverable direct research URLs.
+    if (id.startsWith('openalex-') || id.startsWith('openalex-doi-')) {
+      const isDoi = id.startsWith('openalex-doi-');
+      const value = decodeResearchIdPart(id.slice(isDoi ? 'openalex-doi-'.length : 'openalex-'.length));
+      const result = isDoi ? await fetchOpenAlexBookByDoi(value) : await fetchOpenAlexBookById(value);
+      if (result) {
+        setInCache(cacheKey, result);
+        setInCache(`book-detail-${result.id}`, result);
+      }
+      return result;
+    }
+
+    if (id.startsWith('crossref-doi-')) {
+      const doi = decodeResearchIdPart(id.slice('crossref-doi-'.length));
+      const result = await fetchCrossrefBookByDoi(doi);
+      if (result) {
+        setInCache(cacheKey, result);
+        setInCache(`book-detail-${result.id}`, result);
+      }
+      return result;
+    }
+
+    if (id.startsWith('datacite-doi-')) {
+      const doi = decodeResearchIdPart(id.slice('datacite-doi-'.length));
+      const result = await fetchDataCiteBookByDoi(doi);
+      if (result) {
+        setInCache(cacheKey, result);
+        setInCache(`book-detail-${result.id}`, result);
+      }
       return result;
     }
 
