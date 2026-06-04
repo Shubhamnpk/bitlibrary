@@ -4,6 +4,7 @@ import { Book } from '@/types/index';
 import { BookOpen, Bookmark, BarChart, Files } from 'lucide-react';
 import { toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import { HighlightedText } from './HighlightedText';
+import { formatCompactAuthors, getBookAuthors } from '@/lib/authors';
 
 interface BookCardProps {
   book: Book;
@@ -37,8 +38,14 @@ const BookCard: React.FC<BookCardProps> = ({
   const resourceFormats = Array.from(new Set(
     (book.resourceLinks || [])
       .map((link) => link.format)
-      .filter((format) => ['pdf', 'text', 'xml', 'epub', 'html', 'package'].includes(format))
+      .filter((format) => ['pdf', 'text', 'xml', 'epub', 'package'].includes(format))
   )).slice(0, 4);
+  const displayAuthors = getBookAuthors(book);
+  const compactAuthorText = book.collection_name
+    ? book.collection_name
+    : formatCompactAuthors(displayAuthors, { maxVisible: variant === 'compact' ? 1 : 2 });
+  const fullAuthorText = displayAuthors.map((author) => author.name).join(', ');
+  const primaryAuthor = displayAuthors[0]?.name || book.author;
 
   // Generate a deterministic aesthetic gradient based on ID
   const gradients = [
@@ -157,10 +164,11 @@ const BookCard: React.FC<BookCardProps> = ({
                 <HighlightedText text={book.title} query={searchQuery} />
               </h3>
               <button 
-                onClick={(e) => { e.stopPropagation(); onAuthorClick?.(book.author); }}
+                onClick={(e) => { e.stopPropagation(); onAuthorClick?.(primaryAuthor); }}
                 className={`${variant === 'compact' ? 'line-clamp-1' : 'line-clamp-2 min-h-[2rem]'} text-left text-[9px] text-bit-muted/70 hover:text-bit-accent font-mono tracking-widest uppercase transition-colors`}
+                title={fullAuthorText}
               >
-                {book.collection_name ? 'Collection ' : 'By '}<HighlightedText text={book.collection_name || book.author} query={searchQuery} />
+                {book.collection_name ? 'Collection ' : 'By '}<HighlightedText text={compactAuthorText} query={searchQuery} />
               </button>
               {(resourceFormats.length > 0 || isQuestionPaperCollection) && (
                 <div className="mt-3 flex flex-wrap gap-1.5">

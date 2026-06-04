@@ -11,7 +11,7 @@ const RESEARCH_MIN_QUERY_LENGTH = 2;
 const RESEARCH_CACHE_KEY = 'bitlibrary-research-cache-v1';
 const RESEARCH_CACHE_TTL = 20 * 60 * 1000;
 const RESEARCH_QUICK_TOPICS = ['climate adaptation', 'neural networks', 'public health', 'renewable energy', 'education policy', 'soil microbiome'];
-const READABLE_FORMATS: ResourceFormat[] = ['pdf', 'xml', 'html', 'text', 'epub', 'package'];
+const READABLE_FORMATS: ResourceFormat[] = ['pdf', 'xml', 'text', 'epub', 'package'];
 
 interface ResearchCacheEntry {
   results: Book[];
@@ -28,7 +28,7 @@ const formatCount = (value: number) => new Intl.NumberFormat('en').format(value)
 
 const getFormatIcon = (format: ResourceFormat) => {
   if (format === 'pdf') return FileDown;
-  if (format === 'xml' || format === 'html' || format === 'text') return FileText;
+  if (format === 'xml' || format === 'text') return FileText;
   return Database;
 };
 

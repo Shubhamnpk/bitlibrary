@@ -9,6 +9,7 @@ import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 import { downloadPdfOptimized, getBestPdfSourceUrl } from '@/lib/pdf';
+import { formatCompactAuthors, getBookAuthors } from '@/lib/authors';
 import { fetchYoBookGradeAudio, fetchYoBookGuideCollection, fetchYoBookTextbookCollection, getYoBookAudioSubjectForBook, isPriorCurriculumEdition } from '@/services/bookService';
 
 const isCurriculumBook = (book: Book) => (
@@ -97,6 +98,12 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const questionPapers = book.question_papers || [];
   const hasTopLevelReadableFile = Boolean(downloadUrl || book.externalUrl || book.resourceLinks?.length || book.chapterPdfUrls?.length || book.audioUrl);
   const displayCurriculum = book.curriculum === 'CDC Nepal' ? undefined : book.curriculum;
+  const displayAuthors = getBookAuthors(book);
+  const primaryAuthor = displayAuthors[0]?.name || book.author;
+  const fullAuthorText = displayAuthors.map((author) => author.name).join(', ');
+  const visibleHeroAuthors = displayAuthors.slice(0, 3);
+  const hiddenHeroAuthorCount = Math.max(0, displayAuthors.length - visibleHeroAuthors.length);
+  const compactAuthorText = formatCompactAuthors(displayAuthors, { maxVisible: 2 });
   const handleDownload = async () => {
     if (!pdfDownloadUrl) return;
     await downloadPdfOptimized(pdfDownloadUrl, book.title);
@@ -458,25 +465,37 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                 </button>
               </div>
               <h1 className="mb-4 line-clamp-3 text-2xl font-display font-bold leading-tight tracking-tight text-white transition-colors duration-500 group-hover:text-bit-accent sm:mb-6 sm:text-4xl md:text-5xl">{book.title}</h1>
-              <div className="mb-5 flex flex-wrap gap-x-3 gap-y-3 border-l-2 border-bit-accent/30 py-1 pl-4 italic sm:mb-10 sm:gap-x-4 sm:gap-y-6">
+              <div className="mb-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-l-2 border-bit-accent/30 py-1 pl-4 italic sm:mb-10 sm:gap-x-4 sm:gap-y-2">
                 <span className="text-base text-white/70 font-sans sm:text-xl">{book.collection_name ? 'in' : 'by'}</span>
-                {book.authors && book.authors.length > 0 ? (
-                  book.authors.map((author, idx) => (
+                {!book.collection_name && visibleHeroAuthors.length > 0 ? (
+                  <>
+                  {visibleHeroAuthors.map((author, idx) => (
                     <button
                       key={idx}
                       onClick={() => onAuthorClick?.(author.name)}
-                      className="group/author text-left flex flex-col"
+                      className="group/author text-left inline-flex flex-col leading-tight"
+                      title={fullAuthorText}
                     >
                       <span className="text-base text-white transition-colors hover:text-bit-accent sm:text-xl">
-                        {author.name}{idx < book.authors!.length - 1 ? ',' : ''}
+                        {author.name}{idx < visibleHeroAuthors.length - 1 || hiddenHeroAuthorCount > 0 ? ',' : ''}
                       </span>
                       {author.birth_year && (
-                        <span className="block text-[10px] font-mono text-white/30 uppercase mt-1 not-italic tracking-[0.2em] group-hover/author:text-bit-accent/50 transition-colors">
+                        <span className="block text-[10px] font-mono text-white/30 uppercase mt-0.5 not-italic tracking-[0.2em] group-hover/author:text-bit-accent/50 transition-colors">
                           {author.birth_year} — {author.death_year || 'Decelerated'}
                         </span>
                       )}
                     </button>
-                  ))
+                  ))}
+                  {hiddenHeroAuthorCount > 0 && (
+                    <button
+                      onClick={() => setActiveTab('authors')}
+                      className="self-start rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-mono not-italic uppercase tracking-widest text-white/70 transition-colors hover:border-bit-accent/40 hover:text-bit-accent sm:text-sm"
+                      title={fullAuthorText}
+                    >
+                      +{hiddenHeroAuthorCount} more
+                    </button>
+                  )}
+                  </>
                 ) : (
                   <span className="text-base text-white/70 font-sans sm:text-xl">{book.collection_name || book.author}</span>
                 )}
@@ -649,9 +668,9 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                     <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Downloads</p>
                     <p className="text-xl font-display font-bold text-bit-text">{(book.downloads || 0).toLocaleString()}</p>
                   </div>
-                  <button onClick={() => onAuthorClick?.(book.author)} className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 text-left shadow-sm transition-colors hover:border-bit-accent/50 group/meta">
+                  <button onClick={() => onAuthorClick?.(primaryAuthor)} className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 text-left shadow-sm transition-colors hover:border-bit-accent/50 group/meta" title={fullAuthorText}>
                     <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted transition-colors group-hover/meta:text-bit-accent">{book.source === 'YoBook' ? 'By Publisher' : 'By Author'}</p>
-                    <p className="line-clamp-2 text-sm font-display font-bold text-bit-text transition-colors group-hover/meta:text-bit-accent">{book.author}</p>
+                    <p className="line-clamp-2 text-sm font-display font-bold text-bit-text transition-colors group-hover/meta:text-bit-accent">{compactAuthorText}</p>
                   </button>
                   <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
                     <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Language</p>

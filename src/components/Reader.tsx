@@ -24,7 +24,6 @@ const FRAME_BLOCKED_HOSTS = new Set([
 
 const isTextLikeReaderUrl = (url: string) => /\.(?:txt|xml)(?:$|[?#])/i.test(url) || /fulltextxml/i.test(url) || /[?&](?:format|type)=(?:txt|text|xml)(?:&|$)/i.test(url);
 const isEpubLikeReaderUrl = (url: string) => /\.epub(?:$|[?#])/i.test(url);
-const isHtmlLikeReaderUrl = (url: string) => /\.x?html?(?:$|[?#])/i.test(url) || /[?&](?:format|type)=(?:html?|xhtml)(?:&|$)/i.test(url);
 const isBlockedFrameUrl = (url: string) => {
   try {
     return FRAME_BLOCKED_HOSTS.has(new URL(url).hostname.toLowerCase());
@@ -34,7 +33,7 @@ const isBlockedFrameUrl = (url: string) => {
 };
 
 const isReadableResourceLink = (link: ResourceLink) => (
-  ['pdf', 'text', 'xml', 'html', 'epub'].includes(link.format)
+  ['pdf', 'text', 'xml', 'epub'].includes(link.format)
   && !['source', 'doi', 'metadata'].includes(link.relation || '')
 );
 
@@ -44,14 +43,13 @@ const isSupportedDirectReaderUrl = (url?: string) => (
     isPdfLikeUrl(url)
     || isTextLikeReaderUrl(url || '')
     || isEpubLikeReaderUrl(url || '')
-    || isHtmlLikeReaderUrl(url || '')
   )
 );
 
 const shouldUseReaderProxy = (url: string, resource?: ResourceLink) => {
   if (!/^https?:\/\//i.test(url)) return false;
-  if (resource?.format && ['text', 'xml', 'html'].includes(resource.format)) return true;
-  return isTextLikeReaderUrl(url) || isHtmlLikeReaderUrl(url);
+  if (resource?.format && ['text', 'xml'].includes(resource.format)) return true;
+  return isTextLikeReaderUrl(url);
 };
 
 const normalizeReaderText = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -213,7 +211,6 @@ const wrapReaderSpeechText = (root: HTMLElement, segment: string, documentRef: D
 const getReaderResource = (resources: ResourceLink[]) => (
   resources.find((link) => isReadableResourceLink(link) && link.format === 'pdf')
   || resources.find((link) => isReadableResourceLink(link) && ['text', 'xml'].includes(link.format) && link.embeddable !== false)
-  || resources.find((link) => isReadableResourceLink(link) && link.format === 'html' && link.embeddable === true)
   || resources.find((link) => isReadableResourceLink(link) && link.format === 'epub')
 );
 
@@ -224,10 +221,10 @@ const getSortedReadableResources = (resources: ResourceLink[]) => {
   const isCrossref = readable.some((link) => link.provider === 'Crossref');
   const isPubMed = readable.some((link) => /PubMed Central|BioC/i.test(link.provider || ''));
   const priority = isCrossref
-    ? ['xml', 'text', 'html', 'pdf', 'epub']
+    ? ['xml', 'text', 'pdf', 'epub']
     : isPubMed
-      ? ['xml', 'text', 'html', 'pdf', 'epub']
-    : ['pdf', 'text', 'xml', 'html', 'epub'];
+      ? ['xml', 'text', 'pdf', 'epub']
+    : ['pdf', 'text', 'xml', 'epub'];
 
   return readable.sort((first, second) => priority.indexOf(first.format) - priority.indexOf(second.format));
 };
@@ -462,7 +459,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const directPdfReaderUrl = isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl : '';
   const fallbackReaderUrl = researchResources.length > 0
     ? (isSupportedDirectReaderUrl(book.downloadUrl) ? book.downloadUrl : (isSupportedDirectReaderUrl(book.externalUrl) ? book.externalUrl : ''))
-    : (directPdfReaderUrl || book.externalUrl || book.downloadUrl || '');
+    : (directPdfReaderUrl || (isSupportedDirectReaderUrl(book.externalUrl) ? book.externalUrl : '') || (isSupportedDirectReaderUrl(book.downloadUrl) ? book.downloadUrl : ''));
   const externalReaderUrl = activePdfChapter?.pdfUrl || readerResource?.url || fallbackReaderUrl || '';
   const isPdfReader = Boolean(activePdfChapter)
     || readerResource?.format === 'pdf'
@@ -2031,7 +2028,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               {researchResources.length > 0 && (
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
                   {researchResources
-                    .filter((link) => ['pdf', 'text', 'xml', 'epub', 'html', 'package'].includes(link.format))
+                    .filter((link) => ['pdf', 'text', 'xml', 'epub', 'package'].includes(link.format))
                     .slice(0, 8)
                     .map((link) => (
                       <a

@@ -86,7 +86,7 @@ To build a robust, scalable, and $0-cost library, we can leverage these public A
 - **Europe PMC REST API**
     - Base URL: `https://www.ebi.ac.uk/europepmc/webservices/rest/search`
     - Search parameter: `query={query}`
-    - Results are displayed only when Europe PMC provides a usable PDF, text, XML, HTML, or EPUB resource.
+    - Results are displayed only when Europe PMC provides a usable PDF, text, XML, or EPUB resource.
 - **OpenAlex API**
     - Base URL: `https://api.openalex.org/works`
     - Search parameter: `search={query}`

@@ -824,7 +824,6 @@ const getResearchFormat = (url: string, type = '', label = ''): ResourceFormat =
 
 const isEmbeddableResearchResource = (url: string, format: ResourceFormat) => {
   if (format === 'pdf' || format === 'text' || format === 'xml') return true;
-  if (format === 'html') return !isBlockedResearchReaderUrl(url);
   return false;
 };
 
@@ -870,7 +869,6 @@ const chooseResearchResourceUrls = (resourceLinks: ResourceLink[]) => {
     )))[0]
   );
   const reader = byFormat(['pdf', 'text', 'xml'], (link) => link.embeddable !== false)
-    || byFormat(['html'], (link) => link.embeddable === true)
     || byFormat(['epub']);
   const download = byFormat(['pdf', 'text', 'xml', 'epub', 'package'], (link) => link.downloadable !== false);
 
@@ -891,7 +889,6 @@ const choosePmcResourceUrls = (resourceLinks: ResourceLink[]) => {
     )))[0]
   );
   const reader = byFormat(['xml', 'text'], (link) => link.embeddable !== false)
-    || byFormat(['html'], (link) => link.embeddable === true)
     || byFormat(['pdf'], (link) => link.embeddable !== false);
   const download = byFormat(['pdf', 'xml', 'text', 'epub', 'package'], (link) => link.downloadable !== false);
 
@@ -903,7 +900,7 @@ const choosePmcResourceUrls = (resourceLinks: ResourceLink[]) => {
 
 const hasUsableResearchResource = (book: Book): boolean => (
   (book.resourceLinks || []).some((link) => (
-    ['pdf', 'text', 'xml', 'html', 'epub'].includes(link.format)
+    ['pdf', 'text', 'xml', 'epub'].includes(link.format)
     && link.relation !== 'source'
     && link.relation !== 'doi'
     && (link.embeddable !== false || link.downloadable !== false)
@@ -1031,7 +1028,7 @@ const mapOpenAlexWorkToBook = (work: any): Book => {
   const resourceLinks = buildResearchResourceLinks([
     ...openAlexLocations.flatMap((location: any) => ([
       { url: location?.pdf_url || location?.url_for_pdf, type: 'application/pdf', label: 'PDF', provider: 'OpenAlex', relation: 'download' as const },
-      { url: location?.landing_page_url || location?.url, type: location?.is_oa ? 'text/html' : '', label: location?.is_oa ? 'open access html' : 'source page', provider: 'OpenAlex', relation: location?.is_oa ? 'reader' as const : 'source' as const },
+      { url: location?.landing_page_url || location?.url, type: location?.is_oa ? 'text/html' : '', label: location?.is_oa ? 'open access html' : 'source page', provider: 'OpenAlex', relation: 'source' as const },
     ])),
     { url: sourceUrl, label: 'source page', provider: 'OpenAlex', relation: 'source' },
     ...(doi ? [{ url: `https://doi.org/${doi}`, label: 'doi', provider: 'DOI', relation: 'doi' as const }] : []),
@@ -1085,7 +1082,7 @@ const chooseCrossrefResourceUrls = (resourceLinks: ResourceLink[]) => {
       && link.embeddable !== false
     )))[0]
   );
-  const reader = findByFormat(['xml', 'text', 'html']) || findByFormat(['pdf']);
+  const reader = findByFormat(['xml', 'text']) || findByFormat(['pdf']);
   const download = resourceLinks.find((link) => link.format === 'pdf' && !['source', 'doi', 'metadata'].includes(link.relation || '') && link.downloadable !== false)
     || resourceLinks.find((link) => ['xml', 'text', 'epub', 'package'].includes(link.format) && !['source', 'doi', 'metadata'].includes(link.relation || '') && link.downloadable !== false);
 
