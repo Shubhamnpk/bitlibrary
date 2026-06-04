@@ -8,7 +8,7 @@ import AppSelect from './AppSelect';
 import { downloadPdfOptimized, getBestPdfSourceUrl, getPdfProxyUrl, getReaderProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
 import { saveBook } from '@/lib/local-user';
 import { fetchYoBookGradeAudio, getYoBookAudioSubjectForBook } from '@/services/bookService';
-import { getPreferredSpeechVoiceURI, getSpeechSegments, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
+import { getPreferredSpeechVoiceURI, getSpeechSegments, getSpeechWordAtBoundary, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
 
 interface ReaderProps {
   book: Book;
@@ -129,6 +129,32 @@ const getExternalSpeechTextFromCandidates = (candidates: Array<{ rawText: string
   return text || fallbackText;
 };
 
+const renderSpeechSegmentText = (
+  segment: string,
+  isActive: boolean,
+  activeWordRange: { segmentIndex: number; start: number; end: number } | null,
+  segmentIndex: number,
+  speechHighlightMode: SpeechHighlightMode
+) => {
+  if (speechHighlightMode !== 'word' || !isActive || !activeWordRange || activeWordRange.segmentIndex !== segmentIndex) return segment;
+  const start = Math.max(0, Math.min(segment.length, activeWordRange.start));
+  const end = Math.max(start, Math.min(segment.length, activeWordRange.end));
+  if (start === end) return segment;
+
+  return (
+    <>
+      {segment.slice(0, start)}
+      <mark className="rounded-[4px] bg-bit-accent/30 px-0.5 text-bit-text shadow-[0_0_0_2px_rgba(var(--bit-accent-rgb),0.22)]">
+        {segment.slice(start, end)}
+      </mark>
+      {segment.slice(end)}
+    </>
+  );
+};
+
+type SpeechHighlightMode = 'paragraph' | 'word';
+type PdfSpeechReadingOrder = 'page' | 'source';
+
 const wrapReaderSpeechText = (root: HTMLElement, segment: string, documentRef: Document) => {
   const segmentText = normalizeReaderText(segment);
   const segmentTokens = getReaderMatchTokens(segmentText);
@@ -207,6 +233,62 @@ const wrapReaderSpeechText = (root: HTMLElement, segment: string, documentRef: D
   }
 
   return null;
+};
+
+const unwrapReaderSpeechWords = (root: HTMLElement) => {
+  root.querySelectorAll<HTMLElement>('[data-reader-speech-word="true"]').forEach((word) => {
+    const parent = word.parentNode;
+    if (!parent) return;
+    while (word.firstChild) parent.insertBefore(word.firstChild, word);
+    parent.removeChild(word);
+    parent.normalize();
+  });
+};
+
+const wrapReaderSpeechWord = (root: HTMLElement, word: string, documentRef: Document) => {
+  const normalizedWord = normalizeReaderText(word);
+  if (!normalizedWord) return null;
+
+  const walker = documentRef.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+  });
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+
+  const normalizedPoints: Array<{ node: Text; offset: number }> = [];
+  let normalizedText = '';
+  nodes.forEach((node) => {
+    Array.from(node.data).forEach((character, offset) => {
+      if (/\s/.test(character)) {
+        normalizedText += ' ';
+      } else {
+        normalizedText += character.toLowerCase();
+      }
+      normalizedPoints.push({ node, offset });
+    });
+  });
+
+  const matchedWord = Array.from(normalizedText.matchAll(/[\p{L}\p{N}'-]+/gu))
+    .find((match) => match[0] === normalizedWord && match.index !== undefined);
+  const startIndex = matchedWord?.index ?? -1;
+  if (startIndex < 0) return null;
+  const endIndex = startIndex + normalizedWord.length - 1;
+  const start = normalizedPoints[startIndex];
+  const end = normalizedPoints[endIndex];
+  if (!start || !end) return null;
+
+  const range = documentRef.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, Math.min(end.offset + 1, end.node.data.length));
+  const span = documentRef.createElement('span');
+  span.setAttribute('data-reader-speech-word', 'true');
+  try {
+    range.surroundContents(span);
+  } catch {
+    span.appendChild(range.extractContents());
+    range.insertNode(span);
+  }
+  return span;
 };
 
 const getReaderResource = (resources: ResourceLink[]) => (
@@ -408,6 +490,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [speechPitch, setSpeechPitch] = useState(1);
   const [speechStatus, setSpeechStatus] = useState<TextToSpeechStatus>('idle');
   const [activeSpeechSegmentIndex, setActiveSpeechSegmentIndex] = useState<number | null>(null);
+  const [activeSpeechWordRange, setActiveSpeechWordRange] = useState<{ segmentIndex: number; start: number; end: number } | null>(null);
+  const [speechHighlightMode, setSpeechHighlightMode] = useState<SpeechHighlightMode>('word');
+  const [pdfSpeechReadingOrder, setPdfSpeechReadingOrder] = useState<PdfSpeechReadingOrder>('page');
   const [speechPillPosition, setSpeechPillPosition] = useState<{ x: number; y: number } | null>(null);
   const [pdfStudyAction, setPdfStudyAction] = useState<PdfStudyAction | null>(null);
   const [pdfHighlightMode, setPdfHighlightMode] = useState(false);
@@ -495,6 +580,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     }
     setSpeechStatus('idle');
     setActiveSpeechSegmentIndex(null);
+    setActiveSpeechWordRange(null);
     setSpeechTextOverride('');
   }, []);
   const speakSpeechSegment = useCallback((index: number) => {
@@ -509,8 +595,14 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     if (selectedSpeechVoice) utterance.voice = selectedSpeechVoice;
     utterance.rate = speechRateRef.current;
     utterance.pitch = speechPitch;
+    utterance.onboundary = (event) => {
+      if (event.name && event.name !== 'word') return;
+      const word = getSpeechWordAtBoundary(speechSegments[index], event.charIndex);
+      setActiveSpeechWordRange(word ? { segmentIndex: index, start: word.start, end: word.end } : null);
+    };
     utterance.onend = () => {
       if (speechStoppedRef.current || speechRestartingRef.current || Date.now() < speechIgnoreCancelEventsUntilRef.current) return;
+      setActiveSpeechWordRange(null);
       speakSpeechSegmentRef.current?.(index + 1);
     };
     utterance.onerror = () => {
@@ -519,6 +611,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     };
     speechStoppedRef.current = false;
     setActiveSpeechSegmentIndex(index);
+    setActiveSpeechWordRange(null);
     setSpeechStatus('playing');
     speakUtterance(utterance);
   }, [selectedSpeechVoice, speechPitch, speechSegments, stopSpeech]);
@@ -733,6 +826,16 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             border-radius: 4px !important;
             transition: background .16s ease, box-shadow .16s ease !important;
           }
+          [data-reader-speech-word="true"] {
+            background: rgba(103,232,249,.28) !important;
+            color: #f4f4f5 !important;
+            border-radius: 4px !important;
+            box-shadow: 0 0 0 2px rgba(103,232,249,.18) !important;
+          }
+          [data-reader-speech-highlight-mode="word"] {
+            background: transparent !important;
+            box-shadow: none !important;
+          }
         `;
         frameDocument.head.appendChild(style);
       }
@@ -777,7 +880,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       externalSpeechCandidateIndexRef.current = Math.min(matchedIndex + 1, candidates.length - 1);
       const highlightedSpan = wrapReaderSpeechText(highlightedElement, activeSegment, frameDocument);
       if (!highlightedSpan) return;
-      highlightedElement.setAttribute('data-reader-speech-block', 'true');
+      highlightedSpan.setAttribute('data-reader-speech-highlight-mode', speechHighlightMode);
+      const activeWord = activeSpeechWordRange?.segmentIndex === activeSpeechSegmentIndex
+        ? activeSegment.slice(activeSpeechWordRange.start, activeSpeechWordRange.end)
+        : '';
+      if (speechHighlightMode === 'word' && activeWord) wrapReaderSpeechWord(highlightedSpan, activeWord, frameDocument);
+      if (speechHighlightMode === 'paragraph') highlightedElement.setAttribute('data-reader-speech-block', 'true');
       externalSpeechBlockRef.current = highlightedElement;
       let locator = frameDocument.getElementById('bitlibrary-now-reading');
       if (!locator) {
@@ -795,6 +903,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         externalSpeechBlockRef.current = null;
         const parent = highlightedSpan.parentNode;
         if (!parent) return;
+        unwrapReaderSpeechWords(highlightedSpan);
         while (highlightedSpan.firstChild) {
           parent.insertBefore(highlightedSpan.firstChild, highlightedSpan);
         }
@@ -815,7 +924,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       externalSpeechBlockRef.current = null;
       externalSpeechHighlightRef.current = null;
     };
-  }, [activeSpeechSegmentIndex, isExternalTextReader, speechSegments, speechStatus]);
+  }, [activeSpeechSegmentIndex, activeSpeechWordRange, isExternalTextReader, speechHighlightMode, speechSegments, speechStatus]);
 
   useEffect(() => {
     if (speechStatus !== 'idle') return;
@@ -968,7 +1077,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (sidebarOpen) {
+        if (speechStatus !== 'idle') {
+          stopSpeech();
+        } else if (sidebarOpen) {
           setSidebarOpen(false);
         } else if (isImmersive) {
           exitFocusMode();
@@ -978,7 +1089,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isImmersive, isMinimized, sidebarOpen]);
+  }, [isImmersive, isMinimized, sidebarOpen, speechStatus, stopSpeech]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -1618,14 +1729,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                         {pdfStudySnapshot?.highlightCount ?? 0}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setPdfHighlightMode((enabled) => !enabled)}
-                      className={`mb-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-all ${pdfHighlightMode ? 'border-yellow-300 bg-yellow-300 text-zinc-950' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:border-yellow-300/50 hover:text-yellow-200'}`}
-                    >
-                      <Highlighter size={16} />
-                      {pdfHighlightMode ? 'Highlight mode on' : 'Enable text highlight'}
-                    </button>
+                    <p className="mb-4 rounded-lg border border-bit-border bg-bit-bg/35 px-3 py-3 text-xs leading-5 text-bit-muted">
+                      Enable the bottom highlighter button, then select PDF text to highlight, read, recolor, or erase from the popover.
+                    </p>
                     <div className="space-y-3">
                       {groupedTextHighlights.length ? groupedTextHighlights.map(({ page, highlights }) => {
                         const isExpanded = Boolean(expandedHighlightPages[page]);
@@ -1805,6 +1911,52 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                   </section>
                 )}
 
+                {isPdfReader && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <Headphones size={16} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Speech highlight</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 rounded-lg border border-bit-border bg-bit-bg/40 p-1">
+                      {[
+                        { id: 'paragraph' as const, label: 'Paragraph' },
+                        { id: 'word' as const, label: 'Word' },
+                      ].map((mode) => (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          onClick={() => setSpeechHighlightMode(mode.id)}
+                          className={`h-9 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${speechHighlightMode === mode.id ? 'bg-bit-accent text-white shadow-sm shadow-bit-accent/25' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
+                          aria-pressed={speechHighlightMode === mode.id}
+                        >
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-3">
+                      <span className="mb-2 block text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-bit-muted">
+                        Reading order
+                      </span>
+                      <div className="grid grid-cols-2 gap-2 rounded-lg border border-bit-border bg-bit-bg/40 p-1">
+                        {[
+                          { id: 'page' as const, label: 'Top down' },
+                          { id: 'source' as const, label: 'Original' },
+                        ].map((mode) => (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            onClick={() => setPdfSpeechReadingOrder(mode.id)}
+                            className={`h-9 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${pdfSpeechReadingOrder === mode.id ? 'bg-bit-accent text-white shadow-sm shadow-bit-accent/25' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
+                            aria-pressed={pdfSpeechReadingOrder === mode.id}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
                 {isExternalTextReader && (
                   <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
                     <div className="mb-3 flex items-center gap-2 text-bit-accent">
@@ -1820,7 +1972,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-bit-text">{externalHighlightColor.label}</p>
-                        <p className="text-xs text-bit-muted">Used by the selection marker in XML/text.</p>
+                        <p className="text-xs text-bit-muted">Used by selection popovers in PDF, XML, and text readers.</p>
                       </div>
                     </div>
                     <div className="mt-3 grid grid-cols-4 gap-2">
@@ -1862,6 +2014,28 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                     </div>
 
                     <div className="mt-4 space-y-4">
+                      <div>
+                        <span className="mb-2 block text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-bit-muted">
+                          Highlight
+                        </span>
+                        <div className="grid grid-cols-2 gap-2 rounded-lg border border-bit-border bg-bit-bg/40 p-1">
+                          {[
+                            { id: 'paragraph' as const, label: 'Paragraph' },
+                            { id: 'word' as const, label: 'Word' },
+                          ].map((mode) => (
+                            <button
+                              key={mode.id}
+                              type="button"
+                              onClick={() => setSpeechHighlightMode(mode.id)}
+                              className={`h-9 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${speechHighlightMode === mode.id ? 'bg-bit-accent text-white shadow-sm shadow-bit-accent/25' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
+                              aria-pressed={speechHighlightMode === mode.id}
+                            >
+                              {mode.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
                       <AppSelect
                         label="Voice"
                         value={selectedSpeechVoiceURI}
@@ -1982,15 +2156,19 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             title={book.title}
             backgroundPreset={pdfBackgroundPreset}
             highlightColor={pdfHighlightColor}
+            speechHighlightMode={speechHighlightMode}
+            speechReadingOrder={pdfSpeechReadingOrder}
             studyPanelOpen={pdfHighlightMode}
             tableOfContentsRequestId={pdfTableOfContentsRequestId}
             studyAction={pdfStudyAction}
             onStudyPanelOpenChange={setPdfHighlightMode}
+            onHighlightColorChange={setPdfHighlightColor}
             onStudySnapshotChange={handlePdfStudySnapshotChange}
             onTableOfContentsChange={handlePdfTableOfContentsChange}
             onPreviousBoundary={selectedPdfChapterIndex > 0 ? goToPreviousPdfChapter : undefined}
             onNextBoundary={selectedPdfChapterIndex < pdfChapters.length - 1 ? goToNextPdfChapter : undefined}
             preferFullDocumentLoad={preferFullPdfDocumentLoad}
+            controlsCompact={sidebarOpen}
           />
         ) : isExternal && canEmbedReaderUrl ? (
           <div className="w-full h-full bg-white relative shadow-2xl border-x border-bit-border overflow-hidden">
@@ -2101,9 +2279,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                       ref={(node) => {
                         speechSegmentRefs.current[index] = node;
                       }}
-                      className={`rounded-md px-1 transition-colors duration-200 ${activeSpeechSegmentIndex === index ? 'bg-bit-accent/20 text-bit-text ring-1 ring-bit-accent/30' : 'text-bit-muted/90'}`}
+                      className={`rounded-md px-1 transition-colors duration-200 ${activeSpeechSegmentIndex === index && speechHighlightMode === 'paragraph' ? 'bg-bit-accent/20 text-bit-text ring-1 ring-bit-accent/30' : 'text-bit-muted/90'}`}
                     >
-                      {segment}
+                      {renderSpeechSegmentText(segment, activeSpeechSegmentIndex === index, activeSpeechWordRange, index, speechHighlightMode)}
                       {' '}
                     </span>
                   ))}
@@ -2211,6 +2389,15 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               aria-label="Read aloud speed"
             />
           </label>
+          <button
+            type="button"
+            onClick={stopSpeech}
+            className="inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-bit-border bg-bit-bg/60 px-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
+            aria-label="Stop read aloud"
+            title="Stop read aloud (Esc)"
+          >
+            Esc
+          </button>
         </div>
       )}
 

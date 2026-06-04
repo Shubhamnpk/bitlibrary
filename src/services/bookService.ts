@@ -1,7 +1,7 @@
 ﻿import { Author, Book } from '@/types/index';
 import { INITIAL_BOOKS } from '@/constants';
 import type { ResourceFormat, ResourceLink } from '@/types/index';
-import { ChapterAudio } from '@/types/index';
+import { ChapterAudio, ChapterPdf } from '@/types/index';
 
 const GUTENDEX_BASE = 'https://gutendex.com/books';
 const GOOGLE_BOOKS_BASE = 'https://www.googleapis.com/books/v1/volumes';
@@ -201,6 +201,15 @@ const isPdfLikeResourceUrl = (url?: string): boolean => (
     || /[?&]ext=pdf(?:&|$)/i.test(url || '')
   )
 );
+
+const getNcertChapterPdfUrlsFromZipUrl = (zipUrl?: string): ChapterPdf[] => {
+  if (!zipUrl || !/^https:\/\/ncert\.nic\.in\/textbook\/pdf\/[\w-]+dd\.zip$/i.test(zipUrl)) return [];
+  const baseUrl = zipUrl.replace(/dd\.zip$/i, '');
+  return Array.from({ length: 20 }, (_, index) => ({
+    title: `Chapter ${index + 1}`,
+    pdfUrl: `${baseUrl}${String(index + 1).padStart(2, '0')}.pdf`,
+  }));
+};
 
 const mapQuestionPapers = (items: unknown) => (
   Array.isArray(items)
@@ -1482,6 +1491,8 @@ const mapYoBookToBook = (item: any): Book => {
   const pdfUrl = getAbsoluteYoBookAssetUrl(item.pdfUrl);
   const audioUrl = getAbsoluteYoBookAssetUrl(item.audioUrl);
   const readUrl = getAbsoluteYoBookAssetUrl(item.readUrl);
+  const zipUrl = getAbsoluteYoBookAssetUrl(item.zipUrl);
+  const derivedNcertChapterPdfUrls = getNcertChapterPdfUrlsFromZipUrl(zipUrl);
   const chapterPdfUrls = Array.isArray(item.chapterPdfUrls)
     ? item.chapterPdfUrls
       .map((chapter: any) => ({
@@ -1489,9 +1500,8 @@ const mapYoBookToBook = (item: any): Book => {
         pdfUrl: getAbsoluteYoBookAssetUrl(chapter?.pdfUrl) || '',
       }))
       .filter((chapter: { title: string; pdfUrl: string }) => isPdfLikeResourceUrl(chapter.pdfUrl))
-    : [];
+    : derivedNcertChapterPdfUrls;
   const chapterPdfUrl = chapterPdfUrls[0]?.pdfUrl;
-  const zipUrl = getAbsoluteYoBookAssetUrl(item.zipUrl);
   const coverUrl = getAbsoluteYoBookAssetUrl(item.coverUrl || item.localCoverUrl);
   const sourceUrl = getAbsoluteYoBookAssetUrl(item.sourceUrl);
   const detailUrl = getAbsoluteYoBookAssetUrl(item.detailUrl);
