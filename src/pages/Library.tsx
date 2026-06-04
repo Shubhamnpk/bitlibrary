@@ -139,10 +139,10 @@ const Library: React.FC<LibraryProps> = ({
 
   return (
     <div className="animate-fade-in">
-      <div className="mb-10 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+      <div className="mb-6 flex flex-col gap-4 sm:mb-10 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h1 className="mb-2 text-4xl font-display font-bold tracking-tight text-bit-text">My Library</h1>
-          <p className="max-w-2xl text-sm leading-7 text-bit-muted">
+          <h1 className="mb-1 text-2xl font-display font-bold tracking-tight text-bit-text sm:mb-2 sm:text-4xl">My Library</h1>
+          <p className="hidden max-w-2xl text-sm leading-7 text-bit-muted sm:block">
             Your saved books, favorite audiobooks, and recently viewed items are kept here on this device.
           </p>
         </div>
@@ -168,7 +168,7 @@ const Library: React.FC<LibraryProps> = ({
           {hasDisplayedItems ? (
             <div className="space-y-10">
               {displayedBooks.length > 0 && (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-8">
+                <div className="bit-card-grid">
                   {displayedBooks.map((book) => (
                     <BookCard key={book.id} variant="compact" book={book} onClick={onBookClick} onRead={onRead} />
                   ))}
@@ -184,7 +184,7 @@ const Library: React.FC<LibraryProps> = ({
                     </div>
                     <Headphones size={24} className="text-bit-muted" />
                   </div>
-                  <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.25rem),1fr))] gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fit,minmax(10.25rem,1fr))] lg:grid-cols-3">
+                  <div className="bit-card-grid">
                     {displayedAudiobooks.map((audiobook) => (
                       <AudiobookCard key={audiobook.id} variant="compact" audiobook={audiobook} onClick={onAudiobookClick} />
                     ))}

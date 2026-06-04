@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, CheckCircle2, Headphones, Library, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Headphones, Sparkles } from 'lucide-react';
 import Seo from '@/components/Seo';
 
 interface ReleasesPageProps {
@@ -9,9 +9,22 @@ interface ReleasesPageProps {
 
 const releaseNotes = [
   {
+    version: 'v0.5.0',
+    title: 'Reader study tools and smarter search',
+    status: 'Current preview',
+    summary: 'Made the PDF reader more useful for study sessions and tightened search behavior across books, audiobooks, and YoBook-powered educational content.',
+    changes: [
+      'YoBook-powered books and curriculum audiobooks are integrated into search, curriculum, and audiobook discovery.',
+      'Search now uses a 2-character minimum, 400ms debounce, safer fast-typing URL sync, result limits, and pagination.',
+      'PDF reader gained page slider polish, focus mode, touch zoom improvements, hidden scrollbars, and stable Turn.js desktop behavior.',
+      'Study sidebar now includes bookmarks, grouped expandable highlights, removable highlights, and highlight color choices.',
+      'Reader look controls now support background presets and persisted highlight colors for new selections.',
+    ],
+  },
+  {
     version: 'v0.4.0',
     title: 'Audiobooks and saved audio',
-    status: 'Current preview',
+    status: 'Released',
     summary: 'Added public-domain audiobook discovery and made audio feel like a first-class library item.',
     changes: [
       'Audiobooks page and dedicated audiobook detail route.',
@@ -56,26 +69,26 @@ const releaseNotes = [
 ];
 
 const releaseStats = [
-  { label: 'Current build', value: 'v0.4.0' },
+  { label: 'Current build', value: 'v0.5.0' },
   { label: 'Major releases', value: releaseNotes.length.toString() },
-  { label: 'Primary focus', value: 'Audio' },
+  { label: 'Primary focus', value: 'Reader + Search' },
 ];
 
 const releaseHighlights = [
   {
-    title: 'Audiobooks became native',
-    body: 'Audio now has discovery, detail pages, a focused player, saved items, and local progress resume.',
-    icon: Headphones,
+    title: 'Reader study tools matured',
+    body: 'Bookmarks, grouped highlights, highlight colors, focus mode, and smoother PDF controls now work together in the reader.',
+    icon: CheckCircle2,
   },
   {
-    title: 'Library memory improved',
-    body: 'Saved books, saved audiobooks, recent searches, and recently viewed items now work together.',
-    icon: Library,
-  },
-  {
-    title: 'Discovery routes matured',
-    body: 'Search, author, category, and detail paths now make browsing feel more connected.',
+    title: 'Search became calmer',
+    body: 'Search now waits for enough signal, avoids fast-typing character loss, limits results, and ranks books plus audiobooks more deliberately.',
     icon: Sparkles,
+  },
+  {
+    title: 'YoBook content expanded',
+    body: 'YoBook books and educational audiobooks now have stronger priority across search, curriculum, and audiobook routes.',
+    icon: Headphones,
   },
 ];
 

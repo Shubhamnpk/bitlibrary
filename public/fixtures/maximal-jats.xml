@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<article xml:lang="en" article-type="research-article" dtd-version="1.4" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:mml="http://www.w3.org/1998/Math/MathML">
+  <processing-meta base-tagset="archiving" mathml-version="3.0" table-model="xhtml" tagset-family="jats">
+    <restricted-by>pmc</restricted-by>
+  </processing-meta>
+  <front>
+    <journal-meta>
+      <journal-id journal-id-type="nlm-ta">BitLibrary Test J</journal-id>
+      <journal-title-group>
+        <journal-title>BitLibrary XML Rendering Test Journal</journal-title>
+      </journal-title-group>
+      <issn pub-type="epub">2578-0000</issn>
+      <publisher>
+        <publisher-name>BitLibrary Fixtures</publisher-name>
+      </publisher>
+    </journal-meta>
+    <article-meta>
+      <article-id pub-id-type="pmcid">PMC12859696</article-id>
+      <article-id pub-id-type="doi">10.0000/bitlibrary.maximal-jats</article-id>
+      <article-categories>
+        <subj-group subj-group-type="heading">
+          <subject>Renderer Fixture</subject>
+        </subj-group>
+        <subj-group subj-group-type="subject">
+          <subject>JATS XML</subject>
+        </subj-group>
+      </article-categories>
+      <title-group>
+        <article-title>Maximal JATS XML fixture for <italic>BitLibrary</italic> reader coverage</article-title>
+      </title-group>
+      <contrib-group>
+        <contrib contrib-type="author">
+          <name name-style="western">
+            <surname>Tester</surname>
+            <given-names>XML</given-names>
+          </name>
+          <role vocab="credit" vocab-term="Conceptualization">Conceptualization</role>
+          <xref rid="aff1" ref-type="aff">1</xref>
+        </contrib>
+        <contrib contrib-type="author">
+          <name name-style="western">
+            <surname>Renderer</surname>
+            <given-names>Article</given-names>
+          </name>
+          <role vocab="credit" vocab-term="Software">Software</role>
+          <xref rid="aff1" ref-type="aff">1</xref>
+        </contrib>
+      </contrib-group>
+      <aff id="aff1">
+        <label>1</label>
+        <institution>BitLibrary local fixture lab</institution>,
+        <country>Nepal</country>
+      </aff>
+      <author-notes>
+        <corresp id="cor1">Correspondence: <email>reader@example.test</email></corresp>
+        <fn fn-type="conflict">
+          <p>The authors declare this is a synthetic renderer fixture.</p>
+        </fn>
+      </author-notes>
+      <pub-date pub-type="epub">
+        <day>02</day>
+        <month>06</month>
+        <year>2026</year>
+      </pub-date>
+      <permissions>
+        <copyright-statement>Copyright 2026 BitLibrary fixture authors.</copyright-statement>
+        <license license-type="open-access">
+          <license-p>This fixture is generated test content for local rendering checks.</license-p>
+        </license>
+      </permissions>
+      <abstract>
+        <p>This fixture exercises <bold>bold</bold>, <italic>italic</italic>, <sub>subscript</sub>, <sup>superscript</sup>, <sc>small caps</sc>, links, formulas, tables, figures, supplementary files, code, chemical structures, lists, references, and metadata.</p>
+      </abstract>
+      <kwd-group>
+        <kwd>JATS</kwd>
+        <kwd>Europe PMC</kwd>
+        <kwd>reader test</kwd>
+      </kwd-group>
+      <funding-group>
+        <funding-statement>This synthetic article was funded by curiosity and regression testing.</funding-statement>
+      </funding-group>
+      <custom-meta-group>
+        <custom-meta>
+          <meta-name>fixture-version</meta-name>
+          <meta-value>1</meta-value>
+        </custom-meta>
+      </custom-meta-group>
+    </article-meta>
+  </front>
+  <body>
+    <sec id="s1">
+      <title>Inline Content</title>
+      <p>Inline rendering includes <bold>strong text</bold>, <italic>emphasis</italic>, <monospace>monospace</monospace>, <named-content content-type="gene">neurod2</named-content>, <styled-content style-type="underline">styled content</styled-content>, <xref ref-type="fig" rid="fig1">Figure 1</xref>, <xref ref-type="table" rid="tbl1">Table 1</xref>, <xref ref-type="sec" rid="s2">the Blocks section</xref>, <xref ref-type="disp-formula" rid="eq1">Equation 1</xref>, <xref ref-type="supplementary-material" rid="supp1">Supplementary File 1</xref>, and an external <ext-link ext-link-type="uri" xlink:href="https://europepmc.org">Europe PMC link</ext-link>.</p>
+      <p>Inline TeX math should render here: <inline-formula><tex-math><![CDATA[E = mc^2]]></tex-math></inline-formula>. MathML fallback should remain readable: <inline-formula><mml:math><mml:mi>x</mml:mi><mml:mo>+</mml:mo><mml:mn>1</mml:mn></mml:math></inline-formula>.</p>
+      <p>Inline media marker: <inline-graphic xlink:href="inline-marker.png"/> and inline email <email>xml-reader@example.test</email>.</p>
+      <list list-type="bullet">
+        <list-item><p>First list item with <italic>formatting</italic>.</p></list-item>
+        <list-item><p>Second list item with <xref ref-type="bibr" rid="ref1">citation</xref>.</p></list-item>
+      </list>
+    </sec>
+    <sec id="s2">
+      <title>Blocks</title>
+      <p>A display formula follows.</p>
+      <disp-formula id="eq1">
+        <label>Equation 1</label>
+        <tex-math><![CDATA[\int_0^1 x^2\,dx = \frac{1}{3}]]></tex-math>
+      </disp-formula>
+      <boxed-text id="box1">
+        <caption><title>Box 1.</title><p>A boxed note with its own paragraph.</p></caption>
+        <p>Boxed content can contain <bold>important</bold> callouts.</p>
+      </boxed-text>
+      <preformat preformat-type="code" xml:space="preserve">const reader = "BitLibrary";
+console.log(reader);</preformat>
+      <preformat preformat-type="mermaid" xml:space="preserve">flowchart TD
+A[Find XML endpoint] --&gt; B{Has graphic?}
+B --&gt; C[Render image figure]
+B --&gt; D[Render formatted flowchart source]</preformat>
+      <code language="typescript">type ResourceFormat = "pdf" | "xml" | "html" | "text" | "package";</code>
+      <chem-struct id="chem1">
+        <label>Chemical 1</label>
+        <chem-struct-wrap>
+          <caption><p>Water chemical structure with formula H2O.</p></caption>
+          <graphic xlink:href="/fixtures/water-structure.svg"/>
+        </chem-struct-wrap>
+      </chem-struct>
+    </sec>
+    <sec id="s3">
+      <title>Figure Table And Supplements</title>
+      <fig id="fig1" position="float">
+        <?cloudpmc-path blobs/6846/12859696/5e1dbaf6b0bd/25789430-2026-micropub.biology.001910.jpg?>
+        <?cloudpmc-bucket cdn?>
+        <label>Figure 1</label>
+        <caption>
+          <title>Known-good PMC image.</title>
+          <p>This figure uses a real NCBI CDN image path so the fixture can verify image rendering.</p>
+        </caption>
+        <graphic xlink:href="25789430-2026-micropub.biology.001910.jpg"/>
+      </fig>
+      <fig id="fig2" fig-type="flowchart" position="float">
+        <label>Flowchart 1</label>
+        <caption>
+          <title>Flowchart or process diagram.</title>
+          <p>JATS normally stores a flowchart as a figure graphic, often SVG or PNG. This case verifies absolute SVG graphics.</p>
+        </caption>
+        <graphic xlink:href="https://upload.wikimedia.org/wikipedia/commons/9/91/LampFlowchart.svg"/>
+      </fig>
+      <table-wrap id="tbl1" position="float">
+        <label>Table 1</label>
+        <caption>
+          <title>Table rendering matrix.</title>
+          <p>Header cells, row cells, colspan, rowspan, and inline formatting should stay readable.</p>
+        </caption>
+        <table>
+          <tbody>
+            <tr>
+              <th>Feature</th>
+              <th>Status</th>
+              <th>Notes</th>
+            </tr>
+            <tr>
+              <td>Bold and italic</td>
+              <td><bold>Pass</bold></td>
+              <td><italic>Inline tags</italic> inside cells.</td>
+            </tr>
+            <tr>
+              <td rowspan="2">Spanning cells</td>
+              <td colspan="2">A colspan cell across two columns.</td>
+            </tr>
+            <tr>
+              <td>Second row</td>
+              <td>Rowspan target.</td>
+            </tr>
+          </tbody>
+        </table>
+      </table-wrap>
+      <supplementary-material id="sup1" content-type="local-data">
+        <label>Supplement 1</label>
+        <caption><p>Example CSV-style supplement.</p></caption>
+        <media mime-subtype="csv" mimetype="text" xlink:href="supplementary-data.csv"/>
+      </supplementary-material>
+      <media id="media1" mimetype="image" mime-subtype="png" xlink:href="https://cdn.ncbi.nlm.nih.gov/pmc/blobs/6846/12859696/5e1dbaf6b0bd/25789430-2026-micropub.biology.001910.jpg">
+        <caption><p>Standalone media image block.</p></caption>
+      </media>
+    </sec>
+  </body>
+  <back>
+    <ack>
+      <title>Acknowledgments</title>
+      <p>Thanks to this local fixture for making renderer gaps obvious.</p>
+    </ack>
+    <ref-list>
+      <title>References</title>
+      <ref id="ref1">
+        <label>1</label>
+        <mixed-citation publication-type="journal">
+          <person-group person-group-type="author"><name><surname>Example</surname><given-names>A.</given-names></name></person-group>
+          <article-title>A compact reference for renderer tests.</article-title>
+          <source>Fixture Journal</source>
+          <year>2026</year>
+          <pub-id pub-id-type="doi">10.0000/reference.fixture</pub-id>
+        </mixed-citation>
+      </ref>
+    </ref-list>
+  </back>
+</article>

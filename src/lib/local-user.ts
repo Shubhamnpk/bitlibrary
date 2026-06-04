@@ -12,6 +12,10 @@ const LEGACY_KEYS = [
 const USER_STATE_EVENT = 'bitlibrary:user-state-changed';
 const MAX_RECENT_SEARCHES = 8;
 const MAX_RECENTLY_VIEWED = 12;
+const MAX_SAVED_BOOKS = 80;
+const MAX_SAVED_AUDIOBOOKS = 40;
+const MAX_COMPACT_TEXT = 420;
+const MAX_COMPACT_LIST = 10;
 
 const defaultUserState: LocalUserState = {
   profile: {
@@ -44,6 +48,131 @@ const dedupeAudiobooks = (audiobooks: Audiobook[]) => {
   });
 };
 
+const compactText = (value: unknown, maxLength = MAX_COMPACT_TEXT) => {
+  if (typeof value !== 'string') return '';
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trim()}...` : normalized;
+};
+
+const compactStringList = (value: unknown, maxItems = MAX_COMPACT_LIST) => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .map((entry) => compactText(entry, 80))
+    .slice(0, maxItems);
+};
+
+const compactAuthors = (authors: Book['authors'] | Audiobook['authors'] = []) => {
+  return authors
+    .filter((author) => author?.name)
+    .slice(0, 4)
+    .map((author) => ({
+      name: compactText(author.name, 80),
+      birth_year: author.birth_year,
+      death_year: author.death_year,
+    }));
+};
+
+const compactBook = (book: Book): Book => ({
+  id: String(book.id),
+  title: compactText(book.title, 180) || 'Untitled book',
+  author: compactText(book.author, 120) || 'Unknown author',
+  authors: compactAuthors(book.authors),
+  category: compactText(book.category, 80) || 'General',
+  description: compactText(book.description),
+  coverGradient: book.coverGradient,
+  coverUrl: book.coverUrl,
+  year: book.year,
+  pages: book.pages,
+  popularity: book.popularity,
+  downloads: book.downloads,
+  subjects: compactStringList(book.subjects),
+  keywords: compactStringList(book.keywords),
+  bookshelves: compactStringList(book.bookshelves),
+  externalUrl: book.externalUrl,
+  downloadUrl: book.downloadUrl,
+  audioUrl: book.audioUrl,
+  gutenbergId: book.gutenbergId,
+  grade: book.grade,
+  level: book.level,
+  curriculum: book.curriculum,
+  language: book.language,
+  country: book.country,
+  detailUrl: book.detailUrl,
+  sourceUrl: book.sourceUrl,
+  collection_name: compactText(book.collection_name, 120),
+  question_papers: (book.question_papers || []).slice(0, 80).map((paper) => ({
+    title: compactText(paper.title, 180) || 'Question paper',
+    year: compactText(paper.year, 24),
+    readUrl: paper.readUrl,
+    url: paper.url,
+    downloadUrl: paper.downloadUrl,
+    sourceUrl: paper.sourceUrl,
+    coverUrl: paper.coverUrl,
+    fileSize: compactText(paper.fileSize, 40),
+  })),
+  questionPaperCount: book.questionPaperCount,
+  providerSource: book.providerSource,
+  source: book.source,
+});
+
+const compactAudiobook = (audiobook: Audiobook): Audiobook => ({
+  id: String(audiobook.id),
+  title: compactText(audiobook.title, 180) || 'Untitled audiobook',
+  author: compactText(audiobook.author, 120) || 'Unknown author',
+  authors: compactAuthors(audiobook.authors),
+  description: compactText(audiobook.description),
+  language: compactText(audiobook.language, 40) || 'Unknown',
+  copyrightYear: audiobook.copyrightYear,
+  coverUrl: audiobook.coverUrl,
+  thumbnailUrl: audiobook.thumbnailUrl,
+  totalTime: audiobook.totalTime,
+  totalTimeSeconds: audiobook.totalTimeSeconds,
+  numSections: audiobook.numSections || audiobook.tracks?.length || 0,
+  genres: compactStringList(audiobook.genres),
+  sourceTextUrl: audiobook.sourceTextUrl,
+  librivoxUrl: audiobook.librivoxUrl || audiobook.archiveUrl || audiobook.rssUrl || '',
+  archiveUrl: audiobook.archiveUrl,
+  rssUrl: audiobook.rssUrl,
+  zipUrl: audiobook.zipUrl,
+  tracks: (audiobook.tracks || []).slice(0, 3).map((track) => ({
+    id: String(track.id),
+    sectionNumber: track.sectionNumber,
+    title: compactText(track.title, 160) || 'Audio track',
+    listenUrl: track.listenUrl,
+    fallbackUrls: compactStringList(track.fallbackUrls, 2),
+    playtimeSeconds: track.playtimeSeconds,
+    readers: compactStringList(track.readers, 4),
+  })),
+  source: audiobook.source,
+});
+
+const compactUserState = (state: LocalUserState): LocalUserState => ({
+  profile: {
+    displayName: compactText(state.profile?.displayName, 80) || defaultUserState.profile.displayName,
+  },
+  settings: {
+    theme: state.settings?.theme === 'light' ? 'light' : 'dark',
+  },
+  savedBooks: dedupeBooks(state.savedBooks || []).slice(0, MAX_SAVED_BOOKS).map(compactBook),
+  savedAudiobooks: dedupeAudiobooks(state.savedAudiobooks || []).slice(0, MAX_SAVED_AUDIOBOOKS).map(compactAudiobook),
+  recentSearches: (state.recentSearches || [])
+    .map((entry) => compactText(entry, 80))
+    .filter(Boolean)
+    .slice(0, MAX_RECENT_SEARCHES),
+  recentlyViewed: dedupeBooks(state.recentlyViewed || []).slice(0, MAX_RECENTLY_VIEWED).map(compactBook),
+});
+
+const pruneLegacyLocalData = () => {
+  LEGACY_KEYS.forEach((key) => {
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // Ignore storage cleanup failures; the caller will handle the write result.
+    }
+  });
+};
+
 const emitUserStateChange = () => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event(USER_STATE_EVENT));
@@ -54,7 +183,7 @@ const readLegacySavedAudiobooks = (): Audiobook[] => {
 
   try {
     const raw = window.localStorage.getItem(LEGACY_SAVED_AUDIOBOOKS_KEY);
-    return raw ? dedupeAudiobooks(JSON.parse(raw) as Audiobook[]) : [];
+    return raw ? dedupeAudiobooks(JSON.parse(raw) as Audiobook[]).map(compactAudiobook) : [];
   } catch {
     return [];
   }
@@ -84,10 +213,10 @@ export const readLocalUserState = (): LocalUserState => {
       settings: {
         theme: parsed.settings?.theme === 'light' ? 'light' : 'dark',
       },
-      savedBooks: dedupeBooks(parsed.savedBooks || []),
-      savedAudiobooks,
+      savedBooks: dedupeBooks(parsed.savedBooks || []).slice(0, MAX_SAVED_BOOKS).map(compactBook),
+      savedAudiobooks: savedAudiobooks.slice(0, MAX_SAVED_AUDIOBOOKS).map(compactAudiobook),
       recentSearches: (parsed.recentSearches || []).filter(Boolean).slice(0, MAX_RECENT_SEARCHES),
-      recentlyViewed: dedupeBooks(parsed.recentlyViewed || []).slice(0, MAX_RECENTLY_VIEWED),
+      recentlyViewed: dedupeBooks(parsed.recentlyViewed || []).slice(0, MAX_RECENTLY_VIEWED).map(compactBook),
     };
   } catch {
     return {
@@ -99,12 +228,51 @@ export const readLocalUserState = (): LocalUserState => {
 
 export const writeLocalUserState = (state: LocalUserState) => {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(USER_STATE_KEY, JSON.stringify(state));
-  emitUserStateChange();
+  const compactState = compactUserState(state);
+  const candidates: LocalUserState[] = [
+    compactState,
+    {
+      ...compactState,
+      savedBooks: compactState.savedBooks.slice(0, 40),
+      savedAudiobooks: compactState.savedAudiobooks.slice(0, 25),
+      recentlyViewed: compactState.recentlyViewed.slice(0, 6),
+    },
+    {
+      ...compactState,
+      savedBooks: compactState.savedBooks.slice(0, 15),
+      savedAudiobooks: compactState.savedAudiobooks.slice(0, 10),
+      recentlyViewed: compactState.recentlyViewed.slice(0, 3),
+    },
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      window.localStorage.setItem(USER_STATE_KEY, JSON.stringify(candidate));
+      emitUserStateChange();
+      return;
+    } catch {
+      pruneLegacyLocalData();
+    }
+  }
+
+  try {
+    window.localStorage.setItem(
+      USER_STATE_KEY,
+      JSON.stringify({
+        ...defaultUserState,
+        profile: compactState.profile,
+        settings: compactState.settings,
+        recentSearches: compactState.recentSearches,
+      }),
+    );
+    emitUserStateChange();
+  } catch (error) {
+    console.warn('Unable to save BitLibrary local user state because browser storage is full.', error);
+  }
 };
 
 export const updateLocalUserState = (updater: (current: LocalUserState) => LocalUserState) => {
-  const nextState = updater(readLocalUserState());
+  const nextState = compactUserState(updater(readLocalUserState()));
   writeLocalUserState(nextState);
   return nextState;
 };
@@ -126,7 +294,20 @@ export const toggleSavedBook = (book: Book) => {
       ...current,
       savedBooks: alreadySaved
         ? current.savedBooks.filter((entry) => entry.id !== book.id)
-        : [book, ...current.savedBooks].slice(0, 100),
+        : [compactBook(book), ...current.savedBooks].slice(0, MAX_SAVED_BOOKS),
+    };
+  });
+};
+
+export const saveBook = (book: Book) => {
+  return updateLocalUserState((current) => {
+    if (current.savedBooks.some((entry) => entry.id === book.id)) {
+      return current;
+    }
+
+    return {
+      ...current,
+      savedBooks: [compactBook(book), ...current.savedBooks].slice(0, MAX_SAVED_BOOKS),
     };
   });
 };
@@ -138,7 +319,7 @@ export const toggleSavedAudiobook = (audiobook: Audiobook) => {
       ...current,
       savedAudiobooks: alreadySaved
         ? current.savedAudiobooks.filter((entry) => entry.id !== audiobook.id)
-        : [audiobook, ...current.savedAudiobooks.filter((entry) => entry.id !== audiobook.id)].slice(0, 50),
+        : [compactAudiobook(audiobook), ...current.savedAudiobooks.filter((entry) => entry.id !== audiobook.id)].slice(0, MAX_SAVED_AUDIOBOOKS),
     };
   });
 };
@@ -146,7 +327,7 @@ export const toggleSavedAudiobook = (audiobook: Audiobook) => {
 export const recordRecentlyViewedBook = (book: Book) => {
   return updateLocalUserState((current) => ({
     ...current,
-    recentlyViewed: [book, ...current.recentlyViewed.filter((entry) => entry.id !== book.id)].slice(0, MAX_RECENTLY_VIEWED),
+    recentlyViewed: [compactBook(book), ...current.recentlyViewed.filter((entry) => entry.id !== book.id)].slice(0, MAX_RECENTLY_VIEWED),
   }));
 };
 
@@ -194,6 +375,7 @@ export const useLocalUserState = () => {
     state,
     recordRecentSearch,
     toggleSavedBook,
+    saveBook,
     toggleSavedAudiobook,
     recordRecentlyViewedBook,
     updateDisplayName,

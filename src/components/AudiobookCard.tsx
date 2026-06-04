@@ -39,7 +39,7 @@ const AudiobookCard: React.FC<AudiobookCardProps> = ({ audiobook, onClick, varia
           onClick(audiobook);
         }
       }}
-      className={`group relative flex h-full flex-col overflow-hidden border border-bit-border bg-bit-panel/30 text-left transition-all duration-300 hover:-translate-y-1 hover:border-bit-accent/30 hover:bg-bit-panel/50 ${isCompact ? 'rounded-lg' : 'rounded-xl shadow-sm'}`}
+      className={`group relative flex h-full w-full flex-col overflow-hidden border border-bit-border bg-bit-panel/30 text-left transition-all duration-300 hover:-translate-y-1 hover:border-bit-accent/30 hover:bg-bit-panel/50 ${isCompact ? 'rounded-lg' : 'rounded-xl shadow-sm'}`}
     >
       <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(var(--bit-accent-rgb),0.14),transparent_45%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
 
@@ -62,7 +62,7 @@ const AudiobookCard: React.FC<AudiobookCardProps> = ({ audiobook, onClick, varia
 
         <div className="absolute inset-0 bg-gradient-to-t from-bit-bg/85 via-transparent to-transparent" />
         <div className={`absolute rounded border border-bit-border bg-bit-panel/85 font-mono uppercase tracking-widest text-bit-accent backdrop-blur-md ${isCompact ? 'left-2 top-2 px-1.5 py-0.5 text-[8px]' : 'left-3 top-3 px-2 py-1 text-[9px]'}`}>
-          LibriVox
+          {audiobook.source}
         </div>
         <button
           type="button"

@@ -14,25 +14,31 @@ import StaticPage from '@/pages/StaticPage';
 import AuthorDetails from '@/pages/AuthorDetails';
 import CategoryDetails from '@/pages/CategoryDetails';
 import SearchPage, { SEARCH_MIN_QUERY_LENGTH } from '@/pages/Search';
+import ResearchPage from '@/pages/ResearchPage';
 import NotFound from '@/pages/NotFound';
 import ReleasesPage from '@/pages/ReleasesPage';
 import RoadmapPage from '@/pages/RoadmapPage';
 import AudiobooksPage from '@/pages/AudiobooksPage';
 import AudiobookDetails from '@/pages/AudiobookDetails';
+import CurriculumPage from '@/pages/CurriculumPage';
+import DictionaryPage from '@/pages/DictionaryPage';
+import SourcesPage from '@/pages/SourcesPage';
 import { recordRecentSearch, useLocalUserState } from '@/lib/local-user';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams, matchPath } from 'react-router-dom';
 
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import Seo from '@/components/Seo';
+import FloatingScrollButton from '@/components/FloatingScrollButton';
+import MobileBottomNav from '@/components/MobileBottomNav';
+import MobileProfileModal from '@/components/MobileProfileModal';
 
-const SEARCH_DEBOUNCE_MS = 350;
+const SEARCH_DEBOUNCE_MS = 400;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
-const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/mylibrary','/search','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap',];
+const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/mylibrary','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources',];
 const HERO_ORBIT_NODES = {
   star: {
     title: 'Archive Star',
@@ -122,6 +128,7 @@ const App: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [isFeaturedLoading, setIsFeaturedLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const { state: localUserState } = useLocalUserState();
 
@@ -131,10 +138,21 @@ const App: React.FC = () => {
   const [readerLoading, setReaderLoading] = useState(false);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const searchShellRef = React.useRef<HTMLDivElement>(null);
+  const syncSearchQueryFromRoute = useCallback((value: string) => {
+    setSearchQuery((current) => {
+      const isActivelyTyping = isSearchFocused && document.activeElement === searchInputRef.current;
+      if (isActivelyTyping && current.trim() !== value.trim()) {
+        return current;
+      }
+
+      return value;
+    });
+  }, [isSearchFocused]);
+
   const navigateToSearch = useCallback((rawQuery: string, options?: { persistRecent?: boolean }) => {
     const trimmed = rawQuery.trim();
 
-    if (!trimmed) {
+    if (!trimmed || trimmed.length < SEARCH_MIN_QUERY_LENGTH) {
       if (location.pathname === '/search') {
         setSearchParams({});
       }
@@ -203,8 +221,8 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    setSearchQuery(searchParams.get('q') || '');
-  }, [searchParams]);
+    syncSearchQueryFromRoute(searchParams.get('q') || '');
+  }, [searchParams, syncSearchQueryFromRoute]);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -223,7 +241,7 @@ const App: React.FC = () => {
     closeSearchSurface();
   };
 
-  // Auto-Search Neural Synchronization (Debounced after 3 characters)
+  // Auto-search after the user has typed enough signal to avoid noisy one-letter searches.
   useEffect(() => {
     const trimmed = searchQuery.trim();
     const isDeepSector = location.pathname.startsWith('/book/') ||
@@ -231,6 +249,14 @@ const App: React.FC = () => {
       location.pathname.startsWith('/author/');
 
     const isSearchableSector = location.pathname === '/' || location.pathname === '/search';
+    if (trimmed.length < SEARCH_MIN_QUERY_LENGTH) {
+      if (location.pathname === '/search' && searchParams.get('q')) {
+        const timer = setTimeout(() => setSearchParams({}), SEARCH_DEBOUNCE_MS);
+        return () => clearTimeout(timer);
+      }
+      return;
+    }
+
     if (trimmed.length >= SEARCH_MIN_QUERY_LENGTH && !isDeepSector && isSearchableSector) {
       const timer = setTimeout(() => {
         if (searchParams.get('q') !== trimmed) {
@@ -239,7 +265,7 @@ const App: React.FC = () => {
       }, SEARCH_DEBOUNCE_MS);
       return () => clearTimeout(timer);
     }
-  }, [searchQuery, searchParams, location.pathname, navigateToSearch]);
+  }, [searchQuery, searchParams, location.pathname, navigateToSearch, setSearchParams]);
 
   const isReaderActive = Boolean(activeBook && !isMinimized);
   const activeTab = (path: string) => location.pathname === path;
@@ -247,6 +273,9 @@ const App: React.FC = () => {
     () => !ROUTE_PATTERNS.some((path) => matchPath({ path, end: true }, location.pathname)),
     [location.pathname]
   );
+  const isLibraryRoute = /^\/(?:library|books|browse|mylibrary)(?:\/|$)/.test(location.pathname);
+  const hideFloatingScrollControls = Boolean(isReaderActive || readerLoading || mobileMenuOpen || mobileProfileOpen);
+  const hideMobileBottomNav = Boolean(isReaderActive || readerLoading || mobileMenuOpen || mobileProfileOpen || isNotFoundRoute);
 
   const handleReadBook = useCallback((book: Book) => {
     setActiveBook(book);
@@ -265,6 +294,7 @@ const App: React.FC = () => {
       if (e.key === 'Escape') {
         closeSearchSurface();
         setMobileMenuOpen(false);
+        setMobileProfileOpen(false);
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -299,6 +329,23 @@ const App: React.FC = () => {
     navigateToSearch(query, { persistRecent: true });
     closeSearchSurface();
   };
+  const currentRoutePath = useCallback(() => `${location.pathname}${location.search}${location.hash}`, [location.hash, location.pathname, location.search]);
+  const navigateToBook = useCallback((bookOrId: Book | string, extraState?: Record<string, unknown>) => {
+    const id = typeof bookOrId === 'string' ? bookOrId : bookOrId.id;
+    const currentState = location.state as { from?: string } | null;
+    const from = location.pathname.startsWith('/book/')
+      ? currentState?.from || '/library'
+      : currentRoutePath();
+
+    navigate(`/book/${id}`, {
+      state: {
+        from,
+        ...(typeof bookOrId === 'string' ? {} : { book: bookOrId }),
+        ...extraState,
+      },
+    });
+  }, [currentRoutePath, location.pathname, location.state, navigate]);
+
   const handleMobileMenuSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
@@ -341,7 +388,7 @@ const App: React.FC = () => {
 
 
       {/* Main Layout */}
-      <main className={`${isNotFoundRoute ? 'min-h-[100svh] pb-0' : 'min-h-screen pb-20'} relative z-0 ${isReaderActive ? '' : 'pt-16 md:pt-20'}`}>
+      <main className={`${isNotFoundRoute ? 'min-h-[100svh] pb-0' : 'min-h-screen pb-28 md:pb-20'} relative z-0 ${isReaderActive ? '' : 'pt-16 md:pt-20'}`}>
 
         <Routes>
           {/* Home / Discovery */}
@@ -471,7 +518,7 @@ const App: React.FC = () => {
                   </Link>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-6 md:gap-x-6 md:gap-y-12">
+                <div className="bit-card-grid">
                   {isFeaturedLoading && featuredBooks.length === 0 ? (
                     // Logic for "One Row" using CSS grid visibility
                     // We render 4 to ensure a full row on all screens
@@ -482,7 +529,7 @@ const App: React.FC = () => {
                     ))
                   ) : (
                     featuredBooks.map(book => (
-                      <BookCard key={book.id} variant="compact" book={book} onClick={(b) => navigate(`/book/${b.id}`)} onRead={handleReadBook} />
+                      <BookCard key={book.id} variant="compact" book={book} onClick={navigateToBook} onRead={handleReadBook} />
                     ))
                   )}
                 </div>
@@ -513,9 +560,19 @@ const App: React.FC = () => {
           } />
 
           {/* Discovery / Library Registry */}
-          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
-          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
-          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={(b) => navigate(`/book/${b.id}`)} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+
+          <Route path="/curriculum" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <CurriculumPage
+                onBookClick={navigateToBook}
+                onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
+                onRead={handleReadBook}
+              />
+            </div>
+          } />
 
           {/* Personal Bookshelf */}
           <Route path="/mylibrary" element={
@@ -528,7 +585,7 @@ const App: React.FC = () => {
                 recentlyViewed={localUserState.recentlyViewed}
                 profile={localUserState.profile}
                 settings={localUserState.settings}
-                onBookClick={(b) => navigate(`/book/${b.id}`)}
+                onBookClick={navigateToBook}
                 onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
                 onRead={handleReadBook}
                 onExplore={() => navigate('/')}
@@ -539,15 +596,25 @@ const App: React.FC = () => {
           <Route path="/search" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <SearchPage
-                onBookClick={(book) => navigate(`/book/${book.id}`)}
+                onBookClick={navigateToBook}
                 onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
                 onRead={handleReadBook}
                 onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
                 onResultsChange={setSearchResults}
                 onSearchingChange={setIsSearching}
-                onQuerySync={setSearchQuery}
+                onQuerySync={syncSearchQueryFromRoute}
                 recentSearches={localUserState.recentSearches}
                 onQuickSearch={applySearchSelection}
+              />
+            </div>
+          } />
+
+          <Route path="/research" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <ResearchPage
+                onBookClick={navigateToBook}
+                onRead={handleReadBook}
+                onResultsChange={setSearchResults}
               />
             </div>
           } />
@@ -575,7 +642,12 @@ const App: React.FC = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <BookDetailsRoute
                 books={[...featuredBooks, ...searchResults]}
-                onRead={(id) => {
+                onRead={(id, directBook) => {
+                  if (directBook) {
+                    setActiveBook(directBook);
+                    setIsMinimized(false);
+                    return;
+                  }
                   const b = [...featuredBooks, ...searchResults].find(node => node.id === id);
                   if (b) {
                     setActiveBook(b);
@@ -591,7 +663,7 @@ const App: React.FC = () => {
                     });
                   }
                 }}
-                onBookClick={(id) => navigate(`/book/${id}`)}
+                onBookClick={(id) => navigateToBook(id)}
                 onAuthorClick={(name) => navigate(`/author/${encodeURIComponent(name)}`)}
                 onCategoryClick={(cat) => navigate(`/category/${encodeURIComponent(cat)}`)}
               />
@@ -600,13 +672,13 @@ const App: React.FC = () => {
 
           <Route path="/author/:name" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
-              <AuthorDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+              <AuthorDetails onBookClick={navigateToBook} />
             </div>
           } />
 
           <Route path="/category/:categoryId" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
-              <CategoryDetails onBookClick={(book) => navigate(`/book/${book.id}`)} />
+              <CategoryDetails onBookClick={navigateToBook} />
             </div>
           } />
 
@@ -615,6 +687,8 @@ const App: React.FC = () => {
           <Route path="/about" element={<AboutPage onBack={() => navigate('/')} />} />
           <Route path="/releases" element={<ReleasesPage onBack={() => navigate('/')} />} />
           <Route path="/roadmap" element={<RoadmapPage onBack={() => navigate('/')} />} />
+          <Route path="/dictionary" element={<DictionaryPage onBack={() => navigate('/')} />} />
+          <Route path="/sources" element={<SourcesPage onBack={() => navigate('/')} />} />
           <Route path="*" element={<NotFound />} />
 
         </Routes>
@@ -623,6 +697,17 @@ const App: React.FC = () => {
 
       {/* Global Footer */}
       <Footer isReaderActive={Boolean(isReaderActive || isNotFoundRoute)} />
+
+      <FloatingScrollButton
+        hidden={hideFloatingScrollControls}
+        hideScrollDown={isLibraryRoute}
+      />
+      <MobileBottomNav hidden={hideMobileBottomNav} onProfileClick={() => setMobileProfileOpen(true)} />
+      <MobileProfileModal
+        open={mobileProfileOpen}
+        onClose={() => setMobileProfileOpen(false)}
+        localUserState={localUserState}
+      />
 
       {/* Global PiP Overlay */}
       {readerLoading && !activeBook && <ReaderSkeleton />}
@@ -639,12 +724,13 @@ const App: React.FC = () => {
 };
 
 // Route Wrappers to handle fetching by ID
-const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, onBookClick: (id: string) => void, onAuthorClick: (name: string) => void, onCategoryClick: (cat: string) => void }> = ({ books, onRead, onBookClick, onAuthorClick, onCategoryClick }) => {
+const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string, book?: Book) => void, onBookClick: (id: string) => void, onAuthorClick: (name: string) => void, onCategoryClick: (cat: string) => void }> = ({ books, onRead, onBookClick, onAuthorClick, onCategoryClick }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [book, setBook] = useState<Book | null>(() => books.find(b => b.id === id) || null);
+  const routeBook = (location.state as { book?: Book } | null)?.book;
+  const [book, setBook] = useState<Book | null>(() => (routeBook?.id === id ? routeBook : books.find(b => b.id === id)) || null);
   const [loading, setLoading] = useState(!book);
 
   useEffect(() => {
@@ -663,20 +749,23 @@ const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, 
   if (loading && !book) return <div className="animate-fade-in"><BookDetailsSkeleton /></div>;
   if (!book) return <div className="py-20 text-center font-mono text-red-500 uppercase">Archive Node {id} not found in current sector registry.</div>;
 
+  const routeState = location.state as { from?: string; path?: Book[] } | null;
+  const returnTo = routeState?.from || '/library';
+  const breadcrumbPath = routeState?.path || [];
+
   return (
     <BookDetails
       book={book}
       allBooks={books}
-      onClose={() => navigate('/library')}
-      onRead={(rid) => onRead(rid || book.id)}
-      onBookClick={(b) => navigate(`/book/${b.id}`, { state: { path: [...(location.state?.path || []), book] } })}
+      onClose={() => navigate(returnTo)}
+      onRead={(rid, directBook) => onRead(rid || directBook?.id || book.id, directBook)}
+      onBookClick={(b) => navigate(`/book/${b.id}`, { state: { from: returnTo, path: [...breadcrumbPath, book] } })}
       onAuthorClick={onAuthorClick}
       onCategoryClick={onCategoryClick}
       onBreadcrumbClick={(b, index) => {
-        const currentPath = location.state?.path || [];
-        navigate(`/book/${b.id}`, { state: { path: currentPath.slice(0, index) } });
+        navigate(`/book/${b.id}`, { state: { from: returnTo, path: breadcrumbPath.slice(0, index) } });
       }}
-      breadcrumbPath={location.state?.path || []}
+      breadcrumbPath={breadcrumbPath}
     />
   );
 };

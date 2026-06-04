@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines } from 'lucide-react';
+import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap, User, ChevronDown, Bookmark, Headphones, History, Settings, FileText, Mic, Microscope } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
+import { getSpeechRecognitionConstructor, isSpeechRecognitionContextAllowed, requestMicrophoneForSpeech } from '@/lib/speech';
 
 interface NavbarProps {
   isReaderActive: boolean;
@@ -50,6 +51,94 @@ const Navbar: React.FC<NavbarProps> = ({
   mobileQuickTopics,
   navigateToSearch
 }) => {
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceSearchError, setVoiceSearchError] = useState('');
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const displayName = localUserState.profile.displayName || 'Reader';
+  const profileInitials = useMemo(() => {
+    const initials = displayName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part: string) => part[0]?.toUpperCase())
+      .join('');
+
+    return initials || 'US';
+  }, [displayName]);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setProfileOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [profileOpen]);
+
+  const handleVoiceSearch = async () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
+    if (voiceListening) return;
+
+    if (!SpeechRecognition) {
+      setVoiceSearchError('Voice search is not supported in this browser.');
+      return;
+    }
+
+    if (!isSpeechRecognitionContextAllowed()) {
+      setVoiceSearchError('Voice search needs HTTPS or localhost in Chrome.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = /[\u0900-\u097F]/u.test(searchQuery) ? 'ne-NP' : 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => {
+      setVoiceSearchError('');
+      setVoiceListening(true);
+    };
+    recognition.onend = () => setVoiceListening(false);
+    recognition.onerror = (event) => {
+      setVoiceListening(false);
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setVoiceSearchError('Microphone permission is blocked for this site.');
+      } else if (event.error === 'no-speech') {
+        setVoiceSearchError('No speech was detected. Try again.');
+      } else {
+        setVoiceSearchError('Voice search could not start in this browser.');
+      }
+    };
+    recognition.onresult = (event: any) => {
+      const transcript = event.results?.[0]?.[0]?.transcript?.trim() || '';
+      if (!transcript) return;
+      setVoiceSearchError('');
+      setSearchQuery(transcript);
+      navigateToSearch(transcript, { persistRecent: true });
+      setMobileMenuOpen(false);
+    };
+    try {
+      await requestMicrophoneForSpeech();
+      recognition.start();
+    } catch {
+      setVoiceListening(false);
+      setVoiceSearchError('Microphone permission is blocked for this site.');
+    }
+  };
+
   if (isReaderActive) return null;
 
   return (
@@ -81,9 +170,18 @@ const Navbar: React.FC<NavbarProps> = ({
                 value={searchQuery}
                 onFocus={() => setIsSearchFocused(true)}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-bit-panel/30 border border-bit-border rounded-full py-2 pl-10 pr-24 text-sm focus:outline-none focus:border-bit-accent/50 focus:bg-bit-panel/50 transition-all placeholder:text-bit-muted/50"
+                className="w-full bg-bit-panel/30 border border-bit-border rounded-full py-2 pl-10 pr-32 text-sm focus:outline-none focus:border-bit-accent/50 focus:bg-bit-panel/50 transition-all placeholder:text-bit-muted/50"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleVoiceSearch}
+                  className={`text-bit-muted transition-colors hover:text-bit-accent ${voiceListening ? 'text-bit-accent' : ''}`}
+                  aria-label="Search by voice"
+                  title={voiceSearchError || 'Search by voice'}
+                >
+                  <Mic size={15} />
+                </button>
                 {trimmedSearchQuery && (
                   <button
                     type="button"
@@ -117,7 +215,9 @@ const Navbar: React.FC<NavbarProps> = ({
                   <div>
                     <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent">Search Control</p>
                     <p className="text-sm text-bit-muted mt-1">
-                      {trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
+                      {voiceSearchError
+                        ? voiceSearchError
+                        : trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
                         ? `Press Enter to open results for "${trimmedSearchQuery}".`
                         : `Type at least ${SEARCH_MIN_QUERY_LENGTH} characters to start searching.`}
                     </p>
@@ -187,10 +287,95 @@ const Navbar: React.FC<NavbarProps> = ({
           <div className="hidden md:flex items-center gap-6 font-mono text-xs tracking-wider">
             <Link to="/" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Home</Link>
             <Link to="/library" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/library') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Library</Link>
-            <Link to="/mylibrary" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/mylibrary') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>My Library</Link>
+            <Link to="/research" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/research') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Research</Link>
+            <Link to="/curriculum" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/curriculum') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Curriculum</Link>
             <ThemeToggle />
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-bit-panel to-bit-border border border-bit-border flex items-center justify-center cursor-pointer hover:border-bit-accent/50 transition-all">
-              <span className="text-[10px] font-bold text-bit-text">US</span>
+            <div ref={profileMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setProfileOpen((open) => !open)}
+                className={`flex items-center gap-2 rounded-full border px-1.5 py-1 transition-all ${profileOpen ? 'border-bit-accent/60 bg-bit-panel text-bit-text' : 'border-bit-border bg-bit-panel/40 text-bit-muted hover:border-bit-accent/50 hover:text-bit-text'}`}
+                aria-haspopup="menu"
+                aria-expanded={profileOpen}
+                aria-label="Open profile menu"
+              >
+                <span className="flex h-7 w-7 items-center justify-center rounded-full border border-bit-border bg-gradient-to-tr from-bit-panel to-bit-border text-[10px] font-bold text-bit-text">
+                  {profileInitials}
+                </span>
+                <ChevronDown size={13} className={`transition-transform ${profileOpen ? 'rotate-180 text-bit-accent' : ''}`} />
+              </button>
+
+              {profileOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+0.75rem)] w-80 overflow-hidden rounded-2xl border border-bit-border bg-bit-panel/95 text-bit-text shadow-2xl shadow-bit-bg/35 backdrop-blur-2xl"
+                >
+                  <div className="border-b border-bit-border/50 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full border border-bit-accent/30 bg-bit-accent/10 text-sm font-bold text-bit-accent">
+                        {profileInitials}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{displayName}</p>
+                        <p className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted">Local reader profile</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 border-b border-bit-border/50 text-center">
+                    <div className="px-3 py-3">
+                      <p className="text-sm font-bold text-bit-text">{localUserState.savedBooks.length}</p>
+                      <p className="mt-1 text-[9px] font-mono uppercase tracking-[0.18em] text-bit-muted">Books</p>
+                    </div>
+                    <div className="border-x border-bit-border/50 px-3 py-3">
+                      <p className="text-sm font-bold text-bit-text">{localUserState.savedAudiobooks.length}</p>
+                      <p className="mt-1 text-[9px] font-mono uppercase tracking-[0.18em] text-bit-muted">Audio</p>
+                    </div>
+                    <div className="px-3 py-3">
+                      <p className="text-sm font-bold text-bit-text">{localUserState.recentlyViewed.length}</p>
+                      <p className="mt-1 text-[9px] font-mono uppercase tracking-[0.18em] text-bit-muted">Recent</p>
+                    </div>
+                  </div>
+
+                  <div className="p-2">
+                    <Link
+                      to="/mylibrary"
+                      role="menuitem"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-bit-muted transition-all hover:bg-bit-bg/50 hover:text-bit-text"
+                    >
+                      <Bookmark size={16} className="text-bit-accent" />
+                      My Library
+                    </Link>
+                    <Link
+                      to="/audiobooks"
+                      role="menuitem"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-bit-muted transition-all hover:bg-bit-bg/50 hover:text-bit-text"
+                    >
+                      <Headphones size={16} className="text-bit-accent" />
+                      Audiobooks
+                    </Link>
+                    <Link
+                      to="/search"
+                      role="menuitem"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-bit-muted transition-all hover:bg-bit-bg/50 hover:text-bit-text"
+                    >
+                      <History size={16} className="text-bit-accent" />
+                      Search history
+                    </Link>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 border-t border-bit-border/50 px-4 py-3">
+                    <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.18em] text-bit-muted">
+                      <Settings size={13} />
+                      Theme
+                    </div>
+                    <ThemeToggle />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -244,12 +429,24 @@ const Navbar: React.FC<NavbarProps> = ({
                   className="flex-1 rounded-xl border border-bit-border bg-bit-bg/60 px-3 py-2 text-sm text-bit-text placeholder:text-bit-muted/60 focus:outline-none focus:border-bit-accent/40"
                 />
                 <button
+                  type="button"
+                  onClick={handleVoiceSearch}
+                  className={`rounded-xl border border-bit-border px-3 py-2 transition-all ${voiceListening ? 'bg-bit-accent text-white' : 'bg-bit-panel/35 text-bit-muted hover:border-bit-accent/40 hover:text-bit-accent'}`}
+                  aria-label="Search by voice"
+                  title={voiceSearchError || 'Search by voice'}
+                >
+                  <Mic size={15} />
+                </button>
+                <button
                   type="submit"
                   className="rounded-xl bg-bit-accent text-white px-3 py-2 text-[10px] font-mono uppercase tracking-widest"
                 >
                   Go
                 </button>
               </div>
+              {voiceSearchError && (
+                <p className="mt-2 text-xs font-medium text-red-500">{voiceSearchError}</p>
+              )}
             </form>
 
             <section className="rounded-2xl border border-bit-border bg-bit-panel/25 p-3">
@@ -263,9 +460,17 @@ const Navbar: React.FC<NavbarProps> = ({
                   <Library size={16} />
                   Library
                 </Link>
+                <Link to="/research" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/research') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
+                  <Microscope size={16} />
+                  Research
+                </Link>
                 <Link to="/audiobooks" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/audiobooks') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
                   <AudioLines size={16} />
                   Audiobooks
+                </Link>
+                <Link to="/curriculum" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/curriculum') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
+                  <GraduationCap size={16} />
+                  Curriculum
                 </Link>
                 <Link to="/mylibrary" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/mylibrary') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
                   <BookOpenText size={16} />
@@ -274,6 +479,10 @@ const Navbar: React.FC<NavbarProps> = ({
                 <Link to="/about" className="flex items-center gap-3 rounded-xl border border-bit-border bg-bit-panel/30 px-3 py-2 text-sm text-bit-muted hover:text-bit-text hover:border-bit-accent/30 transition-all">
                   <Info size={16} />
                   About
+                </Link>
+                <Link to="/sources" className="flex items-center gap-3 rounded-xl border border-bit-border bg-bit-panel/30 px-3 py-2 text-sm text-bit-muted hover:text-bit-text hover:border-bit-accent/30 transition-all">
+                  <FileText size={16} />
+                  Sources & Credits
                 </Link>
               </div>
             </section>

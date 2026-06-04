@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Audiobook, AudiobookTrack } from '@/types/index';
 import { fetchAudiobookById, fetchFeaturedAudiobooks, searchAudiobooks } from '@/services/audiobookService';
 import AudiobookCard from '@/components/AudiobookCard';
+import AppSelect from '@/components/AppSelect';
 import Seo from '@/components/Seo';
 import { ArrowLeft, Calendar, Download, ExternalLink, Gauge, Headphones, Heart, Library, ListMusic, Pause, Play, Radio, RotateCcw, RotateCw, ShieldCheck, SkipBack, SkipForward } from 'lucide-react';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
@@ -25,6 +26,7 @@ const getProgressKey = (audiobookId: string) => `${PROGRESS_KEY_PREFIX}-${audiob
 const AudiobookDetails: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [audiobook, setAudiobook] = useState<Audiobook | null>(null);
   const [loading, setLoading] = useState(true);
@@ -249,6 +251,22 @@ const AudiobookDetails: React.FC = () => {
     toggleLocalSavedAudiobook(audiobook);
   };
 
+  const goBack = () => {
+    const from = (location.state as { from?: string } | null)?.from;
+    if (from && !from.startsWith(`/audiobook/${id}`)) {
+      navigate(from);
+      return;
+    }
+
+    const historyState = window.history.state as { idx?: number } | null;
+    if (historyState && typeof historyState.idx === 'number' && historyState.idx > 0) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/audiobooks');
+  };
+
   const structuredData = useMemo(() => {
     if (!audiobook) return [];
     return [
@@ -267,7 +285,7 @@ const AudiobookDetails: React.FC = () => {
         duration: audiobook.totalTime,
         inLanguage: audiobook.language,
         isAccessibleForFree: true,
-        provider: { '@type': 'Organization', name: 'LibriVox', url: 'https://librivox.org' },
+        provider: { '@type': 'Organization', name: audiobook.source, url: audiobook.librivoxUrl },
         sameAs: audiobook.librivoxUrl,
       },
     ];
@@ -285,8 +303,8 @@ const AudiobookDetails: React.FC = () => {
     return (
       <div className="py-24 text-center">
         <p className="font-mono text-sm uppercase tracking-[0.2em] text-bit-muted">Audiobook node not found.</p>
-        <button onClick={() => navigate('/audiobooks')} className="mt-6 rounded-full bg-bit-accent px-6 py-3 text-[10px] font-mono uppercase tracking-widest text-white">
-          Back to audiobooks
+        <button onClick={goBack} className="mt-6 rounded-full bg-bit-accent px-6 py-3 text-[10px] font-mono uppercase tracking-widest text-white">
+          Back
         </button>
       </div>
     );
@@ -301,20 +319,20 @@ const AudiobookDetails: React.FC = () => {
     <div className="animate-fade-in pb-24">
       <Seo
         title={`${audiobook.title} Audiobook | BitLibrary`}
-        description={truncate(`${audiobook.description} Listen to this public-domain LibriVox audiobook on BitLibrary.`, 155)}
+        description={truncate(`${audiobook.description} Listen to this ${audiobook.source} audiobook on BitLibrary.`, 155)}
         canonicalPath={`/audiobook/${audiobook.id}`}
         image={coverUrl}
-        keywords={[audiobook.title, audiobook.author, 'LibriVox', 'public domain audiobook', ...audiobook.genres].filter(Boolean)}
+        keywords={[audiobook.title, audiobook.author, audiobook.source, 'audiobook', ...audiobook.genres].filter(Boolean)}
         structuredData={structuredData}
       />
 
       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <button
-          onClick={() => navigate('/audiobooks')}
+          onClick={goBack}
           className="inline-flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/30 px-6 py-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-muted shadow-sm transition-all hover:border-bit-accent/30 hover:text-bit-accent"
         >
           <ArrowLeft size={14} />
-          Back to Audiobooks
+          Back
         </button>
 
         <button
@@ -347,7 +365,7 @@ const AudiobookDetails: React.FC = () => {
               <div className="absolute bottom-6 left-6 right-6">
                 <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/80 px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-bit-accent backdrop-blur-md">
                   <Radio size={12} />
-                  LibriVox public domain
+                  {audiobook.source} audio
                 </p>
                 <h1 className="text-3xl font-display font-bold leading-tight text-white md:text-4xl lg:text-2xl xl:text-3xl">{audiobook.title}</h1>
                 <p className="mt-4 text-lg text-white/70 lg:text-sm xl:text-base">by {audiobook.author}</p>
@@ -500,37 +518,35 @@ const AudiobookDetails: React.FC = () => {
                         <ListMusic size={12} className="text-bit-accent" />
                         Chapter
                       </span>
-                      <select
+                      <AppSelect
                         value={activeTrack.id}
-                        onChange={(event) => {
-                          const nextTrack = audiobook.tracks.find((track) => track.id === event.target.value);
+                        onChange={(value) => {
+                          const nextTrack = audiobook.tracks.find((track) => track.id === value);
                           if (nextTrack) selectTrack(nextTrack);
                         }}
-                        className="w-full rounded-xl border border-bit-border bg-bit-panel/60 px-3 py-2 text-sm text-bit-text focus:border-bit-accent/40 focus:outline-none"
-                      >
-                        {audiobook.tracks.map((track) => (
-                          <option key={track.id} value={track.id}>
-                            {track.sectionNumber}. {track.title}
-                          </option>
-                        ))}
-                      </select>
+                        options={audiobook.tracks.map((track) => ({
+                          value: track.id,
+                          label: `${track.sectionNumber}. ${track.title}`,
+                        }))}
+                        className="w-full bg-bit-panel/60"
+                        ariaLabel="Chapter"
+                      />
                     </label>
                     <label className="block">
                       <span className="mb-2 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-bit-muted">
                         <Gauge size={12} className="text-bit-accent" />
                         Speed
                       </span>
-                      <select
-                        value={playbackRate}
-                        onChange={(event) => handlePlaybackRateChange(event.target.value)}
-                        className="w-full rounded-xl border border-bit-border bg-bit-panel/60 px-3 py-2 text-sm text-bit-text focus:border-bit-accent/40 focus:outline-none"
-                      >
-                        {PLAYBACK_RATES.map((rate) => (
-                          <option key={rate} value={rate}>
-                            {rate}x
-                          </option>
-                        ))}
-                      </select>
+                      <AppSelect
+                        value={String(playbackRate)}
+                        onChange={handlePlaybackRateChange}
+                        options={PLAYBACK_RATES.map((rate) => ({
+                          value: String(rate),
+                          label: `${rate}x`,
+                        }))}
+                        className="w-full bg-bit-panel/60"
+                        ariaLabel="Speed"
+                      />
                     </label>
                   </div>
                 </div>
@@ -698,37 +714,35 @@ const AudiobookDetails: React.FC = () => {
                       <ListMusic size={12} className="text-bit-accent" />
                       Jump to chapter
                     </span>
-                    <select
+                    <AppSelect
                       value={activeTrack.id}
-                      onChange={(event) => {
-                        const nextTrack = audiobook.tracks.find((track) => track.id === event.target.value);
+                      onChange={(value) => {
+                        const nextTrack = audiobook.tracks.find((track) => track.id === value);
                         if (nextTrack) selectTrack(nextTrack);
                       }}
-                      className="w-full rounded-xl border border-bit-border bg-bit-panel/60 px-3 py-2.5 text-sm text-bit-text focus:border-bit-accent/40 focus:outline-none"
-                    >
-                      {audiobook.tracks.map((track) => (
-                        <option key={track.id} value={track.id}>
-                          {track.sectionNumber}. {track.title}
-                        </option>
-                      ))}
-                    </select>
+                      options={audiobook.tracks.map((track) => ({
+                        value: track.id,
+                        label: `${track.sectionNumber}. ${track.title}`,
+                      }))}
+                      className="w-full bg-bit-panel/60"
+                      ariaLabel="Jump to chapter"
+                    />
                   </label>
                   <label className="block">
                     <span className="mb-2 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-bit-muted">
                       <Gauge size={12} className="text-bit-accent" />
                       Speed
                     </span>
-                    <select
-                      value={playbackRate}
-                      onChange={(event) => handlePlaybackRateChange(event.target.value)}
-                      className="w-full rounded-xl border border-bit-border bg-bit-panel/60 px-3 py-2.5 text-sm text-bit-text focus:border-bit-accent/40 focus:outline-none"
-                    >
-                      {PLAYBACK_RATES.map((rate) => (
-                        <option key={rate} value={rate}>
-                          {rate}x
-                        </option>
-                      ))}
-                    </select>
+                    <AppSelect
+                      value={String(playbackRate)}
+                      onChange={handlePlaybackRateChange}
+                      options={PLAYBACK_RATES.map((rate) => ({
+                        value: String(rate),
+                        label: `${rate}x`,
+                      }))}
+                      className="w-full bg-bit-panel/60"
+                      ariaLabel="Speed"
+                    />
                   </label>
                 </div>
               </div>
@@ -811,7 +825,7 @@ const AudiobookDetails: React.FC = () => {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold">{track.title}</span>
                     <span className="mt-1 block truncate text-[10px] font-mono uppercase tracking-widest opacity-60">
-                      {track.readers.length ? track.readers.join(', ') : 'LibriVox volunteer'}
+                      {track.readers.length ? track.readers.join(', ') : audiobook.source}
                     </span>
                   </span>
                   <span className="shrink-0 text-[10px] font-mono uppercase tracking-widest opacity-60">{formatTrackTime(track.playtimeSeconds)}</span>
@@ -832,13 +846,15 @@ const AudiobookDetails: React.FC = () => {
             </div>
 
             {suggestedAudiobooks.length > 0 ? (
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.25rem),1fr))] gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fit,minmax(10.25rem,1fr))] lg:grid-cols-4 lg:gap-x-5">
+              <div className="bit-card-grid">
                 {suggestedAudiobooks.map((item) => (
                   <AudiobookCard
                     key={item.id}
                     audiobook={item}
                     variant="compact"
-                    onClick={(nextAudiobook) => navigate(`/audiobook/${nextAudiobook.id}`)}
+                    onClick={(nextAudiobook) => navigate(`/audiobook/${nextAudiobook.id}`, {
+                      state: { from: `${location.pathname}${location.search}${location.hash}` },
+                    })}
                   />
                 ))}
               </div>

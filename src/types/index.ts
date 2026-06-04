@@ -4,6 +4,41 @@ export interface Author {
   death_year?: number;
 }
 
+export interface ChapterPdf {
+  title: string;
+  pdfUrl: string;
+}
+
+export interface ChapterAudio {
+  chapter: number;
+  chapterName: string;
+  unit: string;
+  url: string;
+}
+
+export interface QuestionPaper {
+  title: string;
+  year?: string;
+  readUrl?: string;
+  url?: string;
+  downloadUrl?: string;
+  sourceUrl?: string;
+  coverUrl?: string;
+  fileSize?: string;
+}
+
+export type ResourceFormat = 'pdf' | 'text' | 'xml' | 'epub' | 'html' | 'package' | 'source' | 'unknown';
+
+export interface ResourceLink {
+  url: string;
+  format: ResourceFormat;
+  provider: string;
+  label?: string;
+  relation?: 'reader' | 'download' | 'landing' | 'doi' | 'metadata' | 'source';
+  embeddable?: boolean;
+  downloadable?: boolean;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -18,11 +53,26 @@ export interface Book {
   popularity?: number; // 0-100
   downloads?: number;
   subjects?: string[];
+  keywords?: string[];
   bookshelves?: string[];
   externalUrl?: string;
   downloadUrl?: string;
+  resourceLinks?: ResourceLink[];
+  audioUrl?: string;
   gutenbergId?: number;
-  source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library';
+  grade?: number;
+  level?: number;
+  curriculum?: string;
+  language?: string;
+  country?: string;
+  detailUrl?: string;
+  sourceUrl?: string;
+  chapterPdfUrls?: ChapterPdf[];
+  collection_name?: string;
+  question_papers?: QuestionPaper[];
+  questionPaperCount?: number;
+  providerSource?: string;
+  source?: 'traditional' | 'neural' | 'Google Books' | 'IT Bookstore' | 'Gutendex' | 'Neural Lab' | 'Open Library' | 'YoBook' | 'arXiv' | 'Semantic Scholar' | 'PubMed Central' | 'Europe PMC' | 'OpenAlex' | 'Crossref' | 'DataCite' | 'Unpaywall' | (string & {});
 }
 
 export interface AudiobookTrack {
@@ -55,7 +105,7 @@ export interface Audiobook {
   rssUrl?: string;
   zipUrl?: string;
   tracks: AudiobookTrack[];
-  source: 'LibriVox' | 'Internet Archive' | 'Project Gutenberg';
+  source: 'LibriVox' | 'Internet Archive' | 'Project Gutenberg' | 'YoBook';
 }
 
 export enum ViewState {

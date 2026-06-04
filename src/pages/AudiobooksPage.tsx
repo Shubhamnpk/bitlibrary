@@ -4,7 +4,8 @@ import { Audiobook } from '@/types/index';
 import {
   AUDIOBOOK_CATEGORIES,
   fetchAudiobooksByGenre,
-  fetchFeaturedAudiobooks,
+  fetchPopularAudiobooks,
+  fetchYoBookAudiobooks,
   getAudiobookCategoryById,
   searchAudiobooks,
 } from '@/services/audiobookService';
@@ -19,10 +20,17 @@ interface AudiobooksPageProps {
 
 type CategoryRows = Record<string, Audiobook[]>;
 
+const AUDIOBOOK_ROW_LIMIT = 6;
+const AUDIOBOOK_CATEGORY_LIMIT = 6;
+const AUDIOBOOK_CATEGORY_BATCH_SIZE = 24;
+const AUDIOBOOK_CATEGORY_MAX_LIMIT = 120;
+const AUDIOBOOK_SEARCH_LIMIT = 6;
+
 const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => {
   const { categoryId } = useParams();
   const selectedCategory = getAudiobookCategoryById(categoryId);
   const isCategoryPage = Boolean(categoryId);
+  const [yoBookAudiobooks, setYoBookAudiobooks] = useState<Audiobook[]>([]);
   const [featuredAudiobooks, setFeaturedAudiobooks] = useState<Audiobook[]>([]);
   const [categoryRows, setCategoryRows] = useState<CategoryRows>({});
   const [categoryAudiobooks, setCategoryAudiobooks] = useState<Audiobook[]>([]);
@@ -31,20 +39,29 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [categoryRequest, setCategoryRequest] = useState({ categoryId: '', limit: AUDIOBOOK_CATEGORY_LIMIT });
+  const [categoryLoadingMore, setCategoryLoadingMore] = useState(false);
+  const currentCategoryLimit = selectedCategory && categoryRequest.categoryId === selectedCategory.id
+    ? categoryRequest.limit
+    : AUDIOBOOK_CATEGORY_LIMIT;
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    if (!selectedCategory || !categoryLoadingMore) setLoading(true);
     setSearchResults([]);
     setHasSearched(false);
 
     if (selectedCategory) {
-      fetchAudiobooksByGenre(selectedCategory.genre, 20)
+      setYoBookAudiobooks([]);
+      fetchAudiobooksByGenre(selectedCategory.genre, currentCategoryLimit)
         .then((items) => {
           if (active) setCategoryAudiobooks(items);
         })
         .finally(() => {
-          if (active) setLoading(false);
+          if (active) {
+            setLoading(false);
+            setCategoryLoadingMore(false);
+          }
         });
       return () => {
         active = false;
@@ -52,12 +69,16 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
     }
 
     Promise.allSettled([
-      fetchFeaturedAudiobooks(8),
-      ...AUDIOBOOK_CATEGORIES.map((category) => fetchAudiobooksByGenre(category.genre, 8)),
+      fetchYoBookAudiobooks(AUDIOBOOK_ROW_LIMIT),
+      fetchPopularAudiobooks(AUDIOBOOK_ROW_LIMIT),
+      ...AUDIOBOOK_CATEGORIES.map((category) => fetchAudiobooksByGenre(category.genre, AUDIOBOOK_ROW_LIMIT)),
     ])
-      .then(([featuredResult, ...rowResults]) => {
+      .then(([yoBookResult, featuredResult, ...rowResults]) => {
         if (!active) return;
-        setFeaturedAudiobooks(featuredResult.status === 'fulfilled' ? featuredResult.value : []);
+        const yoBookItems = yoBookResult.status === 'fulfilled' ? yoBookResult.value : [];
+        const featuredItems = featuredResult.status === 'fulfilled' ? featuredResult.value : [];
+        setYoBookAudiobooks(yoBookItems);
+        setFeaturedAudiobooks(featuredItems);
         const nextRows = AUDIOBOOK_CATEGORIES.reduce<CategoryRows>((rows, category, index) => {
           const result = rowResults[index];
           rows[category.id] = result?.status === 'fulfilled' ? result.value : [];
@@ -72,7 +93,17 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
     return () => {
       active = false;
     };
-  }, [selectedCategory]);
+  }, [selectedCategory, currentCategoryLimit]);
+
+  const handleLoadMoreCategoryAudiobooks = () => {
+    if (!selectedCategory) return;
+
+    setCategoryLoadingMore(true);
+    setCategoryRequest({
+      categoryId: selectedCategory.id,
+      limit: Math.min(currentCategoryLimit + AUDIOBOOK_CATEGORY_BATCH_SIZE, AUDIOBOOK_CATEGORY_MAX_LIMIT),
+    });
+  };
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -85,14 +116,14 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
 
     setSearching(true);
     setHasSearched(true);
-    searchAudiobooks(trimmed, 16)
+    searchAudiobooks(trimmed, AUDIOBOOK_SEARCH_LIMIT)
       .then(setSearchResults)
       .finally(() => setSearching(false));
   };
 
   const schemaItems = isCategoryPage
     ? categoryAudiobooks
-    : [...featuredAudiobooks, ...Object.values(categoryRows).flat()];
+    : [...yoBookAudiobooks, ...featuredAudiobooks, ...Object.values(categoryRows).flat()];
   const schema = useMemo(
     () => createItemListSchema(
       schemaItems.slice(0, 24).map((item) => ({
@@ -114,9 +145,9 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
     <div className="animate-fade-in pb-24">
       <Seo
         title={`${pageTitle} | BitLibrary`}
-        description={selectedCategory ? `Listen to ${selectedCategory.label.toLowerCase()} public-domain audiobooks on BitLibrary.` : 'Browse and listen to public-domain audiobooks from LibriVox inside BitLibrary.'}
+        description={selectedCategory ? `Listen to ${selectedCategory.label.toLowerCase()} audiobooks on BitLibrary.` : 'Browse and listen to audiobooks from YoBook and LibriVox inside BitLibrary.'}
         canonicalPath={selectedCategory ? `/audiobooks/category/${selectedCategory.id}` : '/audiobooks'}
-        keywords={['public domain audiobooks', 'LibriVox audiobooks', 'free audiobooks', selectedCategory?.label || 'audiobook categories'].filter(Boolean)}
+        keywords={['YoBook audiobooks', 'LibriVox audiobooks', 'free audiobooks', selectedCategory?.label || 'audiobook categories'].filter(Boolean)}
         structuredData={[schema]}
       />
 
@@ -188,7 +219,22 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
           {loading ? (
             <AudiobookSkeletonGrid count={8} />
           ) : selectedCategory ? (
-            <AudiobookGrid audiobooks={categoryAudiobooks} onAudiobookClick={onAudiobookClick} />
+            <>
+              <AudiobookGrid audiobooks={categoryAudiobooks} onAudiobookClick={onAudiobookClick} />
+              {currentCategoryLimit < AUDIOBOOK_CATEGORY_MAX_LIMIT && (
+                <div className="mt-10 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleLoadMoreCategoryAudiobooks}
+                    disabled={categoryLoadingMore}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-bit-accent/30 bg-bit-panel/50 px-5 py-3 text-xs font-bold uppercase tracking-[0.18em] text-bit-accent transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {categoryLoadingMore ? <Disc size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+                    Load more
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="rounded-2xl border border-dashed border-bit-border bg-bit-panel/25 p-8 text-sm leading-7 text-bit-muted">
               This audiobook category was not found.
@@ -200,7 +246,7 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
           <CategoryQuickLinks />
           <AudiobookShelf
             title="Popular listening"
-            description="A quick starting point from the public-domain catalog."
+            description="Well-known classics and public-domain recordings people return to often."
             audiobooks={featuredAudiobooks}
             loading={loading}
             onAudiobookClick={onAudiobookClick}
@@ -216,6 +262,13 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
               onAudiobookClick={onAudiobookClick}
             />
           ))}
+          <AudiobookShelf
+            title="YoBook education audio"
+            description="Fast local-service learning audio from the YoBook education catalog."
+            audiobooks={yoBookAudiobooks}
+            loading={loading}
+            onAudiobookClick={onAudiobookClick}
+          />
         </section>
       )}
     </div>
@@ -266,8 +319,8 @@ const AudiobookShelf: React.FC<AudiobookShelfProps> = ({ title, description, aud
     {loading ? (
       <AudiobookSkeletonRow />
     ) : audiobooks.length > 0 ? (
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.5rem),1fr))] gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] lg:grid-cols-4">
-        {audiobooks.slice(0, 4).map((audiobook) => (
+      <div className="bit-card-grid">
+        {audiobooks.slice(0, AUDIOBOOK_ROW_LIMIT).map((audiobook) => (
           <AudiobookCard key={audiobook.id} audiobook={audiobook} onClick={onAudiobookClick} variant="compact" />
         ))}
       </div>
@@ -285,7 +338,7 @@ interface AudiobookGridProps {
 }
 
 const AudiobookGrid: React.FC<AudiobookGridProps> = ({ audiobooks, onAudiobookClick }) => (
-  <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.5rem),1fr))] gap-x-3 gap-y-6 sm:grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))] lg:grid-cols-4">
+  <div className="bit-card-grid">
     {audiobooks.map((audiobook) => (
       <AudiobookCard key={audiobook.id} audiobook={audiobook} onClick={onAudiobookClick} variant="compact" />
     ))}
@@ -293,8 +346,8 @@ const AudiobookGrid: React.FC<AudiobookGridProps> = ({ audiobooks, onAudiobookCl
 );
 
 const AudiobookSkeletonRow = () => (
-  <div className="grid grid-cols-2 gap-x-3 gap-y-5 md:grid-cols-4">
-    {Array.from({ length: 4 }).map((_, index) => (
+  <div className="grid grid-cols-2 gap-x-3 gap-y-5 md:grid-cols-3 lg:grid-cols-6">
+    {Array.from({ length: AUDIOBOOK_ROW_LIMIT }).map((_, index) => (
       <div key={index} className="h-[18rem] rounded-xl border border-bit-border bg-bit-panel/30 animate-shimmer" />
     ))}
   </div>

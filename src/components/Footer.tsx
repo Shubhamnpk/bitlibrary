@@ -7,7 +7,7 @@ interface FooterProps {
   isReaderActive: boolean;
 }
 
-const FOOTER_BUILD_LABEL = 'v0.0.1 . Build 2026.05.10 . oss';
+const FOOTER_BUILD_LABEL = 'v0.5.0 . Build 2026.05.25 . oss';
 
 const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
   if (isReaderActive) return null;
@@ -41,7 +41,7 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
               >
                 <Github size={18} />
               </a>
-              <button className="p-2 rounded-full border border-bit-border hover:border-bit-accent/50 text-bit-muted hover:text-bit-accent transition-all"><Disc size={18} /></button>
+              <button title='size' className="p-2 rounded-full border border-bit-border hover:border-bit-accent/50 text-bit-muted hover:text-bit-accent transition-all"><Disc size={18} /></button>
             </div>
           </div>
 
@@ -74,6 +74,8 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
                 <li><Link to="/about" className="hover:text-bit-accent transition-all">ABOUT BITLIBRARY</Link></li>
                 <li><Link to="/releases" className="hover:text-bit-accent transition-all">RELEASE HISTORY</Link></li>
                 <li><Link to="/roadmap" className="hover:text-bit-accent transition-all">ROADMAP</Link></li>
+                <li><Link to="/dictionary" className="hover:text-bit-accent transition-all">DICTIONARY</Link></li>
+                <li><Link to="/sources" className="hover:text-bit-accent transition-all">SOURCES & CREDITS</Link></li>
                 <li><Link to="/terms" className="hover:text-bit-accent transition-all">TERMS OF USE</Link></li>
                 <li><a href="https://github.com/Shubhamnpk/bitlibrary" target="_blank" rel="noopener noreferrer" className="hover:text-bit-accent transition-all">SOURCE CODE</a></li>
               </ul>

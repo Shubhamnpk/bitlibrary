@@ -16,14 +16,14 @@
 }
 
 .theme-light {
-  --bit-bg: 250 248 244;
+  --bit-bg: 248 249 251;
   --bit-panel: 255 255 255;
-  --bit-border: 225 218 205;
+  --bit-border: 225 230 237;
   --bit-accent: 214 58 0;
   --bit-accent-rgb: 214 58 0;
-  --bit-text: 15 12 10;
-  --bit-muted: 105 92 80;
-  --bit-grid: 180 170 160;
+  --bit-text: 24 28 36;
+  --bit-muted: 99 111 128;
+  --bit-grid: 190 199 213;
   color-scheme: light;
 }
 
@@ -53,6 +53,18 @@
     @apply bg-white/[0.02] backdrop-blur-xl border border-white/5;
   }
 
+  .bit-card-grid {
+    @apply grid grid-cols-2 gap-x-3 gap-y-6 md:gap-x-4 md:gap-y-10;
+    align-items: start;
+    justify-content: start;
+  }
+
+  @media (min-width: 640px) {
+    .bit-card-grid {
+      grid-template-columns: repeat(auto-fill, minmax(10.5rem, 12rem));
+    }
+  }
+
   .theme-light .glass-panel {
     @apply bg-black/[0.02] border-black/10;
   }
@@ -63,6 +75,66 @@
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  .pdf-page-slider {
+    appearance: none;
+    border-radius: 999px;
+    background: transparent;
+    outline: none;
+    touch-action: none;
+  }
+
+  .pdf-page-slider::-webkit-slider-runnable-track {
+    height: 2rem;
+    border-radius: 999px;
+    background: transparent;
+  }
+
+  .pdf-page-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 1.35rem;
+    height: 1.35rem;
+    margin-top: 0.325rem;
+    border: 3px solid rgb(var(--bit-bg));
+    border-radius: 999px;
+    background: rgb(var(--bit-accent));
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.4), 0 8px 22px rgba(var(--bit-accent-rgb), 0.28);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+
+  .pdf-page-slider:active::-webkit-slider-thumb {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.55), 0 0 0 8px rgba(var(--bit-accent-rgb), 0.14), 0 10px 28px rgba(var(--bit-accent-rgb), 0.34);
+  }
+
+  .pdf-page-slider::-moz-range-track {
+    height: 2rem;
+    border-radius: 999px;
+    background: transparent;
+  }
+
+  .pdf-page-slider::-moz-range-thumb {
+    width: 1.1rem;
+    height: 1.1rem;
+    border: 3px solid rgb(var(--bit-bg));
+    border-radius: 999px;
+    background: rgb(var(--bit-accent));
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.4), 0 8px 22px rgba(var(--bit-accent-rgb), 0.28);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+
+  .pdf-page-slider:active::-moz-range-thumb {
+    transform: scale(1.12);
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.55), 0 0 0 8px rgba(var(--bit-accent-rgb), 0.14), 0 10px 28px rgba(var(--bit-accent-rgb), 0.34);
+  }
+
+  .pdf-page-slider:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.4), 0 0 0 5px rgba(var(--bit-accent-rgb), 0.18);
+  }
+
+  .pdf-page-slider:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 1px rgba(var(--bit-accent-rgb), 0.4), 0 0 0 5px rgba(var(--bit-accent-rgb), 0.18);
   }
 }
 
@@ -248,5 +320,97 @@
     rgba(var(--bit-text), 0.1) 60%,
     rgba(var(--bit-text), 0)
   );
+}
+
+.bit-pdf-reader-bg-default {
+  background:
+    radial-gradient(circle at top, rgba(var(--bit-accent-rgb), 0.08), transparent 42%),
+    linear-gradient(180deg, rgba(var(--bit-panel), 0.3), rgba(var(--bit-bg), 1));
+}
+
+.bit-pdf-reader-bg-wood {
+  background:
+    radial-gradient(circle at 50% 24%, rgba(255, 232, 183, 0.18), transparent 36%),
+    repeating-linear-gradient(92deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 13px),
+    repeating-linear-gradient(8deg, rgba(72, 38, 22, 0.34) 0 11px, rgba(177, 110, 59, 0.26) 11px 29px, rgba(93, 51, 29, 0.28) 29px 43px),
+    linear-gradient(135deg, #6a3c22, #a76935 48%, #3f2418);
+}
+
+.bit-pdf-reader-bg-paper {
+  background:
+    radial-gradient(circle at 48% 20%, rgba(255, 255, 255, 0.64), transparent 42%),
+    repeating-linear-gradient(0deg, rgba(123, 89, 43, 0.045) 0 1px, transparent 1px 18px),
+    linear-gradient(135deg, #eed8ab, #fff3d5 52%, #d0aa70);
+}
+
+.bit-pdf-reader-bg-sage {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(235, 244, 218, 0.2), transparent 38%),
+    repeating-linear-gradient(55deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 17px),
+    linear-gradient(135deg, #34443b, #83977d 54%, #18251f);
+}
+
+.bit-pdf-reader-bg-night {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(168, 188, 218, 0.13), transparent 38%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 18px),
+    linear-gradient(135deg, #10141c, #2f394b 52%, #07090d);
+}
+
+.bit-pdf-page .textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-align: initial;
+  transform-origin: 0 0;
+  forced-color-adjust: none;
+  z-index: 2;
+  opacity: 1;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.bit-pdf-page .textLayer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.bit-pdf-page .textLayer > :not(.markedContent),
+.bit-pdf-page .textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.bit-pdf-page .textLayer .markedContent {
+  display: contents;
+}
+
+.bit-pdf-page .textLayer ::selection {
+  background: var(--bit-pdf-selection-color, rgba(250, 204, 21, 0.38));
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.bit-pdf-page .textLayer .bit-pdf-speech-highlight {
+  border-radius: 3px;
+  background: rgba(var(--bit-accent-rgb), 0.26);
+  box-shadow: 0 0 0 2px rgba(var(--bit-accent-rgb), 0.18);
+}
+
+.bit-pdf-page .textLayer .endOfContent {
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
 }
 
