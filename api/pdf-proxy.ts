@@ -43,7 +43,7 @@ const sendReaderTextDocument = async (response: ServerResponse, statusCode: numb
   const html = await readerTextHtml(body, contentType, target);
   response.statusCode = statusCode;
   response.setHeader('content-type', 'text/html; charset=utf-8');
-  response.setHeader('cache-control', 'public, max-age=3600, s-maxage=86400');
+  response.setHeader('cache-control', 'no-cache');
   response.setHeader('access-control-allow-origin', '*');
   response.end(html);
 };

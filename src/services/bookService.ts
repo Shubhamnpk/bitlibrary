@@ -260,6 +260,65 @@ const getArchiveDirectFileUrl = (identifier: string, item: any): string | undefi
   return preferredFile ? `https://archive.org/download/${identifier}/${encodeURIComponent(preferredFile.name)}` : undefined;
 };
 
+const getArchiveFileResourceFormat = (file: any): ResourceFormat => {
+  const format = String(file?.format || '').toLowerCase();
+  const name = String(file?.name || '').toLowerCase();
+  if (format.includes('pdf') || /\.pdf$/i.test(name)) return 'pdf';
+  if (format.includes('epub') || /\.epub$/i.test(name)) return 'epub';
+  if (format.includes('djvutxt') || format.includes('full text') || /\.(?:txt|djvu\.txt)$/i.test(name)) return 'text';
+  if (format.includes('xml') || /\.xml$/i.test(name)) return 'xml';
+  if (/\.(?:zip|tar|gz|tgz)$/i.test(name)) return 'package';
+  return 'unknown';
+};
+
+const buildArchiveResourceLinks = (identifier?: string, item?: any, provider = 'Internet Archive'): ResourceLink[] => {
+  if (!identifier) return [];
+
+  const detailUrl = `https://archive.org/details/${identifier}`;
+  const links: ResourceLink[] = [
+    {
+      url: `https://archive.org/embed/${identifier}`,
+      format: 'html',
+      provider,
+      label: 'Archive reader',
+      relation: 'reader',
+      embeddable: true,
+      downloadable: false,
+    },
+  ];
+
+  if (Array.isArray(item?.files)) {
+    item.files
+      .filter((file: any) => typeof file?.name === 'string')
+      .map((file: any): ResourceLink => {
+        const format = getArchiveFileResourceFormat(file);
+        return {
+          url: `https://archive.org/download/${identifier}/${encodeURIComponent(file.name)}`,
+          format,
+          provider,
+          label: String(file.format || file.name),
+          relation: 'download',
+          embeddable: false,
+          downloadable: true,
+        };
+      })
+      .filter((link: ResourceLink) => ['pdf', 'epub', 'text', 'xml', 'package'].includes(link.format))
+      .forEach((link: ResourceLink) => links.push(link));
+  }
+
+  links.push({
+    url: detailUrl,
+    format: 'source',
+    provider,
+    label: 'Archive details',
+    relation: 'source',
+    embeddable: false,
+    downloadable: false,
+  });
+
+  return links.filter((link, index, list) => list.findIndex((entry) => entry.url === link.url) === index);
+};
+
 const hasOpenLibraryReadableAccess = (item: any): boolean => {
   const ebookAccess = typeof item?.ebook_access === 'string' ? item.ebook_access : '';
   return (
@@ -568,6 +627,20 @@ const mapOpenLibraryToBook = (item: any): Book => {
   const externalUrl = archiveId
     ? `https://archive.org/embed/${archiveId}`
     : `https://openlibrary.org${item.key}`;
+  const resourceLinks = archiveId
+    ? [
+      ...buildArchiveResourceLinks(archiveId, item, 'Open Library'),
+      {
+        url: `https://openlibrary.org${item.key}`,
+        format: 'source' as const,
+        provider: 'Open Library',
+        label: 'Open Library record',
+        relation: 'source' as const,
+        embeddable: false,
+        downloadable: false,
+      },
+    ]
+    : undefined;
 
   const firstSentence = toText(item.first_sentence, 'Historical volume from Open Library Archive.');
 
@@ -586,6 +659,7 @@ const mapOpenLibraryToBook = (item: any): Book => {
     downloads: item.ratings_count || 0,
     externalUrl,
     sourceUrl: `https://openlibrary.org${item.key}`,
+    resourceLinks,
   };
 };
 
@@ -637,6 +711,21 @@ const mapOpenLibraryWorkToBook = async (item: any): Promise<Book> => {
   const title = toText(item.title, 'Untitled Open Library Work');
   const readableSearchDoc = workId ? await fetchOpenLibrarySearchDocForWork(workId, title) : null;
   const archiveId = readableSearchDoc ? getOpenLibraryArchiveId(readableSearchDoc) : undefined;
+  const openLibraryUrl = workId ? `${OPEN_LIBRARY_BASE}/works/${workId}` : OPEN_LIBRARY_BASE;
+  const resourceLinks = archiveId
+    ? [
+      ...buildArchiveResourceLinks(archiveId, readableSearchDoc, 'Open Library'),
+      {
+        url: openLibraryUrl,
+        format: 'source' as const,
+        provider: 'Open Library',
+        label: 'Open Library record',
+        relation: 'source' as const,
+        embeddable: false,
+        downloadable: false,
+      },
+    ]
+    : undefined;
   const authorKeys = (Array.isArray(item.authors) ? item.authors : [])
     .map((entry: any) => entry?.author?.key)
     .filter((key: unknown): key is string => typeof key === 'string')
@@ -661,8 +750,9 @@ const mapOpenLibraryWorkToBook = async (item: any): Promise<Book> => {
     year: Number.isFinite(year) ? year : undefined,
     source: 'Open Library',
     subjects: subjects.slice(0, 12),
-    externalUrl: archiveId ? `https://archive.org/embed/${archiveId}` : (workId ? `${OPEN_LIBRARY_BASE}/works/${workId}` : OPEN_LIBRARY_BASE),
-    sourceUrl: workId ? `${OPEN_LIBRARY_BASE}/works/${workId}` : OPEN_LIBRARY_BASE,
+    externalUrl: archiveId ? `https://archive.org/embed/${archiveId}` : openLibraryUrl,
+    sourceUrl: openLibraryUrl,
+    resourceLinks,
     downloads: 0,
   };
 };
@@ -691,6 +781,7 @@ const mapArchiveToBook = (item: any): Book => {
   const detailUrl = `https://archive.org/details/${id}`;
   const externalUrl = hasArchiveReadableFormat(item) ? `https://archive.org/embed/${id}` : detailUrl;
   const downloadUrl = getArchiveDirectFileUrl(id, item);
+  const resourceLinks = buildArchiveResourceLinks(id, item, 'Internet Archive');
 
   const subjectArray = Array.isArray(metadata.subject) 
     ? metadata.subject 
@@ -710,6 +801,7 @@ const mapArchiveToBook = (item: any): Book => {
     downloads: parseInt(metadata.downloads || 0),
     externalUrl,
     downloadUrl,
+    resourceLinks,
     sourceUrl: detailUrl,
   };
 };

@@ -135,6 +135,58 @@ const stripLowPriorityDuplicateAnchorIds = (html: string) => {
   ));
 };
 
+const readerTargetHighlightScript = `(() => {
+      const targetClass = 'reader-target-highlight';
+      const targetSelector = '[id]';
+      let activeTarget = null;
+      let cleanupTimer = 0;
+      const getHashTarget = () => {
+        if (!window.location.hash || window.location.hash.length < 2) return null;
+        try {
+          return document.getElementById(decodeURIComponent(window.location.hash.slice(1)));
+        } catch {
+          return document.getElementById(window.location.hash.slice(1));
+        }
+      };
+      const flashTarget = (target, shouldScroll = true) => {
+        if (!target || !target.matches(targetSelector)) return;
+        window.clearTimeout(cleanupTimer);
+        if (activeTarget && activeTarget !== target) activeTarget.classList.remove(targetClass);
+        activeTarget = target;
+        target.classList.remove(targetClass);
+        void target.offsetWidth;
+        target.classList.add(targetClass);
+        if (shouldScroll) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        cleanupTimer = window.setTimeout(() => {
+          target.classList.remove(targetClass);
+          if (activeTarget === target) activeTarget = null;
+        }, 2800);
+      };
+      document.addEventListener('click', (event) => {
+        const link = event.target?.closest?.('a[href^="#"]');
+        if (!link) return;
+        const id = link.getAttribute('href').slice(1);
+        if (!id) return;
+        const nextHash = '#' + id;
+        let target = null;
+        try {
+          target = document.getElementById(decodeURIComponent(id));
+        } catch {
+          target = document.getElementById(id);
+        }
+        if (!target) return;
+        event.preventDefault();
+        if (window.location.hash === nextHash) {
+          flashTarget(target);
+          return;
+        }
+        window.location.hash = nextHash;
+        flashTarget(target);
+      });
+      window.addEventListener('hashchange', () => flashTarget(getHashTarget(), false));
+      window.requestAnimationFrame(() => flashTarget(getHashTarget(), false));
+    })();`;
+
 const safeHref = (value: string) => {
   if (/^https?:\/\//i.test(value) || /^mailto:/i.test(value)) return value;
   if (/^\/[\w./%?#=&+@~,-]+$/i.test(value)) return value;
@@ -367,7 +419,10 @@ const getBioCXrefAnchor = (kind: string, label: string, anchors: Record<string, 
   const normalizedKind = /^tab/i.test(kind) ? 'Table' : /^fig/i.test(kind) ? 'Fig' : '';
   const normalizedLabel = label.replace(/[()]/g, '').trim();
   if (!normalizedKind || !normalizedLabel) return '';
-  return anchors[`${normalizedKind}:${normalizedLabel.toLowerCase()}`] || '';
+  const exactAnchor = anchors[`${normalizedKind}:${normalizedLabel.toLowerCase()}`];
+  if (exactAnchor) return exactAnchor;
+  const parentFigureLabel = normalizedKind === 'Fig' ? normalizedLabel.match(/^([A-Z]?\d+(?:\.\d+)?)[A-Za-z]$/)?.[1] : '';
+  return parentFigureLabel ? anchors[`${normalizedKind}:${parentFigureLabel.toLowerCase()}`] || '' : '';
 };
 
 const enhanceBioCText = (value: string, xrefAnchors: Record<string, string> = {}) => {
@@ -566,7 +621,7 @@ const renderBioCArticleHtml = (body: string, contentType: string, imageMap: Reco
   return stripLowPriorityDuplicateAnchorIds(`<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.css"><style>
     :root{color-scheme:dark;background:#08090b;color:#f4f4f5;--panel:#14161a;--line:#2a2f36;--muted:#a1a1aa;--accent:#67e8f9}
     html{scroll-behavior:smooth}body{margin:0;background:linear-gradient(180deg,#0d1117 0,#08090b 300px);color:#f4f4f5;font:17px/1.72 ui-serif,Georgia,Cambria,"Times New Roman",serif}
-    [id]{scroll-margin-top:24px}:target{animation:target-flash 2.6s ease-out 1}:target:is(h2,h3){border-radius:8px;background:linear-gradient(90deg,rgba(103,232,249,.1),rgba(103,232,249,.025) 70%,transparent)}aside:target,.table-card:target,.figure-card:target{border-color:rgba(103,232,249,.42)!important;box-shadow:0 22px 70px rgba(0,0,0,.26),0 0 0 1px rgba(103,232,249,.32),0 0 34px rgba(103,232,249,.12)!important}@keyframes target-flash{0%,65%{outline:1px solid rgba(103,232,249,.62);outline-offset:6px}100%{outline:1px solid transparent;outline-offset:6px}}
+    [id]{scroll-margin-top:24px}.reader-target-highlight{animation:target-flash 2.6s ease-out 1}.reader-target-highlight:is(h1,h2,h3,h4,h5,h6,p,li){border-radius:8px;background:linear-gradient(90deg,rgba(103,232,249,.1),rgba(103,232,249,.025) 70%,transparent)}aside.reader-target-highlight,.table-card.reader-target-highlight,.figure-card.reader-target-highlight{border-color:rgba(103,232,249,.42)!important;box-shadow:0 22px 70px rgba(0,0,0,.26),0 0 0 1px rgba(103,232,249,.32),0 0 34px rgba(103,232,249,.12)!important}@keyframes target-flash{0%,65%{outline:1px solid rgba(103,232,249,.62);outline-offset:6px}100%{outline:1px solid transparent;outline-offset:6px}}
     article{box-sizing:border-box;width:min(1120px,calc(100% - 40px));max-width:none;margin:0 auto;padding:34px 24px 72px}
     header{border:1px solid var(--line);background:rgba(20,22,26,.78);margin-bottom:30px;padding:24px;border-radius:10px}
     .label{color:var(--accent);font:700 11px/1.4 ui-sans-serif,system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase}
@@ -607,6 +662,7 @@ const renderBioCArticleHtml = (body: string, contentType: string, imageMap: Reco
         if (concreteIds.has(node.id)) node.removeAttribute('id');
       });
     })();
+    ${readerTargetHighlightScript}
     (() => {
       const popover = document.getElementById('highlight-popover');
       const highlightAction = document.getElementById('highlight-action');
@@ -1012,7 +1068,7 @@ const renderJatsArticleHtml = (body: string, target: URL, imageMap: Record<strin
   return stripLowPriorityDuplicateAnchorIds(`<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.css"><style>
     :root{color-scheme:dark;background:#09090b;color:#f4f4f5}
     html{scroll-behavior:smooth}body{margin:0;background:#09090b;color:#f4f4f5;font:17px/1.72 ui-serif,Georgia,Cambria,"Times New Roman",serif}
-    [id]{scroll-margin-top:24px}:target{animation:target-flash 2.6s ease-out 1}:target:is(h2,h3){border-radius:8px;background:linear-gradient(90deg,rgba(103,232,249,.1),rgba(103,232,249,.025) 70%,transparent)}aside:target,.table-card:target,.figure-card:target{border-color:rgba(103,232,249,.42)!important;box-shadow:0 22px 70px rgba(0,0,0,.26),0 0 0 1px rgba(103,232,249,.32),0 0 34px rgba(103,232,249,.12)!important}@keyframes target-flash{0%,65%{outline:1px solid rgba(103,232,249,.62);outline-offset:6px}100%{outline:1px solid transparent;outline-offset:6px}}
+    [id]{scroll-margin-top:24px}.reader-target-highlight{animation:target-flash 2.6s ease-out 1}.reader-target-highlight:is(h1,h2,h3,h4,h5,h6,p,li){border-radius:8px;background:linear-gradient(90deg,rgba(103,232,249,.1),rgba(103,232,249,.025) 70%,transparent)}aside.reader-target-highlight,.table-card.reader-target-highlight,.figure-card.reader-target-highlight{border-color:rgba(103,232,249,.42)!important;box-shadow:0 22px 70px rgba(0,0,0,.26),0 0 0 1px rgba(103,232,249,.32),0 0 34px rgba(103,232,249,.12)!important}@keyframes target-flash{0%,65%{outline:1px solid rgba(103,232,249,.62);outline-offset:6px}100%{outline:1px solid transparent;outline-offset:6px}}
     article{box-sizing:border-box;width:min(1120px,calc(100% - 48px));margin:0 auto;padding:38px 24px 72px}
     header{border-bottom:1px solid #27272a;margin-bottom:30px;padding-bottom:24px}
     .label{color:#67e8f9;font:700 11px/1.4 ui-sans-serif,system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase}
@@ -1040,7 +1096,7 @@ const renderJatsArticleHtml = (body: string, target: URL, imageMap: Record<strin
     th,td{border:1px solid #3f3f46;padding:8px 10px;text-align:left;vertical-align:top}th{background:#27272a;color:#f4f4f5}
     .refs{padding-left:22px;color:#d4d4d8;font-size:14px;line-height:1.55}
     em{font-style:italic;color:#f8fafc}strong{font-weight:750;color:#fff}sub,sup{font-size:.72em;line-height:0}.xref,.inline-media{border-radius:4px;background:rgba(103,232,249,.12);padding:0 .2em;color:#a5f3fc;text-decoration:none}.inline-media{font:700 .78em/1.4 ui-sans-serif,system-ui,sans-serif}.small-caps{font-variant:small-caps}.formula{max-width:100%;vertical-align:middle}.formula-block{margin:18px 0;border:1px solid #27272a;border-radius:8px;background:#111113;padding:14px 16px;overflow-x:auto;overflow-y:visible;scrollbar-width:none;text-align:center}.formula-block::-webkit-scrollbar{width:0;height:0}.mathml-render{display:inline-flex;max-width:100%;overflow:visible;vertical-align:middle}.formula-block .mathml-render{display:inline-block;width:max-content;max-width:none;min-width:min-content}.mathml-render math{font-size:1.06em}.mathml-fallback{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#fef3c7}.katex{font-size:1.03em}.formula-block .katex-display{margin:0 auto}
-  </style></head><body><article data-reader-content="true"><header><div class="label">${escapeHtml(label)}</div><h1>${titleHtml}</h1><div class="meta">${escapeHtml(authors.join(', ') || journal || 'Unknown authors')}${year ? ` &middot; ${escapeHtml(year)}` : ''}${pmc ? ` &middot; ${escapeHtml(pmc)}` : ''}${doi ? ` &middot; DOI ${escapeHtml(doi)}` : ''}</div></header>${abstractHtml ? `<section class="abstract"><div class="label">Abstract</div>${abstractHtml}</section>` : ''}${frontMatterHtml}${sectionHtml || `<p>${escapeHtml(xmlToPlainText(body).slice(0, 4000))}</p>`}${backHtml}</article><script>(()=>{const concreteIds=new Set();document.querySelectorAll('[id]').forEach((node)=>{if(!/^(H[1-6]|UL|OL)$/.test(node.tagName))concreteIds.add(node.id)});document.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id],ul[id],ol[id]').forEach((node)=>{if(concreteIds.has(node.id))node.removeAttribute('id')});})();</script></body></html>`);
+  </style></head><body><article data-reader-content="true"><header><div class="label">${escapeHtml(label)}</div><h1>${titleHtml}</h1><div class="meta">${escapeHtml(authors.join(', ') || journal || 'Unknown authors')}${year ? ` &middot; ${escapeHtml(year)}` : ''}${pmc ? ` &middot; ${escapeHtml(pmc)}` : ''}${doi ? ` &middot; DOI ${escapeHtml(doi)}` : ''}</div></header>${abstractHtml ? `<section class="abstract"><div class="label">Abstract</div>${abstractHtml}</section>` : ''}${frontMatterHtml}${sectionHtml || `<p>${escapeHtml(xmlToPlainText(body).slice(0, 4000))}</p>`}${backHtml}</article><script>(()=>{const concreteIds=new Set();document.querySelectorAll('[id]').forEach((node)=>{if(!/^(H[1-6]|UL|OL)$/.test(node.tagName))concreteIds.add(node.id)});document.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id],ul[id],ol[id]').forEach((node)=>{if(concreteIds.has(node.id))node.removeAttribute('id')});})();${readerTargetHighlightScript}</script></body></html>`);
 };
 
 export const readerMessageHtml = (message: string) => `<!doctype html><html><head><meta charset="utf-8"><style>

@@ -38,7 +38,7 @@ const BookCard: React.FC<BookCardProps> = ({
   const resourceFormats = Array.from(new Set(
     (book.resourceLinks || [])
       .map((link) => link.format)
-      .filter((format) => ['pdf', 'text', 'xml', 'epub', 'package'].includes(format))
+      .filter((format) => ['html', 'pdf', 'text', 'xml', 'epub', 'package'].includes(format))
   )).slice(0, 4);
   const displayAuthors = getBookAuthors(book);
   const compactAuthorText = book.collection_name

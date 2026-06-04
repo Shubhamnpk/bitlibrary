@@ -33,8 +33,9 @@ const isBlockedFrameUrl = (url: string) => {
 };
 
 const isReadableResourceLink = (link: ResourceLink) => (
-  ['pdf', 'text', 'xml', 'epub'].includes(link.format)
+  ['pdf', 'text', 'xml', 'epub', 'html'].includes(link.format)
   && !['source', 'doi', 'metadata'].includes(link.relation || '')
+  && (link.format !== 'html' || link.embeddable !== false)
 );
 
 const isSupportedDirectReaderUrl = (url?: string) => (
@@ -209,7 +210,8 @@ const wrapReaderSpeechText = (root: HTMLElement, segment: string, documentRef: D
 };
 
 const getReaderResource = (resources: ResourceLink[]) => (
-  resources.find((link) => isReadableResourceLink(link) && link.format === 'pdf')
+  resources.find((link) => isReadableResourceLink(link) && link.format === 'html' && link.embeddable !== false)
+  || resources.find((link) => isReadableResourceLink(link) && link.format === 'pdf')
   || resources.find((link) => isReadableResourceLink(link) && ['text', 'xml'].includes(link.format) && link.embeddable !== false)
   || resources.find((link) => isReadableResourceLink(link) && link.format === 'epub')
 );
@@ -220,11 +222,14 @@ const getSortedReadableResources = (resources: ResourceLink[]) => {
     .filter((link, index, links) => links.findIndex((candidate) => candidate.url === link.url) === index);
   const isCrossref = readable.some((link) => link.provider === 'Crossref');
   const isPubMed = readable.some((link) => /PubMed Central|BioC/i.test(link.provider || ''));
+  const isArchive = readable.some((link) => /Open Library|Internet Archive/i.test(link.provider || '') || /archive\.org\/embed\//i.test(link.url));
   const priority = isCrossref
     ? ['xml', 'text', 'pdf', 'epub']
     : isPubMed
       ? ['xml', 'text', 'pdf', 'epub']
-    : ['pdf', 'text', 'xml', 'epub'];
+      : isArchive
+        ? ['html', 'pdf', 'epub', 'text', 'xml']
+    : ['pdf', 'text', 'xml', 'epub', 'html'];
 
   return readable.sort((first, second) => priority.indexOf(first.format) - priority.indexOf(second.format));
 };
@@ -457,9 +462,10 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const downloadResource = getDownloadResource(researchResources);
   const isExternal = !!book.externalUrl || researchResources.length > 0 || pdfChapters.length > 0;
   const directPdfReaderUrl = isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl : '';
+  const embeddableExternalReaderUrl = book.externalUrl && canEmbedExternalUrl(book.externalUrl, false) ? book.externalUrl : '';
   const fallbackReaderUrl = researchResources.length > 0
-    ? (isSupportedDirectReaderUrl(book.downloadUrl) ? book.downloadUrl : (isSupportedDirectReaderUrl(book.externalUrl) ? book.externalUrl : ''))
-    : (directPdfReaderUrl || (isSupportedDirectReaderUrl(book.externalUrl) ? book.externalUrl : '') || (isSupportedDirectReaderUrl(book.downloadUrl) ? book.downloadUrl : ''));
+    ? (isSupportedDirectReaderUrl(book.downloadUrl) ? book.downloadUrl : (isSupportedDirectReaderUrl(book.externalUrl) ? book.externalUrl : embeddableExternalReaderUrl))
+    : (directPdfReaderUrl || (isSupportedDirectReaderUrl(book.externalUrl) ? book.externalUrl : embeddableExternalReaderUrl) || (isSupportedDirectReaderUrl(book.downloadUrl) ? book.downloadUrl : ''));
   const externalReaderUrl = activePdfChapter?.pdfUrl || readerResource?.url || fallbackReaderUrl || '';
   const isPdfReader = Boolean(activePdfChapter)
     || readerResource?.format === 'pdf'
@@ -2028,7 +2034,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               {researchResources.length > 0 && (
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
                   {researchResources
-                    .filter((link) => ['pdf', 'text', 'xml', 'epub', 'package'].includes(link.format))
+                    .filter((link) => ['html', 'pdf', 'text', 'xml', 'epub', 'package'].includes(link.format))
                     .slice(0, 8)
                     .map((link) => (
                       <a
