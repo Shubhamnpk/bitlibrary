@@ -1,30 +1,51 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-const ALLOWED_PDF_HOSTS = new Set([
-  'learning.cehrd.gov.np',
-  'lib.moecdc.gov.np',
-  'ncert.nic.in',
-  'yobook-api.vercel.app',
-  'pustakalaya.org',
-  'www.pustakalaya.org',
-  'shisiradhikari.com.np',
-]);
-
-const ALLOWED_PDF_DOMAIN_SUFFIXES = [
-  '.pustakalaya.org',
-];
-
-const isAllowedPdfHost = (hostname: string) => {
-  const normalizedHostname = hostname.toLowerCase();
-  return (
-    ALLOWED_PDF_HOSTS.has(normalizedHostname) ||
-    ALLOWED_PDF_DOMAIN_SUFFIXES.some((suffix) => normalizedHostname.endsWith(suffix))
-  );
-};
+import { readerMessageHtml, readerTextHtml } from './lib/reader-renderer';
 
 const sendText = (response: ServerResponse, statusCode: number, message: string) => {
   response.statusCode = statusCode;
   response.setHeader('content-type', 'text/plain; charset=utf-8');
   response.end(message);
+};
+
+const isPrivateReaderHostname = (hostname: string) => {
+  const normalized = hostname.toLowerCase();
+  return normalized === 'localhost'
+    || normalized.endsWith('.localhost')
+    || normalized === 'metadata.google.internal'
+    || normalized === '169.254.169.254'
+    || /^127\./.test(normalized)
+    || /^10\./.test(normalized)
+    || /^192\.168\./.test(normalized)
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(normalized)
+    || normalized === '::1'
+    || normalized === '[::1]';
+};
+
+const isXmlLikeReaderTarget = (target: URL) => (
+  /\.xml(?:$|[?#])/i.test(target.toString())
+  || /\/BioC_xml\//i.test(target.pathname)
+  || /fullTextXML/i.test(target.toString())
+  || /[?&](?:format|type|ext)=xml(?:&|$)/i.test(target.search)
+);
+
+const isTextLikeReaderTarget = (target: URL) => (
+  /\.txt(?:$|[?#])/i.test(target.toString())
+  || /[?&](?:format|type|ext)=(?:txt|text)(?:&|$)/i.test(target.search)
+);
+
+const sendReaderMessage = (response: ServerResponse, statusCode: number, message: string) => {
+  response.statusCode = statusCode;
+  response.setHeader('content-type', 'text/html; charset=utf-8');
+  response.end(readerMessageHtml(message));
+};
+
+const sendReaderTextDocument = async (response: ServerResponse, statusCode: number, body: string, contentType: string, target: URL) => {
+  const html = await readerTextHtml(body, contentType, target);
+  response.statusCode = statusCode;
+  response.setHeader('content-type', 'text/html; charset=utf-8');
+  response.setHeader('cache-control', 'no-cache');
+  response.setHeader('access-control-allow-origin', '*');
+  response.end(html);
 };
 
 const getSafePdfFilename = (title: string | null) => {
@@ -42,9 +63,10 @@ export default async function handler(request: IncomingMessage, response: Server
   const requestUrl = new URL(request.url || '/', 'https://bitlibrary.local');
   const rawUrl = requestUrl.searchParams.get('url');
   const shouldDownload = requestUrl.searchParams.get('download') === '1';
+  const isReaderRequest = requestUrl.searchParams.get('reader') === '1';
 
   if (!rawUrl) {
-    sendText(response, 400, 'Missing url parameter.');
+    (isReaderRequest ? sendReaderMessage : sendText)(response, 400, 'Missing url parameter.');
     return;
   }
 
@@ -52,17 +74,22 @@ export default async function handler(request: IncomingMessage, response: Server
   try {
     target = new URL(rawUrl);
   } catch {
-    sendText(response, 400, 'Invalid url parameter.');
+    (isReaderRequest ? sendReaderMessage : sendText)(response, 400, 'Invalid url parameter.');
     return;
   }
 
-  if (target.protocol !== 'https:' || !isAllowedPdfHost(target.hostname)) {
-    sendText(response, 403, 'PDF host is not allowed.');
+  if (!['http:', 'https:'].includes(target.protocol)) {
+    (isReaderRequest ? sendReaderMessage : sendText)(response, 403, `Reader URL protocol is not allowed: ${target.protocol}`);
+    return;
+  }
+  if (isPrivateReaderHostname(target.hostname)) {
+    (isReaderRequest ? sendReaderMessage : sendText)(response, 403, 'Reader URL host is private or local.');
     return;
   }
 
   const upstreamHeaders = new Headers({
-    accept: 'application/pdf,*/*',
+    accept: isReaderRequest ? 'application/pdf,application/xml,text/xml,text/plain,*/*' : 'application/pdf,*/*',
+    'user-agent': 'BitLibrary/0.5.0 (reader proxy; academic research access)',
   });
   const range = request.headers.range;
   if (typeof range === 'string') {
@@ -75,27 +102,46 @@ export default async function handler(request: IncomingMessage, response: Server
     });
 
     if (!upstream.ok || !upstream.body) {
-      sendText(response, upstream.status || 502, 'Unable to fetch PDF.');
+      (isReaderRequest ? sendReaderMessage : sendText)(response, upstream.status || 502, 'Unable to fetch reader resource.');
       return;
     }
 
     const contentType = upstream.headers.get('content-type') || 'application/pdf';
-    if (!contentType.toLowerCase().includes('pdf')) {
-      sendText(response, 415, 'Target is not a PDF.');
+    const normalizedContentType = contentType.toLowerCase();
+    const isPdfUrl = /\.pdf(?:$|[?#])/i.test(target.toString()) || /\/pdf\/?$/i.test(target.pathname) || /\/api\/getpdf\/?$/i.test(target.pathname);
+    const isXmlUrl = isXmlLikeReaderTarget(target);
+    const isTextUrl = isTextLikeReaderTarget(target);
+    const isSupportedReaderContent = (
+      normalizedContentType.includes('pdf')
+      || normalizedContentType.includes('xml')
+      || normalizedContentType.includes('text/plain')
+      || isXmlUrl
+      || isTextUrl
+    );
+    if (!normalizedContentType.includes('pdf') && !isPdfUrl && (!isReaderRequest || !isSupportedReaderContent)) {
+      (isReaderRequest ? sendReaderMessage : sendText)(response, 415, isReaderRequest ? 'Target is not a supported reader resource.' : 'Target is not a PDF.');
+      return;
+    }
+
+    if (isReaderRequest && (normalizedContentType.includes('xml') || normalizedContentType.includes('text/plain') || isXmlUrl || isTextUrl)) {
+      const body = await upstream.text();
+      await sendReaderTextDocument(response, upstream.status, body, contentType, target);
       return;
     }
 
     response.statusCode = upstream.status;
-    response.setHeader('content-type', contentType);
+    response.setHeader('content-type', isPdfUrl && !normalizedContentType.includes('pdf') ? 'application/pdf' : contentType);
     response.setHeader('cache-control', 'public, max-age=3600, s-maxage=86400');
     response.setHeader('access-control-allow-origin', '*');
-    response.setHeader('accept-ranges', upstream.headers.get('accept-ranges') || 'bytes');
+    const upstreamHonoredRange = !range || upstream.status === 206;
+    response.setHeader('accept-ranges', upstreamHonoredRange ? upstream.headers.get('accept-ranges') || 'bytes' : 'none');
     if (shouldDownload) {
       response.setHeader('content-disposition', `attachment; filename="${getSafePdfFilename(requestUrl.searchParams.get('filename'))}"`);
     }
 
     ['content-length', 'content-range'].forEach((headerName) => {
       const headerValue = upstream.headers.get(headerName);
+      if (headerName === 'content-range' && !upstreamHonoredRange) return;
       if (headerValue) response.setHeader(headerName, headerValue);
     });
 
@@ -114,6 +160,6 @@ export default async function handler(request: IncomingMessage, response: Server
 
     void pump();
   } catch {
-    sendText(response, 502, 'PDF proxy failed.');
+    (isReaderRequest ? sendReaderMessage : sendText)(response, 502, 'Reader proxy failed.');
   }
 }

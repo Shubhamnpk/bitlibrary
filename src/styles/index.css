@@ -396,6 +396,8 @@
 
 .bit-pdf-page .textLayer ::selection {
   background: var(--bit-pdf-selection-color, rgba(250, 204, 21, 0.38));
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 .bit-pdf-page .textLayer .bit-pdf-speech-highlight {

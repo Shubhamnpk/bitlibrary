@@ -100,6 +100,18 @@ const compactBook = (book: Book): Book => ({
   country: book.country,
   detailUrl: book.detailUrl,
   sourceUrl: book.sourceUrl,
+  collection_name: compactText(book.collection_name, 120),
+  question_papers: (book.question_papers || []).slice(0, 80).map((paper) => ({
+    title: compactText(paper.title, 180) || 'Question paper',
+    year: compactText(paper.year, 24),
+    readUrl: paper.readUrl,
+    url: paper.url,
+    downloadUrl: paper.downloadUrl,
+    sourceUrl: paper.sourceUrl,
+    coverUrl: paper.coverUrl,
+    fileSize: compactText(paper.fileSize, 40),
+  })),
+  questionPaperCount: book.questionPaperCount,
   providerSource: book.providerSource,
   source: book.source,
 });

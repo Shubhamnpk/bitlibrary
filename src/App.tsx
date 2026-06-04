@@ -14,6 +14,7 @@ import StaticPage from '@/pages/StaticPage';
 import AuthorDetails from '@/pages/AuthorDetails';
 import CategoryDetails from '@/pages/CategoryDetails';
 import SearchPage, { SEARCH_MIN_QUERY_LENGTH } from '@/pages/Search';
+import ResearchPage from '@/pages/ResearchPage';
 import NotFound from '@/pages/NotFound';
 import ReleasesPage from '@/pages/ReleasesPage';
 import RoadmapPage from '@/pages/RoadmapPage';
@@ -37,7 +38,7 @@ const SEARCH_DEBOUNCE_MS = 400;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
-const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/mylibrary','/search','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources',];
+const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/mylibrary','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources',];
 const HERO_ORBIT_NODES = {
   star: {
     title: 'Archive Star',
@@ -339,6 +340,7 @@ const App: React.FC = () => {
     navigate(`/book/${id}`, {
       state: {
         from,
+        ...(typeof bookOrId === 'string' ? {} : { book: bookOrId }),
         ...extraState,
       },
     });
@@ -607,6 +609,16 @@ const App: React.FC = () => {
             </div>
           } />
 
+          <Route path="/research" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <ResearchPage
+                onBookClick={navigateToBook}
+                onRead={handleReadBook}
+                onResultsChange={setSearchResults}
+              />
+            </div>
+          } />
+
           <Route path="/audiobooks" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <AudiobooksPage onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} />
@@ -630,7 +642,12 @@ const App: React.FC = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <BookDetailsRoute
                 books={[...featuredBooks, ...searchResults]}
-                onRead={(id) => {
+                onRead={(id, directBook) => {
+                  if (directBook) {
+                    setActiveBook(directBook);
+                    setIsMinimized(false);
+                    return;
+                  }
                   const b = [...featuredBooks, ...searchResults].find(node => node.id === id);
                   if (b) {
                     setActiveBook(b);
@@ -707,12 +724,13 @@ const App: React.FC = () => {
 };
 
 // Route Wrappers to handle fetching by ID
-const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, onBookClick: (id: string) => void, onAuthorClick: (name: string) => void, onCategoryClick: (cat: string) => void }> = ({ books, onRead, onBookClick, onAuthorClick, onCategoryClick }) => {
+const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string, book?: Book) => void, onBookClick: (id: string) => void, onAuthorClick: (name: string) => void, onCategoryClick: (cat: string) => void }> = ({ books, onRead, onBookClick, onAuthorClick, onCategoryClick }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [book, setBook] = useState<Book | null>(() => books.find(b => b.id === id) || null);
+  const routeBook = (location.state as { book?: Book } | null)?.book;
+  const [book, setBook] = useState<Book | null>(() => (routeBook?.id === id ? routeBook : books.find(b => b.id === id)) || null);
   const [loading, setLoading] = useState(!book);
 
   useEffect(() => {
@@ -740,7 +758,7 @@ const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string) => void, 
       book={book}
       allBooks={books}
       onClose={() => navigate(returnTo)}
-      onRead={(rid) => onRead(rid || book.id)}
+      onRead={(rid, directBook) => onRead(rid || directBook?.id || book.id, directBook)}
       onBookClick={(b) => navigate(`/book/${b.id}`, { state: { from: returnTo, path: [...breadcrumbPath, book] } })}
       onAuthorClick={onAuthorClick}
       onCategoryClick={onCategoryClick}

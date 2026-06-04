@@ -252,6 +252,7 @@ const isReadableArchiveOrFileUrl = (url?: string): boolean => (
 
 export const isReadableSearchBook = (book: Book): boolean => {
   if (!book?.id) return false;
+  if (book.question_papers?.length) return true;
 
   const isOpenLibraryOrArchive = book.id.startsWith('ol-') || book.id.startsWith('ia-');
   if (!isOpenLibraryOrArchive) return true;
@@ -267,10 +268,15 @@ export const getBookSearchScore = (book: Book, query: string): number => {
   const desc = normalizeForSearch(toSearchableText(book.description));
   const author = normalizeForSearch(toSearchableText(book.author));
   const category = normalizeForSearch(toSearchableText(book.category));
+  const collectionName = normalizeForSearch(toSearchableText(book.collection_name));
+  const source = normalizeForSearch(toSearchableText(book.source));
   const subjects = normalizeForSearch((book.subjects || []).map((subject) => toSearchableText(subject)).join(' '));
   const keywords = normalizeForSearch((book.keywords || []).join(' '));
   const shelves = normalizeForSearch((book.bookshelves || []).join(' '));
-  const haystack = normalizeForSearch([title, author, category, subjects, keywords, shelves, desc, book.grade ? `class ${book.grade} grade ${book.grade}` : ''].join(' '));
+  const nestedQuestionPapers = normalizeForSearch((book.question_papers || [])
+    .map((paper) => [paper.title, paper.year].filter(Boolean).join(' '))
+    .join(' '));
+  const haystack = normalizeForSearch([title, author, collectionName, source, category, subjects, keywords, shelves, nestedQuestionPapers, desc, book.grade ? `class ${book.grade} grade ${book.grade}` : ''].join(' '));
 
   let weight = 0;
 
@@ -283,9 +289,12 @@ export const getBookSearchScore = (book: Book, query: string): number => {
   if (intent.grade && haystack.includes(`class ${intent.grade}`)) weight += 2000;
   if (intent.grade && book.source === 'YoBook' && !book.grade && !haystack.includes(`grade ${intent.grade}`) && !haystack.includes(`class ${intent.grade}`)) weight -= 9000;
   if (author.includes(intent.normalized)) weight += 800;
+  if (collectionName.includes(intent.normalized)) weight += 1800;
+  if (source.includes(intent.normalized)) weight += 500;
   if (category.includes(intent.normalized)) weight += 400;
   if (subjects.includes(intent.normalized)) weight += 300;
   if (keywords.includes(intent.normalized) || keywords.includes(intent.canonicalQuery)) weight += 4200;
+  if (nestedQuestionPapers.includes(intent.normalized) || nestedQuestionPapers.includes(intent.canonicalQuery)) weight += 3600;
   if (desc.includes(intent.normalized)) weight += 200;
 
   const tokens = Array.from(new Set([...intent.tokens, ...tokenizeSearch(intent.subject || '')])).filter((token) => !GRADE_HINT_WORDS.has(token) && !SEARCH_STOP_WORDS.has(token));

@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Book, ChapterAudio } from '@/types/index';
+import { Book, ChapterAudio, ResourceLink } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap, GripVertical, Headphones, Play, Pause, Volume2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PDFFlipBook, { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS, readPdfBackgroundPreset, readPdfHighlightColor, type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
 import AppSelect from './AppSelect';
-import { downloadPdfOptimized, getBestPdfSourceUrl, getPdfProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
+import { downloadPdfOptimized, getBestPdfSourceUrl, getPdfProxyUrl, getReaderProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
 import { saveBook } from '@/lib/local-user';
 import { fetchYoBookGradeAudio, getYoBookAudioSubjectForBook } from '@/services/bookService';
-import { getPreferredSpeechVoiceURI, getSpeechSegments, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
+import { getPreferredSpeechVoiceURI, getSpeechSegments, getSpeechWordAtBoundary, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
 
 interface ReaderProps {
   book: Book;
@@ -18,6 +18,325 @@ interface ReaderProps {
 }
 
 const getPdfReaderProgressKey = (bookId: string) => `bitlibrary-pdf-reader-progress-v1:${encodeURIComponent(bookId).slice(0, 160)}`;
+const FRAME_BLOCKED_HOSTS = new Set([
+  'dropbox.com',
+]);
+
+const isTextLikeReaderUrl = (url: string) => /\.(?:txt|xml)(?:$|[?#])/i.test(url) || /fulltextxml/i.test(url) || /[?&](?:format|type)=(?:txt|text|xml)(?:&|$)/i.test(url);
+const isEpubLikeReaderUrl = (url: string) => /\.epub(?:$|[?#])/i.test(url);
+const isBlockedFrameUrl = (url: string) => {
+  try {
+    return FRAME_BLOCKED_HOSTS.has(new URL(url).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+};
+
+const isReadableResourceLink = (link: ResourceLink) => (
+  ['pdf', 'text', 'xml', 'epub', 'html'].includes(link.format)
+  && !['source', 'doi', 'metadata'].includes(link.relation || '')
+  && (link.format !== 'html' || link.embeddable !== false)
+);
+
+const isSupportedDirectReaderUrl = (url?: string) => (
+  Boolean(url)
+  && (
+    isPdfLikeUrl(url)
+    || isTextLikeReaderUrl(url || '')
+    || isEpubLikeReaderUrl(url || '')
+  )
+);
+
+const shouldUseReaderProxy = (url: string, resource?: ResourceLink) => {
+  if (!/^https?:\/\//i.test(url)) return false;
+  if (resource?.format && ['text', 'xml'].includes(resource.format)) return true;
+  return isTextLikeReaderUrl(url);
+};
+
+const normalizeReaderText = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
+const getReaderMatchTokens = (value: string) => (
+  normalizeReaderText(value)
+    .split(' ')
+    .map((token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ''))
+    .filter((token) => token.length > 3)
+);
+
+const READER_SPEECH_CANDIDATE_SELECTOR = [
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'p',
+  'li',
+  'dt',
+  'dd',
+  'caption',
+  'figcaption',
+  'blockquote',
+  'summary',
+  'pre',
+  'td',
+  'th',
+  'aside',
+  '.label',
+  '.meta',
+  '.keywords',
+  'aside > strong',
+  '[role="heading"]',
+  '[data-reader-speech-candidate]',
+].join(',');
+
+const getExternalSpeechCandidates = (root: ParentNode) => {
+  const explicitElements = Array.from(root.querySelectorAll(READER_SPEECH_CANDIDATE_SELECTOR)) as HTMLElement[];
+  const leafElements = Array.from(root.querySelectorAll('*')) as HTMLElement[];
+  const elements = Array.from(new Set([
+    ...explicitElements,
+    ...leafElements.filter((element) => element.children.length === 0 && normalizeReaderText(element.textContent || '').length > 0),
+  ]));
+  const candidates = elements
+    .filter((element) => !element.closest('script,style,button,#highlight-popover'))
+    .filter((element) => {
+      const text = normalizeReaderText(element.textContent || '');
+      if (!text) return false;
+      const nestedReadable = Array.from(element.querySelectorAll(READER_SPEECH_CANDIDATE_SELECTOR))
+        .some((nested) => nested !== element && normalizeReaderText(nested.textContent || '').length > 0);
+      return !nestedReadable || /^(td|th|aside|blockquote)$/i.test(element.tagName);
+    })
+    .map((element) => {
+      const rawText = (element.textContent || '').replace(/\s+/g, ' ').trim();
+      const text = normalizeReaderText(rawText);
+      return { element, rawText, text, tokens: new Set(getReaderMatchTokens(text)) };
+    })
+    .filter((candidate) => candidate.text.length > 0);
+
+  if (candidates.length > 0) return candidates;
+  const fallbackElement = root instanceof HTMLElement ? root : null;
+  const fallbackRawText = (fallbackElement?.textContent || '').replace(/\s+/g, ' ').trim();
+  const fallbackText = normalizeReaderText(fallbackRawText);
+  return fallbackElement && fallbackText
+    ? [{ element: fallbackElement, rawText: fallbackRawText, text: fallbackText, tokens: new Set(getReaderMatchTokens(fallbackText)) }]
+    : [];
+};
+
+const getExternalSpeechTextFromCandidates = (candidates: Array<{ rawText: string }>, fallbackText: string) => {
+  const text = candidates
+    .map((candidate) => candidate.rawText)
+    .filter(Boolean)
+    .map((value) => /[.!?\u0964:;]$/.test(value) ? value : `${value}.`)
+    .join('\n');
+  return text || fallbackText;
+};
+
+const renderSpeechSegmentText = (
+  segment: string,
+  isActive: boolean,
+  activeWordRange: { segmentIndex: number; start: number; end: number } | null,
+  segmentIndex: number,
+  speechHighlightMode: SpeechHighlightMode
+) => {
+  if (speechHighlightMode !== 'word' || !isActive || !activeWordRange || activeWordRange.segmentIndex !== segmentIndex) return segment;
+  const start = Math.max(0, Math.min(segment.length, activeWordRange.start));
+  const end = Math.max(start, Math.min(segment.length, activeWordRange.end));
+  if (start === end) return segment;
+
+  return (
+    <>
+      {segment.slice(0, start)}
+      <mark className="rounded-[4px] bg-bit-accent/30 px-0.5 text-bit-text shadow-[0_0_0_2px_rgba(var(--bit-accent-rgb),0.22)]">
+        {segment.slice(start, end)}
+      </mark>
+      {segment.slice(end)}
+    </>
+  );
+};
+
+type SpeechHighlightMode = 'paragraph' | 'word';
+type PdfSpeechReadingOrder = 'page' | 'source';
+
+const wrapReaderSpeechText = (root: HTMLElement, segment: string, documentRef: Document) => {
+  const segmentText = normalizeReaderText(segment);
+  const segmentTokens = getReaderMatchTokens(segmentText);
+  const segmentWithoutTrailingPunctuation = segmentText.replace(/[.!?\u0964:;]+$/g, '');
+  const needles = [
+    segmentText,
+    segmentWithoutTrailingPunctuation,
+    segmentText.length > 180 ? segmentText.slice(0, 180) : '',
+    segmentWithoutTrailingPunctuation.split(' ').slice(0, 14).join(' '),
+  ].filter((needle, index, values) => needle.length > 2 && values.indexOf(needle) === index);
+  const walker = documentRef.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      if (!node.textContent?.trim()) return NodeFilter.FILTER_REJECT;
+      const parent = node.parentElement;
+      if (!parent || parent.closest('script,style,button,#highlight-popover')) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+
+  const normalizedPoints: Array<{ node: Text; offset: number }> = [];
+  let normalizedText = '';
+  let previousWasSpace = true;
+  nodes.forEach((node) => {
+    Array.from(node.data).forEach((character, offset) => {
+      if (/\s/.test(character)) {
+        if (!previousWasSpace) {
+          normalizedText += ' ';
+          normalizedPoints.push({ node, offset });
+          previousWasSpace = true;
+        }
+        return;
+      }
+      normalizedText += character.toLowerCase();
+      normalizedPoints.push({ node, offset });
+      previousWasSpace = false;
+    });
+  });
+  if (normalizedText.endsWith(' ')) {
+    normalizedText = normalizedText.slice(0, -1);
+    normalizedPoints.pop();
+  }
+
+  const wrapRange = (startIndex: number, endIndex: number) => {
+    const start = normalizedPoints[startIndex];
+    const end = normalizedPoints[endIndex];
+    if (!start || !end) return null;
+    const range = documentRef.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, Math.min(end.offset + 1, end.node.data.length));
+    const span = documentRef.createElement('span');
+    span.setAttribute('data-reader-speech-highlight', 'true');
+    try {
+      range.surroundContents(span);
+    } catch {
+      span.appendChild(range.extractContents());
+      range.insertNode(span);
+    }
+    return span;
+  };
+
+  const matchedNeedle = needles.find((needle) => normalizedText.includes(needle));
+  if (matchedNeedle) {
+    const startIndex = normalizedText.indexOf(matchedNeedle);
+    return wrapRange(startIndex, startIndex + matchedNeedle.length - 1);
+  }
+
+  const fallbackToken = segmentTokens.find(Boolean);
+  if (!fallbackToken) return null;
+  const tokenIndex = normalizedText.indexOf(fallbackToken);
+  if (tokenIndex >= 0) {
+    const sentenceEnd = normalizedText.slice(tokenIndex).search(/[.!?\u0964](?:\s|$)/);
+    const endIndex = sentenceEnd >= 0 ? tokenIndex + sentenceEnd : Math.min(normalizedText.length - 1, tokenIndex + 160);
+    return wrapRange(tokenIndex, endIndex);
+  }
+
+  return null;
+};
+
+const unwrapReaderSpeechWords = (root: HTMLElement) => {
+  root.querySelectorAll<HTMLElement>('[data-reader-speech-word="true"]').forEach((word) => {
+    const parent = word.parentNode;
+    if (!parent) return;
+    while (word.firstChild) parent.insertBefore(word.firstChild, word);
+    parent.removeChild(word);
+    parent.normalize();
+  });
+};
+
+const wrapReaderSpeechWord = (root: HTMLElement, word: string, documentRef: Document) => {
+  const normalizedWord = normalizeReaderText(word);
+  if (!normalizedWord) return null;
+
+  const walker = documentRef.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => node.textContent?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+  });
+  const nodes: Text[] = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+
+  const normalizedPoints: Array<{ node: Text; offset: number }> = [];
+  let normalizedText = '';
+  nodes.forEach((node) => {
+    Array.from(node.data).forEach((character, offset) => {
+      if (/\s/.test(character)) {
+        normalizedText += ' ';
+      } else {
+        normalizedText += character.toLowerCase();
+      }
+      normalizedPoints.push({ node, offset });
+    });
+  });
+
+  const matchedWord = Array.from(normalizedText.matchAll(/[\p{L}\p{N}'-]+/gu))
+    .find((match) => match[0] === normalizedWord && match.index !== undefined);
+  const startIndex = matchedWord?.index ?? -1;
+  if (startIndex < 0) return null;
+  const endIndex = startIndex + normalizedWord.length - 1;
+  const start = normalizedPoints[startIndex];
+  const end = normalizedPoints[endIndex];
+  if (!start || !end) return null;
+
+  const range = documentRef.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, Math.min(end.offset + 1, end.node.data.length));
+  const span = documentRef.createElement('span');
+  span.setAttribute('data-reader-speech-word', 'true');
+  try {
+    range.surroundContents(span);
+  } catch {
+    span.appendChild(range.extractContents());
+    range.insertNode(span);
+  }
+  return span;
+};
+
+const getReaderResource = (resources: ResourceLink[]) => (
+  resources.find((link) => isReadableResourceLink(link) && link.format === 'html' && link.embeddable !== false)
+  || resources.find((link) => isReadableResourceLink(link) && link.format === 'pdf')
+  || resources.find((link) => isReadableResourceLink(link) && ['text', 'xml'].includes(link.format) && link.embeddable !== false)
+  || resources.find((link) => isReadableResourceLink(link) && link.format === 'epub')
+);
+
+const getSortedReadableResources = (resources: ResourceLink[]) => {
+  const readable = resources
+    .filter(isReadableResourceLink)
+    .filter((link, index, links) => links.findIndex((candidate) => candidate.url === link.url) === index);
+  const isCrossref = readable.some((link) => link.provider === 'Crossref');
+  const isPubMed = readable.some((link) => /PubMed Central|BioC/i.test(link.provider || ''));
+  const isArchive = readable.some((link) => /Open Library|Internet Archive/i.test(link.provider || '') || /archive\.org\/embed\//i.test(link.url));
+  const priority = isCrossref
+    ? ['xml', 'text', 'pdf', 'epub']
+    : isPubMed
+      ? ['xml', 'text', 'pdf', 'epub']
+      : isArchive
+        ? ['html', 'pdf', 'epub', 'text', 'xml']
+    : ['pdf', 'text', 'xml', 'epub', 'html'];
+
+  return readable.sort((first, second) => priority.indexOf(first.format) - priority.indexOf(second.format));
+};
+
+const getReadableResourceLabel = (entry: ResourceLink) => {
+  const label = (entry.label || '').replace(/\s+/g, ' ').trim();
+  if (label && !/^full text$/i.test(label) && label.toLowerCase() !== entry.format) {
+    return label.length > 24 ? `${label.slice(0, 21)}...` : label;
+  }
+  return entry.format.toUpperCase();
+};
+
+const getDownloadResource = (resources: ResourceLink[]) => (
+  resources.find((link) => link.format === 'pdf')
+  || resources.find((link) => ['text', 'xml', 'epub', 'package'].includes(link.format) && link.downloadable !== false)
+);
+
+const canEmbedExternalUrl = (url: string, isPdfReader: boolean) => {
+  if (!url) return false;
+  if (isPdfReader) return true;
+  if (isEpubLikeReaderUrl(url)) return false;
+  if (isTextLikeReaderUrl(url)) return true;
+
+  return !isBlockedFrameUrl(url);
+};
 
 const readSavedPdfChapterIndex = (bookId: string, chapterCount: number) => {
   if (typeof window === 'undefined' || chapterCount < 2) return 0;
@@ -41,19 +360,121 @@ const writeSavedPdfChapterIndex = (bookId: string, chapterIndex: number) => {
   }
 };
 
+const EXTERNAL_HIGHLIGHT_COLOR_PRESETS = [
+  { id: 'yellow', label: 'Yellow', bg: '#facc15', fg: '#111827' },
+  { id: 'cyan', label: 'Cyan', bg: '#67e8f9', fg: '#083344' },
+  { id: 'green', label: 'Green', bg: '#86efac', fg: '#052e16' },
+  { id: 'pink', label: 'Pink', bg: '#f9a8d4', fg: '#500724' },
+];
+
+const EXTERNAL_READER_BACKGROUND_PRESETS = [
+  {
+    id: 'dark',
+    label: 'Dark',
+    swatch: 'linear-gradient(135deg, #09090b, #18181b)',
+    page: '#09090b',
+    surface: '#111113',
+    panel: '#18181b',
+    text: '#f4f4f5',
+    muted: '#a1a1aa',
+    border: '#27272a',
+    accent: '#67e8f9',
+  },
+  {
+    id: 'paper',
+    label: 'Paper',
+    swatch: 'linear-gradient(135deg, #f8f1df, #fffaf0)',
+    page: '#f4ecd8',
+    surface: '#fffaf0',
+    panel: '#f6ebd0',
+    text: '#1f2933',
+    muted: '#6b5f4f',
+    border: '#d8c49c',
+    accent: '#2563eb',
+  },
+  {
+    id: 'warm',
+    label: 'Warm',
+    swatch: 'linear-gradient(135deg, #2a1e16, #6f4e37)',
+    page: '#201711',
+    surface: '#2b2119',
+    panel: '#35271e',
+    text: '#f8eadb',
+    muted: '#c7a98f',
+    border: '#5c4535',
+    accent: '#fbbf24',
+  },
+  {
+    id: 'sage',
+    label: 'Sage',
+    swatch: 'linear-gradient(135deg, #101915, #355342)',
+    page: '#0f1713',
+    surface: '#17231d',
+    panel: '#203128',
+    text: '#edf7ef',
+    muted: '#a7b9ad',
+    border: '#365244',
+    accent: '#86efac',
+  },
+  {
+    id: 'night',
+    label: 'Night',
+    swatch: 'linear-gradient(135deg, #050816, #1e293b)',
+    page: '#050816',
+    surface: '#0b1020',
+    panel: '#111827',
+    text: '#e5e7eb',
+    muted: '#9ca3af',
+    border: '#1f2937',
+    accent: '#93c5fd',
+  },
+];
+
+const applyExternalReaderBackground = (frameDocument: Document | undefined, preset: typeof EXTERNAL_READER_BACKGROUND_PRESETS[number]) => {
+  if (!frameDocument?.head) return;
+  let style = frameDocument.getElementById('bitlibrary-reader-background-style') as HTMLStyleElement | null;
+  if (!style) {
+    style = frameDocument.createElement('style');
+    style.id = 'bitlibrary-reader-background-style';
+    frameDocument.head.appendChild(style);
+  }
+  style.textContent = `
+    :root, html, body { background: ${preset.page} !important; color: ${preset.text} !important; color-scheme: ${preset.id === 'paper' ? 'light' : 'dark'} !important; }
+    body { background: ${preset.page} !important; color: ${preset.text} !important; }
+    article, main, pre[data-reader-content] { background: ${preset.surface} !important; color: ${preset.text} !important; }
+    article, pre[data-reader-content] { box-sizing: border-box !important; width: min(1180px, calc(100% - 48px)) !important; max-width: none !important; }
+    article { box-shadow: 0 0 0 1px ${preset.border}22 !important; }
+    header { border-color: ${preset.border} !important; background: transparent !important; }
+    h1, h2, h3, h4, h5, h6, p, li, dt, dd, blockquote, summary, pre, td, th, caption, figcaption, section, div { color: ${preset.text} !important; }
+    .meta, .keywords, .refs span { color: ${preset.muted} !important; }
+    .label, aside strong, a { color: ${preset.accent} !important; }
+    .abstract { border-left-color: ${preset.accent} !important; }
+    aside, .table-card, .figure-card, .note { background: ${preset.panel} !important; border-color: ${preset.border} !important; color: ${preset.text} !important; }
+    table, th, td { border-color: ${preset.border} !important; color: ${preset.text} !important; }
+    th { background: ${preset.panel} !important; }
+    #highlight-popover, #color-menu { background: ${preset.panel} !important; border-color: ${preset.border} !important; color: ${preset.text} !important; }
+    [data-reader-speech-block="true"] { outline-color: ${preset.accent}88 !important; }
+    #bitlibrary-now-reading { border-color: ${preset.accent}66 !important; color: ${preset.accent} !important; background: ${preset.panel}ee !important; }
+  `;
+};
+
 const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onToggleMinimize }) => {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [chapter, setChapter] = useState(1);
   const [selectedPdfChapterIndex, setSelectedPdfChapterIndex] = useState(0);
+  const [selectedResourceUrl, setSelectedResourceUrl] = useState('');
   const [fontSize, setFontSize] = useState(18);
   const [isImmersive, setIsImmersive] = useState(false);
   const [localIsMinimized, setLocalIsMinimized] = useState(isMinimized);
   const [iframeLoading, setIframeLoading] = useState(true);
+  const [externalReadableText, setExternalReadableText] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'contents' | 'saved' | 'look'>('saved');
   const [pdfBackgroundPreset, setPdfBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
   const [pdfHighlightColor, setPdfHighlightColor] = useState<PdfHighlightColorId>(() => readPdfHighlightColor());
+  const [externalHighlightColorId, setExternalHighlightColorId] = useState(EXTERNAL_HIGHLIGHT_COLOR_PRESETS[0].id);
+  const [externalBackgroundId, setExternalBackgroundId] = useState(EXTERNAL_READER_BACKGROUND_PRESETS[0].id);
   const [pdfStudySnapshot, setPdfStudySnapshot] = useState<PdfStudySnapshot | null>(null);
   const [pdfTableOfContents, setPdfTableOfContents] = useState<PdfTableOfContentsSnapshot>({ status: 'idle', items: [], pageCount: 0 });
   const [pdfTableOfContentsRequestId, setPdfTableOfContentsRequestId] = useState(0);
@@ -64,10 +485,14 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [selectedChapterAudioIndex, setSelectedChapterAudioIndex] = useState<number | null>(null);
   const [speechVoices, setSpeechVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedSpeechVoiceURI, setSelectedSpeechVoiceURI] = useState('');
+  const [speechTextOverride, setSpeechTextOverride] = useState('');
   const [speechRate, setSpeechRate] = useState(1);
   const [speechPitch, setSpeechPitch] = useState(1);
   const [speechStatus, setSpeechStatus] = useState<TextToSpeechStatus>('idle');
   const [activeSpeechSegmentIndex, setActiveSpeechSegmentIndex] = useState<number | null>(null);
+  const [activeSpeechWordRange, setActiveSpeechWordRange] = useState<{ segmentIndex: number; start: number; end: number } | null>(null);
+  const [speechHighlightMode, setSpeechHighlightMode] = useState<SpeechHighlightMode>('word');
+  const [pdfSpeechReadingOrder, setPdfSpeechReadingOrder] = useState<PdfSpeechReadingOrder>('page');
   const [speechPillPosition, setSpeechPillPosition] = useState<{ x: number; y: number } | null>(null);
   const [pdfStudyAction, setPdfStudyAction] = useState<PdfStudyAction | null>(null);
   const [pdfHighlightMode, setPdfHighlightMode] = useState(false);
@@ -86,6 +511,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   };
 
   const contentRef = useRef<HTMLDivElement>(null);
+  const inlineReaderFrameRef = useRef<HTMLIFrameElement>(null);
   const preloadedPdfChapterUrlsRef = useRef(new Set<string>());
   const autoSavedStudyBookRef = useRef<string | null>(null);
   const speechStoppedRef = useRef(false);
@@ -96,23 +522,53 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const speechSegmentRefs = useRef<Array<HTMLSpanElement | null>>([]);
   const speakSpeechSegmentRef = useRef<((index: number) => void) | null>(null);
   const activeSpeechSegmentIndexRef = useRef<number | null>(null);
+  const externalSpeechHighlightRef = useRef<HTMLElement | null>(null);
+  const externalSpeechBlockRef = useRef<HTMLElement | null>(null);
+  const externalSpeechLocatorRef = useRef<HTMLElement | null>(null);
+  const externalSpeechHighlightCleanupRef = useRef<(() => void) | null>(null);
+  const externalSpeechCandidateIndexRef = useRef(0);
+  const externalSpeechCandidatesRef = useRef<Array<{ element: HTMLElement; rawText: string; text: string; tokens: Set<string> }>>([]);
   const speechPillDragRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
   const pdfChapters = useMemo(
     () => book.chapterPdfUrls?.filter((entry) => isPdfLikeUrl(entry.pdfUrl)) || [],
     [book.chapterPdfUrls]
   );
+  const readableResources = useMemo(
+    () => getSortedReadableResources(book.resourceLinks || []),
+    [book.resourceLinks]
+  );
   const activePdfChapter = pdfChapters[selectedPdfChapterIndex];
   const chapterAudioSubject = getYoBookAudioSubjectForBook(book);
   const canLoadChapterAudio = Boolean(book.grade && chapterAudioSubject);
   const selectedChapterAudio = selectedChapterAudioIndex === null ? null : chapterAudio[selectedChapterAudioIndex] || null;
-  const isExternal = !!book.externalUrl || pdfChapters.length > 0;
-  const externalReaderUrl = activePdfChapter?.pdfUrl || book.externalUrl || book.downloadUrl || '';
-  const isPdfReader = pdfChapters.length > 0 || isPdfLikeUrl(externalReaderUrl) || isPdfLikeUrl(book.downloadUrl);
-  const readerUrl = activePdfChapter?.pdfUrl || (isPdfReader && isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl || externalReaderUrl : externalReaderUrl);
+  const researchResources = book.resourceLinks || [];
+  const selectedReaderResource = readableResources.find((link) => link.url === selectedResourceUrl);
+  const readerResource = selectedReaderResource || readableResources[0] || getReaderResource(researchResources);
+  const downloadResource = getDownloadResource(researchResources);
+  const isExternal = !!book.externalUrl || researchResources.length > 0 || pdfChapters.length > 0;
+  const directPdfReaderUrl = isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl : '';
+  const embeddableExternalReaderUrl = book.externalUrl && canEmbedExternalUrl(book.externalUrl, false) ? book.externalUrl : '';
+  const fallbackReaderUrl = researchResources.length > 0
+    ? (isSupportedDirectReaderUrl(book.downloadUrl) ? book.downloadUrl : (isSupportedDirectReaderUrl(book.externalUrl) ? book.externalUrl : embeddableExternalReaderUrl))
+    : (directPdfReaderUrl || (isSupportedDirectReaderUrl(book.externalUrl) ? book.externalUrl : embeddableExternalReaderUrl) || (isSupportedDirectReaderUrl(book.downloadUrl) ? book.downloadUrl : ''));
+  const externalReaderUrl = activePdfChapter?.pdfUrl || readerResource?.url || fallbackReaderUrl || '';
+  const isPdfReader = Boolean(activePdfChapter)
+    || readerResource?.format === 'pdf'
+    || (!readerResource && (isPdfLikeUrl(externalReaderUrl) || Boolean(directPdfReaderUrl)));
+  const readerUrl = activePdfChapter?.pdfUrl || externalReaderUrl;
+  const inlineReaderUrl = shouldUseReaderProxy(readerUrl, readerResource) ? getReaderProxyUrl(readerUrl) : readerUrl;
+  const canEmbedReaderUrl = canEmbedExternalUrl(readerUrl, isPdfReader);
+  const isExternalTextReader = Boolean(isExternal && !isPdfReader && canEmbedReaderUrl && shouldUseReaderProxy(readerUrl, readerResource));
+  const canUseReaderSpeech = !isExternal || isExternalTextReader;
+  const sourcePageUrl = book.sourceUrl || researchResources.find((link) => ['source', 'landing', 'doi'].includes(link.relation || ''))?.url || book.detailUrl || book.externalUrl || book.downloadUrl || '';
   const pdfDownloadUrl = getBestPdfSourceUrl(book);
-  const downloadUrl = pdfDownloadUrl || book.downloadUrl;
-  const speechSegments = useMemo(() => getSpeechSegments(content), [content]);
+  const downloadUrl = pdfDownloadUrl || downloadResource?.url || book.downloadUrl;
+  const preferFullPdfDocumentLoad = pdfChapters.length > 1 || readerResource?.format === 'pdf' || Boolean(book.resourceLinks?.some((link) => link.url === readerUrl && link.format === 'pdf'));
+  const activeSpeechText = speechTextOverride || (isExternalTextReader ? externalReadableText : content);
+  const speechSegments = useMemo(() => getSpeechSegments(activeSpeechText), [activeSpeechText]);
   const selectedSpeechVoice = speechVoices.find((voice) => voice.voiceURI === selectedSpeechVoiceURI) || null;
+  const externalHighlightColor = EXTERNAL_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === externalHighlightColorId) || EXTERNAL_HIGHLIGHT_COLOR_PRESETS[0];
+  const externalBackgroundPreset = EXTERNAL_READER_BACKGROUND_PRESETS.find((preset) => preset.id === externalBackgroundId) || EXTERNAL_READER_BACKGROUND_PRESETS[0];
   const handleDownload = async () => {
     if (!pdfDownloadUrl) return;
     await downloadPdfOptimized(pdfDownloadUrl, book.title);
@@ -124,6 +580,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     }
     setSpeechStatus('idle');
     setActiveSpeechSegmentIndex(null);
+    setActiveSpeechWordRange(null);
+    setSpeechTextOverride('');
   }, []);
   const speakSpeechSegment = useCallback((index: number) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window) || speechSegments.length === 0) return;
@@ -137,8 +595,14 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     if (selectedSpeechVoice) utterance.voice = selectedSpeechVoice;
     utterance.rate = speechRateRef.current;
     utterance.pitch = speechPitch;
+    utterance.onboundary = (event) => {
+      if (event.name && event.name !== 'word') return;
+      const word = getSpeechWordAtBoundary(speechSegments[index], event.charIndex);
+      setActiveSpeechWordRange(word ? { segmentIndex: index, start: word.start, end: word.end } : null);
+    };
     utterance.onend = () => {
       if (speechStoppedRef.current || speechRestartingRef.current || Date.now() < speechIgnoreCancelEventsUntilRef.current) return;
+      setActiveSpeechWordRange(null);
       speakSpeechSegmentRef.current?.(index + 1);
     };
     utterance.onerror = () => {
@@ -147,24 +611,103 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     };
     speechStoppedRef.current = false;
     setActiveSpeechSegmentIndex(index);
+    setActiveSpeechWordRange(null);
     setSpeechStatus('playing');
     speakUtterance(utterance);
   }, [selectedSpeechVoice, speechPitch, speechSegments, stopSpeech]);
   speakSpeechSegmentRef.current = speakSpeechSegment;
+  const getSelectedReaderSpeechText = useCallback(() => {
+    try {
+      if (isExternalTextReader) {
+        return inlineReaderFrameRef.current?.contentWindow?.getSelection()?.toString().replace(/\s+/g, ' ').trim() || '';
+      }
+
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) return '';
+      const selectedRange = selection.getRangeAt(0);
+      if (!contentRef.current?.contains(selectedRange.commonAncestorContainer)) return '';
+      return selection.toString().replace(/\s+/g, ' ').trim();
+    } catch {
+      return '';
+    }
+  }, [isExternalTextReader]);
+
   const startSpeech = () => {
     if (speechStatus === 'paused' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.resume();
       setSpeechStatus('playing');
       return;
     }
+
+    const selectedText = getSelectedReaderSpeechText();
+    if (selectedText.length > 1) {
+      stopSpeech();
+      setSpeechTextOverride(selectedText);
+      externalSpeechCandidateIndexRef.current = 0;
+      window.setTimeout(() => {
+        speechStoppedRef.current = false;
+        speakSpeechSegmentRef.current?.(0);
+      }, 0);
+      return;
+    }
+
+    if (speechTextOverride) {
+      setSpeechTextOverride('');
+      window.setTimeout(() => {
+        speechStoppedRef.current = false;
+        speakSpeechSegmentRef.current?.(0);
+      }, 0);
+      return;
+    }
+
     speechStoppedRef.current = false;
     speakSpeechSegment(activeSpeechSegmentIndex ?? 0);
   };
+  const startSpeechFromText = useCallback((text: string) => {
+    const speechText = text.replace(/\s+/g, ' ').trim();
+    if (speechText.length < 2) return;
+    stopSpeech();
+    setSpeechTextOverride(speechText);
+    externalSpeechCandidateIndexRef.current = 0;
+    window.setTimeout(() => {
+      speechStoppedRef.current = false;
+      speakSpeechSegmentRef.current?.(0);
+    }, 0);
+  }, [stopSpeech]);
   const pauseSpeech = () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     window.speechSynthesis.pause();
     setSpeechStatus('paused');
   };
+  const handleInlineReaderLoad = useCallback(() => {
+    setIframeLoading(false);
+    externalSpeechHighlightRef.current = null;
+    externalSpeechCandidateIndexRef.current = 0;
+    externalSpeechCandidatesRef.current = [];
+    if (!isExternalTextReader) return;
+
+    try {
+      const frameDocument = inlineReaderFrameRef.current?.contentDocument;
+      const documentBody = frameDocument?.body;
+      const readableNode = frameDocument?.querySelector('article, main, [data-reader-content]');
+      const readableText = (readableNode?.textContent || documentBody?.innerText || '')
+        .replace(/\s+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim();
+      const candidateRoot = readableNode || documentBody;
+      externalSpeechCandidatesRef.current = candidateRoot ? getExternalSpeechCandidates(candidateRoot) : [];
+      inlineReaderFrameRef.current?.contentWindow?.postMessage({
+        type: 'bitlibrary-highlight-color',
+        color: externalHighlightColor,
+      }, window.location.origin);
+      applyExternalReaderBackground(frameDocument || undefined, externalBackgroundPreset);
+      setExternalReadableText(getExternalSpeechTextFromCandidates(externalSpeechCandidatesRef.current, readableText));
+    } catch {
+      setExternalReadableText('');
+      externalSpeechCandidatesRef.current = [];
+    }
+  }, [externalBackgroundPreset, externalHighlightColor, isExternalTextReader]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -185,17 +728,209 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     };
   }, []);
 
+  useEffect(() => {
+    const handleReaderMessage = (event: MessageEvent) => {
+      if (event.source !== inlineReaderFrameRef.current?.contentWindow) return;
+      if (event.data?.type !== 'bitlibrary-read-selection') return;
+      if (typeof event.data.text !== 'string') return;
+      startSpeechFromText(event.data.text);
+    };
+
+    window.addEventListener('message', handleReaderMessage);
+    return () => window.removeEventListener('message', handleReaderMessage);
+  }, [startSpeechFromText]);
+
+  useEffect(() => {
+    if (!isExternalTextReader) return;
+    inlineReaderFrameRef.current?.contentWindow?.postMessage({
+      type: 'bitlibrary-highlight-color',
+      color: externalHighlightColor,
+    }, window.location.origin);
+  }, [externalHighlightColor, isExternalTextReader]);
+
+  useEffect(() => {
+    if (!isExternalTextReader) return;
+    applyExternalReaderBackground(inlineReaderFrameRef.current?.contentDocument || undefined, externalBackgroundPreset);
+  }, [externalBackgroundPreset, isExternalTextReader]);
+
   useEffect(() => () => stopSpeech(), [stopSpeech]);
 
   useEffect(() => {
     stopSpeech();
-  }, [book.id, chapter, isExternal, stopSpeech]);
+  }, [book.id, chapter, isExternal, readerUrl, stopSpeech]);
 
   useEffect(() => {
     activeSpeechSegmentIndexRef.current = activeSpeechSegmentIndex;
     if (activeSpeechSegmentIndex === null) return;
     speechSegmentRefs.current[activeSpeechSegmentIndex]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [activeSpeechSegmentIndex]);
+
+  useEffect(() => {
+    externalSpeechHighlightCleanupRef.current?.();
+    externalSpeechHighlightCleanupRef.current = null;
+    externalSpeechBlockRef.current?.removeAttribute('data-reader-speech-block');
+    externalSpeechBlockRef.current = null;
+    externalSpeechHighlightRef.current = null;
+
+    if (!isExternalTextReader || speechStatus === 'idle' || activeSpeechSegmentIndex === null) return;
+
+    try {
+      const frameDocument = inlineReaderFrameRef.current?.contentDocument;
+      const activeSegment = speechSegments[activeSpeechSegmentIndex];
+      if (!frameDocument || !activeSegment) return;
+
+      if (!frameDocument.getElementById('bitlibrary-reader-speech-highlight-style')) {
+        const style = frameDocument.createElement('style');
+        style.id = 'bitlibrary-reader-speech-highlight-style';
+        style.textContent = `
+          #bitlibrary-now-reading {
+            position: fixed;
+            left: 50%;
+            top: 14px;
+            z-index: 30;
+            transform: translateX(-50%);
+            max-width: min(760px, calc(100vw - 28px));
+            border: 1px solid rgba(103,232,249,.32);
+            border-radius: 999px;
+            background: rgba(9,9,11,.88);
+            color: #e0f2fe;
+            padding: 8px 13px;
+            font: 700 11px/1.35 ui-sans-serif,system-ui,sans-serif;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            box-shadow: 0 16px 42px rgba(0,0,0,.32);
+            backdrop-filter: blur(10px);
+            pointer-events: none;
+          }
+          #bitlibrary-now-reading span {
+            display: inline-block;
+            max-width: 48ch;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: bottom;
+            color: #f4f4f5;
+            letter-spacing: 0;
+            text-transform: none;
+            font-weight: 600;
+          }
+          [data-reader-speech-block="true"] {
+            outline: 2px solid rgba(103,232,249,.38) !important;
+            outline-offset: 5px !important;
+            border-radius: 6px !important;
+            transition: outline .18s ease, outline-offset .18s ease !important;
+          }
+          [data-reader-speech-highlight="true"] {
+            background: rgba(103,232,249,.28) !important;
+            box-shadow: 0 0 0 2px rgba(103,232,249,.18) !important;
+            border-radius: 4px !important;
+            transition: background .16s ease, box-shadow .16s ease !important;
+          }
+          [data-reader-speech-word="true"] {
+            background: rgba(103,232,249,.28) !important;
+            color: #f4f4f5 !important;
+            border-radius: 4px !important;
+            box-shadow: 0 0 0 2px rgba(103,232,249,.18) !important;
+          }
+          [data-reader-speech-highlight-mode="word"] {
+            background: transparent !important;
+            box-shadow: none !important;
+          }
+        `;
+        frameDocument.head.appendChild(style);
+      }
+
+      if (externalSpeechCandidatesRef.current.length === 0) {
+        const root = frameDocument.querySelector('[data-reader-content]') || frameDocument.body;
+        externalSpeechCandidatesRef.current = getExternalSpeechCandidates(root);
+      }
+
+      const segmentText = normalizeReaderText(activeSegment);
+      const primaryNeedle = segmentText.length > 180 ? segmentText.slice(0, 180) : segmentText;
+      const fallbackNeedle = segmentText.split(' ').slice(0, 14).join(' ');
+      const candidates = externalSpeechCandidatesRef.current;
+      const matchesSegment = (candidate: { text: string }) => (
+        Boolean(primaryNeedle && candidate.text.includes(primaryNeedle))
+        || Boolean(fallbackNeedle && candidate.text.includes(fallbackNeedle))
+      );
+      const startIndex = Math.min(externalSpeechCandidateIndexRef.current, Math.max(candidates.length - 1, 0));
+      let matchedIndex = candidates.findIndex((candidate, index) => index >= startIndex && matchesSegment(candidate));
+      if (matchedIndex < 0) {
+        matchedIndex = candidates.findIndex(matchesSegment);
+      }
+
+      if (matchedIndex < 0) {
+        const segmentTokens = Array.from(new Set(getReaderMatchTokens(segmentText))).slice(0, 36);
+        const minimumScore = Math.min(4, Math.max(2, Math.ceil(segmentTokens.length * 0.28)));
+        let bestMatch = { index: -1, score: 0 };
+        candidates.forEach((candidate, index) => {
+          const score = segmentTokens.reduce((total, token) => total + (candidate.tokens.has(token) ? 1 : 0), 0);
+          const proximityBonus = index >= startIndex ? 0.35 : 0;
+          if (score + proximityBonus > bestMatch.score) {
+            bestMatch = { index, score: score + proximityBonus };
+          }
+        });
+        if (bestMatch.index >= 0 && bestMatch.score >= minimumScore) {
+          matchedIndex = bestMatch.index;
+        }
+      }
+      const highlightedElement = matchedIndex >= 0 ? candidates[matchedIndex]?.element : null;
+
+      if (!highlightedElement) return;
+      externalSpeechCandidateIndexRef.current = Math.min(matchedIndex + 1, candidates.length - 1);
+      const highlightedSpan = wrapReaderSpeechText(highlightedElement, activeSegment, frameDocument);
+      if (!highlightedSpan) return;
+      highlightedSpan.setAttribute('data-reader-speech-highlight-mode', speechHighlightMode);
+      const activeWord = activeSpeechWordRange?.segmentIndex === activeSpeechSegmentIndex
+        ? activeSegment.slice(activeSpeechWordRange.start, activeSpeechWordRange.end)
+        : '';
+      if (speechHighlightMode === 'word' && activeWord) wrapReaderSpeechWord(highlightedSpan, activeWord, frameDocument);
+      if (speechHighlightMode === 'paragraph') highlightedElement.setAttribute('data-reader-speech-block', 'true');
+      externalSpeechBlockRef.current = highlightedElement;
+      let locator = frameDocument.getElementById('bitlibrary-now-reading');
+      if (!locator) {
+        locator = frameDocument.createElement('div');
+        locator.id = 'bitlibrary-now-reading';
+        frameDocument.body.appendChild(locator);
+      }
+      locator.innerHTML = `Now reading&nbsp; <span></span>`;
+      locator.querySelector('span')!.textContent = activeSegment;
+      externalSpeechLocatorRef.current = locator;
+      highlightedElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      externalSpeechHighlightRef.current = highlightedSpan;
+      externalSpeechHighlightCleanupRef.current = () => {
+        externalSpeechBlockRef.current?.removeAttribute('data-reader-speech-block');
+        externalSpeechBlockRef.current = null;
+        const parent = highlightedSpan.parentNode;
+        if (!parent) return;
+        unwrapReaderSpeechWords(highlightedSpan);
+        while (highlightedSpan.firstChild) {
+          parent.insertBefore(highlightedSpan.firstChild, highlightedSpan);
+        }
+        parent.removeChild(highlightedSpan);
+        parent.normalize();
+      };
+    } catch {
+      externalSpeechHighlightCleanupRef.current = null;
+      externalSpeechBlockRef.current?.removeAttribute('data-reader-speech-block');
+      externalSpeechBlockRef.current = null;
+      externalSpeechHighlightRef.current = null;
+    }
+
+    return () => {
+      externalSpeechHighlightCleanupRef.current?.();
+      externalSpeechHighlightCleanupRef.current = null;
+      externalSpeechBlockRef.current?.removeAttribute('data-reader-speech-block');
+      externalSpeechBlockRef.current = null;
+      externalSpeechHighlightRef.current = null;
+    };
+  }, [activeSpeechSegmentIndex, activeSpeechWordRange, isExternalTextReader, speechHighlightMode, speechSegments, speechStatus]);
+
+  useEffect(() => {
+    if (speechStatus !== 'idle') return;
+    externalSpeechLocatorRef.current?.remove();
+    externalSpeechLocatorRef.current = null;
+  }, [speechStatus]);
 
   const restartCurrentSpeechSegment = useCallback(() => {
     if (speechStatus !== 'playing' || activeSpeechSegmentIndexRef.current === null) return;
@@ -302,15 +1037,17 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   }, [pdfChapters, selectedPdfChapterIndex]);
 
   useEffect(() => {
-    if (!isExternal || isPdfReader) return;
+    if (!isExternal || isPdfReader || !canEmbedReaderUrl) return;
     setIframeLoading(true);
+    setExternalReadableText('');
     const fallbackTimer = window.setTimeout(() => setIframeLoading(false), 6000);
     return () => window.clearTimeout(fallbackTimer);
-  }, [isExternal, isPdfReader, readerUrl]);
+  }, [canEmbedReaderUrl, isExternal, isPdfReader, readerUrl]);
 
   useEffect(() => {
     setSelectedPdfChapterIndex(readSavedPdfChapterIndex(book.id, pdfChapters.length));
     preloadedPdfChapterUrlsRef.current.clear();
+    setSelectedResourceUrl('');
     autoSavedStudyBookRef.current = null;
     setPdfTableOfContents({ status: 'idle', items: [], pageCount: 0 });
     setPdfTableOfContentsRequestId(0);
@@ -340,7 +1077,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (sidebarOpen) {
+        if (speechStatus !== 'idle') {
+          stopSpeech();
+        } else if (sidebarOpen) {
           setSidebarOpen(false);
         } else if (isImmersive) {
           exitFocusMode();
@@ -350,7 +1089,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isImmersive, isMinimized, sidebarOpen]);
+  }, [isImmersive, isMinimized, sidebarOpen, speechStatus, stopSpeech]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -547,6 +1286,20 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-6">
+          {readableResources.length > 1 && !activePdfChapter && (
+            <AppSelect
+              label="Format"
+              value={readerResource?.url || readableResources[0]?.url || ''}
+              onChange={setSelectedResourceUrl}
+              options={readableResources.map((entry, index) => ({
+                value: entry.url,
+                label: `${entry.format.toUpperCase()}${entry.provider ? ` · ${entry.provider}` : ''}${index === 0 ? ' · best' : ''}`,
+              }))}
+              className="hidden max-w-72 bg-bit-panel/50 shadow-sm md:inline-flex"
+              selectClassName="max-w-52"
+              ariaLabel="Select reading format"
+            />
+          )}
           {isPdfReader && pdfChapters.length > 1 && (
             <AppSelect
               label="Chapter"
@@ -580,7 +1333,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           )}
 
           <div className="flex items-center gap-1 rounded-xl border border-bit-border bg-bit-panel/50 p-1 shadow-sm">
-            {!isExternal && (
+            {canUseReaderSpeech && (
               <>
                 <button
                   type="button"
@@ -942,7 +1695,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                       )}
                     </div>
                   </section>
-                ) : (
+                ) : canUseReaderSpeech ? (
                   <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
                     <div className="mb-3 flex items-center gap-2 text-bit-accent">
                       <Headphones size={16} />
@@ -963,7 +1716,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                       Voice, speed, and pitch options are in the Look tab.
                     </p>
                   </section>
-                )}
+                ) : null}
 
                 {isPdfReader && (
                   <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
@@ -976,14 +1729,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                         {pdfStudySnapshot?.highlightCount ?? 0}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setPdfHighlightMode((enabled) => !enabled)}
-                      className={`mb-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-all ${pdfHighlightMode ? 'border-yellow-300 bg-yellow-300 text-zinc-950' : 'border-bit-border bg-bit-bg/40 text-bit-muted hover:border-yellow-300/50 hover:text-yellow-200'}`}
-                    >
-                      <Highlighter size={16} />
-                      {pdfHighlightMode ? 'Highlight mode on' : 'Enable text highlight'}
-                    </button>
+                    <p className="mb-4 rounded-lg border border-bit-border bg-bit-bg/35 px-3 py-3 text-xs leading-5 text-bit-muted">
+                      Enable the bottom highlighter button, then select PDF text to highlight, read, recolor, or erase from the popover.
+                    </p>
                     <div className="space-y-3">
                       {groupedTextHighlights.length ? groupedTextHighlights.map(({ page, highlights }) => {
                         const isExpanded = Boolean(expandedHighlightPages[page]);
@@ -1105,6 +1853,35 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                   </section>
                 )}
 
+                {isExternalTextReader && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <Palette size={16} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Background</p>
+                    </div>
+                    <div className="grid grid-cols-5 gap-2">
+                      {EXTERNAL_READER_BACKGROUND_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setExternalBackgroundId(preset.id)}
+                          className={`flex h-11 items-center justify-center rounded-lg border transition-all ${externalBackgroundId === preset.id ? 'border-bit-accent bg-bit-accent/10 ring-2 ring-bit-accent/25' : 'border-bit-border bg-bit-bg/40 hover:border-bit-accent/50'}`}
+                          aria-label={`Use ${preset.label} article background`}
+                          title={preset.label}
+                        >
+                          <span
+                            className="h-6 w-7 shrink-0 rounded-md border border-white/25 shadow-inner"
+                            style={{ background: preset.swatch }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-bit-muted">
+                      Current: {externalBackgroundPreset.label}
+                    </p>
+                  </section>
+                )}
+
                 {isPdfReader && (
                   <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
                     <div className="mb-3 flex items-center gap-2 text-bit-accent">
@@ -1134,7 +1911,91 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                   </section>
                 )}
 
-                {!isExternal && (
+                {isPdfReader && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <Headphones size={16} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Speech highlight</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 rounded-lg border border-bit-border bg-bit-bg/40 p-1">
+                      {[
+                        { id: 'paragraph' as const, label: 'Paragraph' },
+                        { id: 'word' as const, label: 'Word' },
+                      ].map((mode) => (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          onClick={() => setSpeechHighlightMode(mode.id)}
+                          className={`h-9 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${speechHighlightMode === mode.id ? 'bg-bit-accent text-white shadow-sm shadow-bit-accent/25' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
+                          aria-pressed={speechHighlightMode === mode.id}
+                        >
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-3">
+                      <span className="mb-2 block text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-bit-muted">
+                        Reading order
+                      </span>
+                      <div className="grid grid-cols-2 gap-2 rounded-lg border border-bit-border bg-bit-bg/40 p-1">
+                        {[
+                          { id: 'page' as const, label: 'Top down' },
+                          { id: 'source' as const, label: 'Original' },
+                        ].map((mode) => (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            onClick={() => setPdfSpeechReadingOrder(mode.id)}
+                            className={`h-9 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${pdfSpeechReadingOrder === mode.id ? 'bg-bit-accent text-white shadow-sm shadow-bit-accent/25' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
+                            aria-pressed={pdfSpeechReadingOrder === mode.id}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {isExternalTextReader && (
+                  <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <Highlighter size={16} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Highlighter</p>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-lg border border-bit-border bg-bit-bg/40 p-2">
+                      <span
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/20 text-zinc-950 shadow-inner"
+                        style={{ backgroundColor: externalHighlightColor.bg, color: externalHighlightColor.fg }}
+                      >
+                        <Highlighter size={18} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-bit-text">{externalHighlightColor.label}</p>
+                        <p className="text-xs text-bit-muted">Used by selection popovers in PDF, XML, and text readers.</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-4 gap-2">
+                      {EXTERNAL_HIGHLIGHT_COLOR_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setExternalHighlightColorId(preset.id)}
+                          className={`flex h-11 items-center justify-center rounded-lg border transition-all ${externalHighlightColorId === preset.id ? 'border-bit-accent bg-bit-accent/10 ring-2 ring-bit-accent/25' : 'border-bit-border bg-bit-bg/40 hover:border-bit-accent/50'}`}
+                          aria-label={`Use ${preset.label} highlight color`}
+                          title={preset.label}
+                        >
+                          <span
+                            className="h-6 w-6 rounded-full border border-white/40 shadow-inner"
+                            style={{ backgroundColor: preset.bg }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {canUseReaderSpeech && (
                   <section className="rounded-xl border border-bit-border bg-bit-panel/25 p-4">
                     <div className="mb-3 flex items-center gap-2 text-bit-accent">
                       <Headphones size={16} />
@@ -1153,6 +2014,28 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                     </div>
 
                     <div className="mt-4 space-y-4">
+                      <div>
+                        <span className="mb-2 block text-[10px] font-mono font-bold uppercase tracking-[0.18em] text-bit-muted">
+                          Highlight
+                        </span>
+                        <div className="grid grid-cols-2 gap-2 rounded-lg border border-bit-border bg-bit-bg/40 p-1">
+                          {[
+                            { id: 'paragraph' as const, label: 'Paragraph' },
+                            { id: 'word' as const, label: 'Word' },
+                          ].map((mode) => (
+                            <button
+                              key={mode.id}
+                              type="button"
+                              onClick={() => setSpeechHighlightMode(mode.id)}
+                              className={`h-9 rounded-md text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${speechHighlightMode === mode.id ? 'bg-bit-accent text-white shadow-sm shadow-bit-accent/25' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
+                              aria-pressed={speechHighlightMode === mode.id}
+                            >
+                              {mode.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
                       <AppSelect
                         label="Voice"
                         value={selectedSpeechVoiceURI}
@@ -1237,7 +2120,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       )}
 
       {/* Main Content Area - Optimized Strip Layout */}
-      <main className="flex-1 overflow-y-auto relative scrollbar-hide bg-bit-bg flex flex-col items-center">
+      <main className={`flex-1 overflow-y-auto relative scrollbar-hide bg-bit-bg flex flex-col items-center transition-[padding] duration-300 ${sidebarOpen ? 'lg:pr-[23rem]' : ''}`}>
         {isPdfReader && pdfChapters.length > 1 && (
           <div className="flex w-full items-center gap-2 overflow-x-auto border-b border-bit-border bg-bit-bg px-3 py-2 md:hidden">
             {pdfChapters.map((entry, index) => (
@@ -1252,24 +2135,43 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             ))}
           </div>
         )}
+        {readableResources.length > 1 && !activePdfChapter && (
+          <div className="flex w-full items-center gap-2 overflow-x-auto border-b border-bit-border bg-bit-bg px-3 py-2 md:hidden">
+            {readableResources.map((entry, index) => (
+              <button
+                key={`${entry.url}-${index}`}
+                type="button"
+                onClick={() => setSelectedResourceUrl(entry.url)}
+                title={[entry.label, entry.provider, entry.format].filter(Boolean).join(' - ')}
+                className={`h-9 shrink-0 rounded-full border px-3 text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${(readerResource?.url || readableResources[0]?.url) === entry.url ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:border-bit-accent/40 hover:text-bit-text'}`}
+              >
+                {getReadableResourceLabel(entry)}
+              </button>
+            ))}
+          </div>
+        )}
         {isExternal && isPdfReader ? (
           <PDFFlipBook
             pdfUrl={readerUrl}
             title={book.title}
             backgroundPreset={pdfBackgroundPreset}
             highlightColor={pdfHighlightColor}
+            speechHighlightMode={speechHighlightMode}
+            speechReadingOrder={pdfSpeechReadingOrder}
             studyPanelOpen={pdfHighlightMode}
             tableOfContentsRequestId={pdfTableOfContentsRequestId}
             studyAction={pdfStudyAction}
             onStudyPanelOpenChange={setPdfHighlightMode}
+            onHighlightColorChange={setPdfHighlightColor}
             onStudySnapshotChange={handlePdfStudySnapshotChange}
             onTableOfContentsChange={handlePdfTableOfContentsChange}
             onPreviousBoundary={selectedPdfChapterIndex > 0 ? goToPreviousPdfChapter : undefined}
             onNextBoundary={selectedPdfChapterIndex < pdfChapters.length - 1 ? goToNextPdfChapter : undefined}
-            preferFullDocumentLoad={pdfChapters.length > 1}
+            preferFullDocumentLoad={preferFullPdfDocumentLoad}
+            controlsCompact={sidebarOpen}
           />
-        ) : isExternal ? (
-          <div className="w-full max-w-[1000px] h-full bg-white relative shadow-2xl border-x border-bit-border overflow-hidden">
+        ) : isExternal && canEmbedReaderUrl ? (
+          <div className="w-full h-full bg-white relative shadow-2xl border-x border-bit-border overflow-hidden">
             {iframeLoading && (
               <div className="absolute inset-0 bg-bit-bg z-20 p-12 md:p-24 animate-fade-in flex flex-col gap-10">
                 <div className="h-12 w-3/4 animate-shimmer bg-bit-panel/30 rounded-lg border border-bit-border/30" />
@@ -1283,8 +2185,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             )}
 
             <iframe
-              src={readerUrl}
-              onLoad={() => setIframeLoading(false)}
+              ref={inlineReaderFrameRef}
+              src={inlineReaderUrl}
+              onLoad={handleInlineReaderLoad}
               className="w-full h-full border-none bg-white"
               title={book.title}
               sandbox={isPdfReader ? undefined : 'allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock allow-modals'}
@@ -1296,6 +2199,56 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 ARCHIVAL_CONDUIT_ACTIVE
               </div>
             )}
+          </div>
+        ) : isExternal ? (
+          <div className="flex min-h-full w-full items-center justify-center px-6 py-16">
+            <div className="w-full max-w-xl rounded-xl border border-bit-border bg-bit-panel/35 p-8 text-center shadow-sm">
+              <ExternalLink className="mx-auto mb-5 text-bit-accent" size={34} />
+              <p className="text-[10px] font-mono font-bold uppercase tracking-[0.24em] text-bit-accent">External source</p>
+              <h2 className="mt-3 text-2xl font-display font-bold text-bit-text">{book.title}</h2>
+              <p className="mt-4 text-sm leading-7 text-bit-muted">
+                This material is available, but the selected format cannot be embedded here. Open the best readable file or use another available format.
+              </p>
+              {researchResources.length > 0 && (
+                <div className="mt-5 flex flex-wrap justify-center gap-2">
+                  {researchResources
+                    .filter((link) => ['html', 'pdf', 'text', 'xml', 'epub', 'package'].includes(link.format))
+                    .slice(0, 8)
+                    .map((link) => (
+                      <a
+                        key={`${link.format}-${link.url}`}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-full border border-bit-border bg-bit-bg px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-colors hover:border-bit-accent/50 hover:text-bit-accent"
+                        title={link.label || link.provider}
+                      >
+                        {link.format}
+                      </a>
+                    ))}
+                </div>
+              )}
+              <a
+                href={readerUrl || sourcePageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-7 inline-flex items-center justify-center gap-2 rounded-lg bg-bit-accent px-5 py-3 font-mono text-[10px] font-bold uppercase tracking-widest text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95"
+              >
+                Open Material
+                <ExternalLink size={15} />
+              </a>
+              {sourcePageUrl && sourcePageUrl !== readerUrl && (
+                <a
+                  href={sourcePageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex items-center justify-center gap-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-colors hover:text-bit-accent"
+                >
+                  Source page
+                  <ExternalLink size={13} />
+                </a>
+              )}
+            </div>
           </div>
         ) : (
           <div className="w-full max-w-[560px] min-h-full bg-bit-panel/5 px-10 md:px-16 py-24 md:py-40 animate-fade-in border-x border-bit-border shadow-sm relative z-10">
@@ -1326,9 +2279,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                       ref={(node) => {
                         speechSegmentRefs.current[index] = node;
                       }}
-                      className={`rounded-md px-1 transition-colors duration-200 ${activeSpeechSegmentIndex === index ? 'bg-bit-accent/20 text-bit-text ring-1 ring-bit-accent/30' : 'text-bit-muted/90'}`}
+                      className={`rounded-md px-1 transition-colors duration-200 ${activeSpeechSegmentIndex === index && speechHighlightMode === 'paragraph' ? 'bg-bit-accent/20 text-bit-text ring-1 ring-bit-accent/30' : 'text-bit-muted/90'}`}
                     >
-                      {segment}
+                      {renderSpeechSegmentText(segment, activeSpeechSegmentIndex === index, activeSpeechWordRange, index, speechHighlightMode)}
                       {' '}
                     </span>
                   ))}
@@ -1383,7 +2336,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
         )}
       </main>
 
-      {!isExternal && speechStatus !== 'idle' && (
+      {canUseReaderSpeech && speechStatus !== 'idle' && (
         <div
           className={`pointer-events-auto fixed z-[10010] hidden items-center gap-2 rounded-full border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/25 backdrop-blur-xl md:flex ${speechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'}`}
           style={speechPillPosition ? { left: speechPillPosition.x, top: speechPillPosition.y } : { left: '50%', bottom: '1.5rem', transform: 'translateX(-50%)' }}
@@ -1436,6 +2389,15 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               aria-label="Read aloud speed"
             />
           </label>
+          <button
+            type="button"
+            onClick={stopSpeech}
+            className="inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-bit-border bg-bit-bg/60 px-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
+            aria-label="Stop read aloud"
+            title="Stop read aloud (Esc)"
+          >
+            Esc
+          </button>
         </div>
       )}
 

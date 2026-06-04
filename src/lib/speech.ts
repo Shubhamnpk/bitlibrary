@@ -36,6 +36,22 @@ export const getPreferredSpeechVoiceURI = (voices: SpeechSynthesisVoice[]) => {
 
 export const normalizeSpeechMatchText = (value: string) => value.toLowerCase().replace(/\s+/g, ' ').trim();
 
+export const getSpeechWordAtBoundary = (text: string, charIndex: number) => {
+  if (!text || !Number.isFinite(charIndex) || charIndex < 0) return null;
+  const safeIndex = Math.min(charIndex, Math.max(0, text.length - 1));
+  const after = text.slice(safeIndex);
+  const relativeMatch = after.match(/[\p{L}\p{N}'-]+/u);
+  if (!relativeMatch || relativeMatch.index === undefined) return null;
+
+  const start = safeIndex + relativeMatch.index;
+  const value = relativeMatch[0];
+  return {
+    value,
+    start,
+    end: start + value.length,
+  };
+};
+
 export const getSpeechText = (value: string) => (
   value
     .replace(/```[\s\S]*?```/g, ' ')

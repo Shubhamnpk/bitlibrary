@@ -64,6 +64,44 @@ To build a robust, scalable, and $0-cost library, we can leverage these public A
     - This is an **OPDS (Open Publication Distribution System)** feed (XML format), requiring an XML-to-JSON parser or direct parsing in the frontend.
 - **Deep Research Note:** Use this to provide a "Premium Reading" option for popular classics.
 
+## 6. Academic Research APIs (Opt-In Deep Research)
+**Best for:** Scholarly paper discovery, preprints, biomedical articles, citation context, and open-access lookup.
+
+- **arXiv API**
+    - Base URL: `https://export.arxiv.org/api/query`
+    - Search parameter: `search_query=all:{query}`
+    - Returns Atom XML with titles, authors, abstracts, arXiv IDs, categories, and PDF links.
+- **Semantic Scholar Academic Graph API**
+    - Base URL: `https://api.semanticscholar.org/graph/v1`
+    - Search endpoint: `GET /paper/search`
+    - Useful fields: `title`, `abstract`, `authors`, `year`, `venue`, `externalIds`, `openAccessPdf`, `fieldsOfStudy`, `citationCount`.
+- **PubMed Central via NCBI E-utilities**
+    - Base URL: `https://eutils.ncbi.nlm.nih.gov/entrez/eutils`
+    - Search flow: `esearch.fcgi?db=pmc&term={query}&retmode=json`, then `esummary.fcgi?db=pmc&id={ids}&retmode=json`.
+    - Best for open biomedical and life-science articles.
+- **Unpaywall API**
+    - Base URL: `https://api.unpaywall.org/v2/{doi}`
+    - Requires `email={contact_email}`. In BitLibrary this is configured with `VITE_UNPAYWALL_EMAIL`.
+    - Used as enrichment for DOI-bearing academic records, not as a general keyword search source.
+- **Europe PMC REST API**
+    - Base URL: `https://www.ebi.ac.uk/europepmc/webservices/rest/search`
+    - Search parameter: `query={query}`
+    - Results are displayed only when Europe PMC provides a usable PDF, text, XML, or EPUB resource.
+- **OpenAlex API**
+    - Base URL: `https://api.openalex.org/works`
+    - Search parameter: `search={query}`
+    - Useful fields: `title`, `authorships`, `publication_year`, `topics`, `abstract_inverted_index`, `best_oa_location`, `cited_by_count`.
+- **Crossref REST API**
+    - Base URL: `https://api.crossref.org/works`
+    - Search parameter: `query={query}`
+    - Useful fields: `DOI`, `title`, `author`, `published`, `subject`, `abstract`, `URL`, `is-referenced-by-count`.
+- **DataCite REST API**
+    - Base URL: `https://api.datacite.org/dois`
+    - Search parameter: `query={query}`
+    - Best for datasets, software, reports, preprints, and non-article research outputs with DOI metadata.
+
+**Integration rule:** These sources are intentionally not part of the default search pipeline. Users must enable the Research APIs toggle before BitLibrary calls them.
+
 ---
 
 ## 🚀 Recommended Integration Strategy for BitLibrary
