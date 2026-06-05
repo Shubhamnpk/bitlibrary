@@ -1,5 +1,5 @@
 import katex from 'katex';
-import { parseArticleXml } from './article-xml';
+import { parseArticleXml } from './article-xml.js';
 
 const escapeHtml = (value: string) => (
   value

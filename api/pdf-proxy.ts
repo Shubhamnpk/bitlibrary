@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readerMessageHtml, readerTextHtml } from './lib/reader-renderer';
+import { readerMessageHtml, readerTextHtml } from './lib/reader-renderer.js';
 
 const sendText = (response: ServerResponse, statusCode: number, message: string) => {
   response.statusCode = statusCode;
