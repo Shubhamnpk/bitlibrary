@@ -331,6 +331,12 @@ const getCloudPmcAssetUrl = (xml: string) => {
   return '';
 };
 
+const getPmcInstanceAssetUrl = (pmc: string, fileName: string) => {
+  const pmcNumber = pmc.match(/^PMC(\d+)$/i)?.[1];
+  if (!pmcNumber || !/\.(?:avif|gif|jpe?g|png|svg|webp|tiff?)$/i.test(fileName)) return '';
+  return `https://pmc.ncbi.nlm.nih.gov/articles/instance/${encodeURIComponent(pmcNumber)}/bin/${encodeURIComponent(fileName)}`;
+};
+
 const renderFigureImage = (imageUrl: string, caption: string, label: string) => {
   const alt = (caption || label || 'Article figure').replace(/\s+/g, ' ').trim().slice(0, 260);
   return imageUrl
@@ -556,7 +562,8 @@ const renderBioCArticleHtml = (body: string, contentType: string, imageMap: Reco
       return `<li${anchorIdAttr(anchorIdFromValue(passage.id))}><p>${text}</p>${passage.source ? `<span>${escapeHtml(passage.source)}${passage.year ? `, ${escapeHtml(passage.year)}` : ''}</span>` : ''}</li>`;
     }
     if (passage.section === 'FIG' || passage.section === 'TABLE') {
-      const imageUrl = imageMap[getFileName(passage.file)] || getCloudPmcAssetUrl(passage.xml) || '';
+      const fileName = getFileName(passage.file);
+      const imageUrl = imageMap[fileName] || getCloudPmcAssetUrl(passage.xml) || getPmcInstanceAssetUrl(pmc, fileName);
       const tableHtml = passage.xml ? renderSimpleXmlTable(passage.xml) : '';
       const figureTitle = titleByFile.get(keyedPassage) || (passage.type === 'fig_title_caption' ? passage.text : '');
       const caption = captionByFile.get(keyedPassage) || (figureTitle ? '' : passage.text);
@@ -857,7 +864,7 @@ const getJatsGraphicUrl = (xml: string, imageMap: Record<string, string>, pmc = 
   const fileName = getFileName(href);
   return imageMap[fileName]
     || imageMap[getFileName(decodeXmlText(href))]
-    || (/^PMC\d+$/i.test(pmc) && /\.(?:avif|gif|jpe?g|png|svg|webp|tiff?)$/i.test(href) ? `https://pmc.ncbi.nlm.nih.gov/articles/${encodeURIComponent(pmc)}/bin/${encodeURIComponent(href)}` : '');
+    || getPmcInstanceAssetUrl(pmc, fileName);
 };
 
 const renderJatsFigure = (xml: string, imageMap: Record<string, string>, pmc = '') => {
