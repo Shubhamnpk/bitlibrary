@@ -35,9 +35,12 @@ const BookCard: React.FC<BookCardProps> = ({
     || book.chapterPdfUrls?.length
     || book.audioUrl
   );
-  const isYoBook = book.source === 'YoBook' || book.id.startsWith('yobook-');
+  const hidesResourceFormatBadges = book.source === 'YoBook'
+    || book.source === 'Gutendex'
+    || book.id.startsWith('yobook-')
+    || book.id.startsWith('gutenberg-');
   const resourceFormats = Array.from(new Set(
-    (isYoBook ? [] : (book.resourceLinks || []))
+    (hidesResourceFormatBadges ? [] : (book.resourceLinks || []))
       .map((link) => link.format)
       .filter((format) => ['html', 'pdf', 'text', 'xml', 'epub', 'package'].includes(format))
   )).slice(0, 4);

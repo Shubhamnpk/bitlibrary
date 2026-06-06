@@ -23,7 +23,7 @@ import AudiobookDetails from '@/pages/AudiobookDetails';
 import CurriculumPage from '@/pages/CurriculumPage';
 import DictionaryPage from '@/pages/DictionaryPage';
 import SourcesPage from '@/pages/SourcesPage';
-import { recordRecentSearch, useLocalUserState } from '@/lib/local-user';
+import { recordRecentSearch, recordRecentlyViewedBook, useLocalUserState } from '@/lib/local-user';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams, matchPath } from 'react-router-dom';
 
@@ -278,6 +278,7 @@ const App: React.FC = () => {
   const hideMobileBottomNav = Boolean(isReaderActive || readerLoading || mobileMenuOpen || mobileProfileOpen || isNotFoundRoute);
 
   const handleReadBook = useCallback((book: Book) => {
+    recordRecentlyViewedBook(book);
     setActiveBook(book);
     setIsMinimized(false);
   }, []);
@@ -644,20 +645,17 @@ const App: React.FC = () => {
                 books={[...featuredBooks, ...searchResults]}
                 onRead={(id, directBook) => {
                   if (directBook) {
-                    setActiveBook(directBook);
-                    setIsMinimized(false);
+                    handleReadBook(directBook);
                     return;
                   }
                   const b = [...featuredBooks, ...searchResults].find(node => node.id === id);
                   if (b) {
-                    setActiveBook(b);
-                    setIsMinimized(false);
+                    handleReadBook(b);
                   } else {
                     setReaderLoading(true);
                     fetchBookById(id).then(res => {
                       if (res) {
-                        setActiveBook(res);
-                        setIsMinimized(false);
+                        handleReadBook(res);
                       }
                       setReaderLoading(false);
                     });
