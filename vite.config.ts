@@ -1,6 +1,7 @@
 import path from 'path';
-import { readFile } from 'node:fs/promises';
-import { defineConfig, loadEnv } from 'vite';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { readFile, readdir } from 'node:fs/promises';
+import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import pdfProxyHandler from './api/pdf-proxy';
 import { readerMessageHtml, readerTextHtml } from './api/lib/reader-renderer';
@@ -60,6 +61,46 @@ const buildResearchProxyTarget = (requestUrl: URL): string | null => {
   return null;
 };
 
+const PDFJS_WASM_ROUTE = '/assets/pdfjs/wasm/';
+const PDFJS_WASM_DIR = path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'wasm');
+
+const pdfJsWasmAssetsPlugin = (): Plugin => ({
+  name: 'bitlibrary-pdfjs-wasm-assets',
+  configureServer(server: ViteDevServer) {
+    server.middlewares.use(PDFJS_WASM_ROUTE, async (req: IncomingMessage, res: ServerResponse) => {
+      try {
+        const fileName = path.basename(new URL(req.url || '', 'http://localhost').pathname);
+        if (!/^[\w.-]+\.wasm$/i.test(fileName)) {
+          res.statusCode = 404;
+          res.end('Not found.');
+          return;
+        }
+
+        const body = await readFile(path.join(PDFJS_WASM_DIR, fileName));
+        res.statusCode = 200;
+        res.setHeader('content-type', 'application/wasm');
+        res.setHeader('cache-control', 'public, max-age=3600');
+        res.end(body);
+      } catch {
+        res.statusCode = 404;
+        res.end('Not found.');
+      }
+    });
+  },
+  async generateBundle() {
+    const fileNames = await readdir(PDFJS_WASM_DIR);
+    await Promise.all(fileNames
+      .filter((fileName) => /\.wasm$/i.test(fileName))
+      .map(async (fileName) => {
+        this.emitFile({
+          type: 'asset',
+          fileName: `${PDFJS_WASM_ROUTE.slice(1)}${fileName}`,
+          source: await readFile(path.join(PDFJS_WASM_DIR, fileName)),
+        });
+      }));
+  },
+});
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
@@ -77,6 +118,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
+      pdfJsWasmAssetsPlugin(),
       {
         name: 'bitlibrary-api-proxies',
         configureServer(server) {

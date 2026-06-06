@@ -30,7 +30,7 @@ export type {
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
-const PDFJS_WASM_URL = 'https://unpkg.com/pdfjs-dist@5.7.284/wasm/';
+const PDFJS_WASM_URL = '/assets/pdfjs/wasm/';
 const MIN_PDF_RENDER_RATIO = 3;
 const MAX_PDF_RENDER_RATIO = 4.5;
 const PDF_STABLE_RENDER_SCALE = 2.6;

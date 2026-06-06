@@ -27,6 +27,7 @@ const FRAME_BLOCKED_HOSTS = new Set([
 ]);
 
 const isTextLikeReaderUrl = (url: string) => /\.(?:txt|xml)(?:$|[?#])/i.test(url) || /fulltextxml/i.test(url) || /[?&](?:format|type)=(?:txt|text|xml)(?:&|$)/i.test(url);
+const isHtmlLikeReaderUrl = (url: string) => /\.x?html?(?:$|[?#])/i.test(url) || /[?&](?:format|type)=(?:html?)(?:&|$)/i.test(url);
 const isEpubLikeReaderUrl = (url: string) => /\.epub(?:$|[?#])/i.test(url);
 const isBlockedFrameUrl = (url: string) => {
   try {
@@ -53,8 +54,8 @@ const isSupportedDirectReaderUrl = (url?: string) => (
 
 const shouldUseReaderProxy = (url: string, resource?: ResourceLink) => {
   if (!/^https?:\/\//i.test(url)) return false;
-  if (resource?.format && ['text', 'xml'].includes(resource.format)) return true;
-  return isTextLikeReaderUrl(url);
+  if (resource?.format && ['html', 'text', 'xml'].includes(resource.format)) return true;
+  return isHtmlLikeReaderUrl(url) || isTextLikeReaderUrl(url);
 };
 
 const normalizeReaderText = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -309,10 +310,13 @@ const getSortedReadableResources = (resources: ResourceLink[]) => {
   const isCrossref = readable.some((link) => link.provider === 'Crossref');
   const isPubMed = readable.some((link) => /PubMed Central|BioC/i.test(link.provider || ''));
   const isArchive = readable.some((link) => /Open Library|Internet Archive/i.test(link.provider || '') || /archive\.org\/embed\//i.test(link.url));
+  const isGutendex = readable.some((link) => /Gutendex|Project Gutenberg/i.test(link.provider || '') || /gutenberg\.org/i.test(link.url));
   const priority = isCrossref
     ? ['xml', 'text', 'pdf', 'epub']
     : isPubMed
       ? ['xml', 'text', 'pdf', 'epub']
+      : isGutendex
+        ? ['html', 'epub', 'text', 'pdf', 'xml']
       : isArchive
         ? ['html', 'pdf', 'epub', 'text', 'xml']
     : ['pdf', 'text', 'xml', 'epub', 'html'];
@@ -380,6 +384,18 @@ const EXTERNAL_READER_BACKGROUND_PRESETS = [
     accent: '#67e8f9',
   },
   {
+    id: 'light',
+    label: 'Light',
+    swatch: 'linear-gradient(135deg, #f8f9fb, #ffffff)',
+    page: '#f8f9fb',
+    surface: '#ffffff',
+    panel: '#f1f4f8',
+    text: '#181c24',
+    muted: '#637080',
+    border: '#e1e6ed',
+    accent: '#d63a00',
+  },
+  {
     id: 'paper',
     label: 'Paper',
     swatch: 'linear-gradient(135deg, #f8f1df, #fffaf0)',
@@ -429,6 +445,10 @@ const EXTERNAL_READER_BACKGROUND_PRESETS = [
   },
 ];
 
+const getDefaultExternalReaderBackgroundId = () => (
+  typeof document !== 'undefined' && document.documentElement.classList.contains('theme-light') ? 'light' : 'dark'
+);
+
 const applyExternalReaderBackground = (frameDocument: Document | undefined, preset: typeof EXTERNAL_READER_BACKGROUND_PRESETS[number]) => {
   if (!frameDocument?.head) return;
   let style = frameDocument.getElementById('bitlibrary-reader-background-style') as HTMLStyleElement | null;
@@ -454,6 +474,7 @@ const applyExternalReaderBackground = (frameDocument: Document | undefined, pres
     #highlight-popover, #color-menu { background: ${preset.panel} !important; border-color: ${preset.border} !important; color: ${preset.text} !important; }
     [data-reader-speech-block="true"] { outline-color: ${preset.accent}88 !important; }
     #bitlibrary-now-reading { border-color: ${preset.accent}66 !important; color: ${preset.accent} !important; background: ${preset.panel}ee !important; }
+    img, svg, video, canvas { max-width: 100% !important; height: auto !important; }
   `;
 };
 
@@ -473,7 +494,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [pdfBackgroundPreset, setPdfBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
   const [pdfHighlightColor, setPdfHighlightColor] = useState<PdfHighlightColorId>(() => readPdfHighlightColor());
   const [externalHighlightColorId, setExternalHighlightColorId] = useState(EXTERNAL_HIGHLIGHT_COLOR_PRESETS[0].id);
-  const [externalBackgroundId, setExternalBackgroundId] = useState(EXTERNAL_READER_BACKGROUND_PRESETS[0].id);
+  const [externalBackgroundId, setExternalBackgroundId] = useState(getDefaultExternalReaderBackgroundId);
+  const externalBackgroundTouchedRef = useRef(false);
   const [pdfStudySnapshot, setPdfStudySnapshot] = useState<PdfStudySnapshot | null>(null);
   const [pdfTableOfContents, setPdfTableOfContents] = useState<PdfTableOfContentsSnapshot>({ status: 'idle', items: [], pageCount: 0 });
   const [pdfTableOfContentsRequestId, setPdfTableOfContentsRequestId] = useState(0);
@@ -745,6 +767,20 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     if (!isExternalTextReader) return;
     applyExternalReaderBackground(inlineReaderFrameRef.current?.contentDocument || undefined, externalBackgroundPreset);
   }, [externalBackgroundPreset, isExternalTextReader]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const syncThemeBackground = () => {
+      if (!externalBackgroundTouchedRef.current) {
+        setExternalBackgroundId(getDefaultExternalReaderBackgroundId());
+      }
+    };
+    syncThemeBackground();
+    const observer = new MutationObserver(syncThemeBackground);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => () => stopSpeech(), [stopSpeech]);
 
@@ -1835,7 +1871,10 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                         <button
                           key={preset.id}
                           type="button"
-                          onClick={() => setExternalBackgroundId(preset.id)}
+                          onClick={() => {
+                            externalBackgroundTouchedRef.current = true;
+                            setExternalBackgroundId(preset.id);
+                          }}
                           className={`flex h-11 items-center justify-center rounded-lg border transition-all ${externalBackgroundId === preset.id ? 'border-bit-accent bg-bit-accent/10 ring-2 ring-bit-accent/25' : 'border-bit-border bg-bit-bg/40 hover:border-bit-accent/50'}`}
                           aria-label={`Use ${preset.label} article background`}
                           title={preset.label}

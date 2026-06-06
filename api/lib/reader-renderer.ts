@@ -1157,6 +1157,35 @@ export const readerMessageHtml = (message: string) => `<!doctype html><html><hea
     strong{display:block;margin-bottom:10px;color:#f4f4f5;font-size:12px;letter-spacing:.18em;text-transform:uppercase}
   </style></head><body><main><section><strong>Reader proxy</strong><p>${escapeHtml(message)}</p></section></main></body></html>`;
 
+export const readerHtmlDocument = (body: string, target: URL) => {
+  const baseHref = escapeHtml(new URL('.', target).toString());
+  const targetHref = JSON.stringify(target.toString());
+  const readerInternalNavigationScript = `(()=>{const readerTarget=${targetHref};const normalizePath=(path)=>path.replace(/\\/+$/,'');const scrollToHash=(hash)=>{if(!hash)return false;const id=decodeURIComponent(hash.replace(/^#/,''));const node=document.getElementById(id)||document.querySelector('[name="'+CSS.escape(id)+'"]');if(!node)return false;node.scrollIntoView({block:'start',behavior:'smooth'});try{history.replaceState(null,'','#'+encodeURIComponent(id))}catch{}return true};document.addEventListener('click',(event)=>{const link=event.target instanceof Element?event.target.closest('a[href]'):null;if(!link)return;const raw=link.getAttribute('href')||'';let url;try{url=new URL(raw,readerTarget)}catch{return}const targetUrl=new URL(readerTarget);const isFragmentOnly=raw.trim().startsWith('#');const isSameDocument=url.origin===targetUrl.origin&&normalizePath(url.pathname)===normalizePath(targetUrl.pathname)&&url.search===targetUrl.search;if((isFragmentOnly||isSameDocument)&&url.hash){event.preventDefault();scrollToHash(url.hash)}});})();`;
+  const injectedHead = `<base href="${baseHref}"><style>
+    ${readerSelectionStyle}
+    html{scroll-behavior:smooth}
+    body{background:Canvas;color:CanvasText}
+    img,svg,video,canvas{max-width:100%;height:auto}
+    [data-reader-content="true"]{max-width:980px;margin:0 auto}
+  </style>`;
+  let html = body;
+
+  if (/<head[\s>]/i.test(html)) {
+    html = html.replace(/<head([^>]*)>/i, `<head$1>${injectedHead}`);
+  } else {
+    html = html.replace(/<html([^>]*)>/i, `<html$1><head>${injectedHead}</head>`);
+  }
+
+  if (/<body[\s>]/i.test(html)) {
+    html = html.replace(/<body([^>]*)>/i, `<body$1 data-reader-content="true">${readerSelectionToolbarHtml}`);
+    html = html.replace(/<\/body\s*>/i, `<script>${readerInternalNavigationScript}${readerSelectionScript}</script></body>`);
+  } else {
+    html += `${readerSelectionToolbarHtml}<script>${readerInternalNavigationScript}${readerSelectionScript}</script>`;
+  }
+
+  return html;
+};
+
 export const readerTextHtml = async (body: string, contentType: string, target: URL) => {
   const parsedArticle = parseArticleXml(body);
   const useBioCRenderer = parsedArticle.kind === 'bioc' || (parsedArticle.kind === 'unknown' && isBioCReaderSource(target, body));

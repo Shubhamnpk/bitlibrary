@@ -20,7 +20,7 @@ const DATACITE_BASE = 'https://api.datacite.org/dois';
 
 // --- Browser Cache Configuration ---
 const CACHE_TTL = 6 * 60 * 60 * 1000;
-const CACHE_STORAGE_PREFIX = 'bitlibrary-book-cache-v11';
+const CACHE_STORAGE_PREFIX = 'bitlibrary-book-cache-v12';
 const cache: Record<string, { data: any, timestamp: number }> = {};
 
 const getStorageKey = (key: string) => `${CACHE_STORAGE_PREFIX}:${key}`;
@@ -569,6 +569,99 @@ const formatAuthorName = (name: string): string => {
   return name;
 };
 
+const getGutendexFormatUrl = (formats: Record<string, string> | undefined, keys: string[]) => (
+  keys.map((key) => formats?.[key]).find((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
+);
+
+const buildGutendexResourceLinks = (item: any): ResourceLink[] => {
+  const formats = item?.formats || {};
+  const links: ResourceLink[] = [];
+  const add = (url: string | undefined, format: ResourceFormat, label: string, relation: ResourceLink['relation'], embeddable: boolean, downloadable: boolean) => {
+    if (!url || links.some((link) => link.url === url)) return;
+    links.push({
+      url,
+      format,
+      provider: 'Gutendex',
+      label,
+      relation,
+      embeddable,
+      downloadable,
+    });
+  };
+
+  add(getGutendexFormatUrl(formats, ['text/html', 'text/html; charset=utf-8']), 'html', 'HTML reader', 'reader', true, false);
+  add(getGutendexFormatUrl(formats, ['application/epub+zip']), 'epub', 'EPUB', 'download', false, true);
+  add(getGutendexFormatUrl(formats, ['application/pdf']), 'pdf', 'PDF', 'download', false, true);
+  add(getGutendexFormatUrl(formats, ['text/plain; charset=us-ascii', 'text/plain; charset=utf-8', 'text/plain']), 'text', 'Plain text', 'download', false, true);
+  add(getGutendexFormatUrl(formats, ['application/x-mobipocket-ebook']), 'package', 'MOBI', 'download', false, true);
+  add(`https://www.gutenberg.org/ebooks/${item.id}`, 'source', 'Project Gutenberg page', 'source', false, false);
+
+  return links;
+};
+
+const mapGutenbergFallbackToBook = (gutenbergId: string): Book | null => {
+  if (!/^\d+$/.test(gutenbergId)) return null;
+  const htmlUrl = `https://www.gutenberg.org/ebooks/${gutenbergId}.html.images`;
+  const epubUrl = `https://www.gutenberg.org/ebooks/${gutenbergId}.epub3.images`;
+  const textUrl = `https://www.gutenberg.org/files/${gutenbergId}/${gutenbergId}-0.txt`;
+  const sourceUrl = `https://www.gutenberg.org/ebooks/${gutenbergId}`;
+  const title = `Project Gutenberg #${gutenbergId}`;
+
+  return {
+    id: `gutenberg-${gutenbergId}`,
+    gutenbergId: Number(gutenbergId),
+    title,
+    author: 'Project Gutenberg',
+    authors: [{ name: 'Project Gutenberg' }],
+    category: 'Public Domain',
+    description: 'Public-domain book from Project Gutenberg. Gutendex metadata was unavailable, so BitLibrary opened the Gutenberg reader formats directly.',
+    coverUrl: `https://www.gutenberg.org/cache/epub/${gutenbergId}/pg${gutenbergId}.cover.medium.jpg`,
+    externalUrl: htmlUrl,
+    downloadUrl: epubUrl,
+    sourceUrl,
+    detailUrl: sourceUrl,
+    resourceLinks: [
+      {
+        url: htmlUrl,
+        format: 'html',
+        provider: 'Project Gutenberg',
+        label: 'HTML reader',
+        relation: 'reader',
+        embeddable: true,
+        downloadable: false,
+      },
+      {
+        url: epubUrl,
+        format: 'epub',
+        provider: 'Project Gutenberg',
+        label: 'EPUB',
+        relation: 'download',
+        embeddable: false,
+        downloadable: true,
+      },
+      {
+        url: textUrl,
+        format: 'text',
+        provider: 'Project Gutenberg',
+        label: 'Plain text',
+        relation: 'download',
+        embeddable: false,
+        downloadable: true,
+      },
+      {
+        url: sourceUrl,
+        format: 'source',
+        provider: 'Project Gutenberg',
+        label: 'Project Gutenberg page',
+        relation: 'source',
+        embeddable: false,
+        downloadable: false,
+      },
+    ],
+    source: 'Gutendex',
+  };
+};
+
 // --- Archival Data Mappers ---
 const mapGutendexToBook = (item: any): Book => {
   const formattedAuthors: Author[] = (item.authors || []).map((a: any) => ({
@@ -584,6 +677,11 @@ const mapGutendexToBook = (item: any): Book => {
   const description = (item.summaries && item.summaries.length > 0)
     ? item.summaries[0]
     : `Classical volume found in neural archives. ${category}.`;
+  const resourceLinks = buildGutendexResourceLinks(item);
+  const htmlReaderUrl = resourceLinks.find((link) => link.format === 'html' && link.relation === 'reader')?.url;
+  const epubDownloadUrl = resourceLinks.find((link) => link.format === 'epub' && link.downloadable !== false)?.url;
+  const pdfDownloadUrl = resourceLinks.find((link) => link.format === 'pdf' && link.downloadable !== false)?.url;
+  const textDownloadUrl = resourceLinks.find((link) => link.format === 'text' && link.downloadable !== false)?.url;
 
   return {
     id: `gutenberg-${item.id}`,
@@ -598,8 +696,9 @@ const mapGutendexToBook = (item: any): Book => {
     downloads: item.download_count,
     subjects: item.subjects,
     bookshelves: item.bookshelves?.map((b: string) => b.replace('Category: ', '')),
-    externalUrl: item.formats['text/html'] || item.formats['application/epub+zip'] || item.formats['text/plain; charset=us-ascii'] || item.formats['text/plain'],
-    downloadUrl: item.formats['application/epub+zip'] || item.formats['application/pdf'] || item.formats['application/x-mobipocket-ebook'],
+    externalUrl: htmlReaderUrl || epubDownloadUrl || textDownloadUrl,
+    downloadUrl: epubDownloadUrl || pdfDownloadUrl || textDownloadUrl || item.formats['application/x-mobipocket-ebook'],
+    resourceLinks,
     source: 'Gutendex'
   };
 };
@@ -2591,10 +2690,23 @@ export const fetchBookById = async (id: string): Promise<Book | null> => {
     // Handle Gutenberg books
     if (id.startsWith('gutenberg-')) {
       const gutenbergId = id.replace('gutenberg-', '');
-      const response = await fetch(`${getGutendexBase()}/${gutenbergId}`);
-      if (!response.ok) return null;
-      const data = await response.json();
-      const result = mapGutendexToBook(data);
+      let result: Book | null = null;
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 7000);
+      try {
+        const response = await fetch(`${getGutendexBase()}/${gutenbergId}`, { signal: controller.signal });
+        if (response.ok) {
+          const data = await response.json();
+          result = mapGutendexToBook(data);
+        }
+      } catch (error) {
+        if (!isAbortError(error)) {
+          console.warn(`Gutendex detail unavailable for ${gutenbergId}; using Project Gutenberg fallback.`, error);
+        }
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+      result ||= mapGutenbergFallbackToBook(gutenbergId);
       setInCache(cacheKey, result);
       return result;
     }

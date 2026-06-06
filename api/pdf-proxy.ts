@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readerMessageHtml, readerTextHtml } from './lib/reader-renderer.js';
+import { readerHtmlDocument, readerMessageHtml, readerTextHtml } from './lib/reader-renderer.js';
 
 const sendText = (response: ServerResponse, statusCode: number, message: string) => {
   response.statusCode = statusCode;
@@ -33,6 +33,11 @@ const isTextLikeReaderTarget = (target: URL) => (
   || /[?&](?:format|type|ext)=(?:txt|text)(?:&|$)/i.test(target.search)
 );
 
+const isHtmlLikeReaderTarget = (target: URL) => (
+  /\.x?html?(?:$|[?#])/i.test(target.toString())
+  || /[?&](?:format|type|ext)=html?(?:&|$)/i.test(target.search)
+);
+
 const sendReaderMessage = (response: ServerResponse, statusCode: number, message: string) => {
   response.statusCode = statusCode;
   response.setHeader('content-type', 'text/html; charset=utf-8');
@@ -57,6 +62,14 @@ const getSafeDownloadFilename = (title: string | null) => {
     || 'book';
 
   return safeTitle;
+};
+
+const sendReaderHtmlDocument = (response: ServerResponse, statusCode: number, body: string, target: URL) => {
+  response.statusCode = statusCode;
+  response.setHeader('content-type', 'text/html; charset=utf-8');
+  response.setHeader('cache-control', 'no-cache');
+  response.setHeader('access-control-allow-origin', '*');
+  response.end(readerHtmlDocument(body, target));
 };
 
 const getAsciiDownloadFilename = (filename: string) => {
@@ -107,7 +120,7 @@ export default async function handler(request: IncomingMessage, response: Server
   }
 
   const upstreamHeaders = new Headers({
-    accept: shouldDownload ? '*/*' : isReaderRequest ? 'application/pdf,application/xml,text/xml,text/plain,*/*' : 'application/pdf,*/*',
+    accept: shouldDownload ? '*/*' : isReaderRequest ? 'application/pdf,text/html,application/xhtml+xml,application/xml,text/xml,text/plain,*/*' : 'application/pdf,*/*',
     'user-agent': 'BitLibrary/0.5.0 (reader proxy; academic research access)',
   });
   const range = request.headers.range;
@@ -130,10 +143,14 @@ export default async function handler(request: IncomingMessage, response: Server
     const isPdfUrl = /\.pdf(?:$|[?#])/i.test(target.toString()) || /\/pdf\/?$/i.test(target.pathname) || /\/api\/getpdf\/?$/i.test(target.pathname);
     const isXmlUrl = isXmlLikeReaderTarget(target);
     const isTextUrl = isTextLikeReaderTarget(target);
+    const isHtmlUrl = isHtmlLikeReaderTarget(target);
     const isSupportedReaderContent = (
       normalizedContentType.includes('pdf')
+      || normalizedContentType.includes('text/html')
+      || normalizedContentType.includes('application/xhtml')
       || normalizedContentType.includes('xml')
       || normalizedContentType.includes('text/plain')
+      || isHtmlUrl
       || isXmlUrl
       || isTextUrl
     );
@@ -145,6 +162,12 @@ export default async function handler(request: IncomingMessage, response: Server
     if (isReaderRequest && (normalizedContentType.includes('xml') || normalizedContentType.includes('text/plain') || isXmlUrl || isTextUrl)) {
       const body = await upstream.text();
       await sendReaderTextDocument(response, upstream.status, body, contentType, target);
+      return;
+    }
+
+    if (isReaderRequest && (normalizedContentType.includes('text/html') || normalizedContentType.includes('application/xhtml') || isHtmlUrl)) {
+      const body = await upstream.text();
+      sendReaderHtmlDocument(response, upstream.status, body, target);
       return;
     }
 

@@ -35,8 +35,9 @@ const BookCard: React.FC<BookCardProps> = ({
     || book.chapterPdfUrls?.length
     || book.audioUrl
   );
+  const isYoBook = book.source === 'YoBook' || book.id.startsWith('yobook-');
   const resourceFormats = Array.from(new Set(
-    (book.resourceLinks || [])
+    (isYoBook ? [] : (book.resourceLinks || []))
       .map((link) => link.format)
       .filter((format) => ['html', 'pdf', 'text', 'xml', 'epub', 'package'].includes(format))
   )).slice(0, 4);
