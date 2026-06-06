@@ -378,6 +378,9 @@
   white-space: pre;
   cursor: text;
   transform-origin: 0% 0%;
+  line-height: 1;
+  text-shadow: none;
+  -webkit-text-fill-color: transparent;
 }
 
 .bit-pdf-page .textLayer > :not(.markedContent),
@@ -395,7 +398,7 @@
 }
 
 .bit-pdf-page .textLayer ::selection {
-  background: var(--bit-pdf-selection-color, rgba(250, 204, 21, 0.38));
+  background: color-mix(in srgb, var(--bit-pdf-selection-color, rgba(250, 204, 21, 0.38)) 64%, transparent);
   color: transparent;
   -webkit-text-fill-color: transparent;
 }

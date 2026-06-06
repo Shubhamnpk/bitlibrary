@@ -48,7 +48,7 @@ const sendReaderTextDocument = async (response: ServerResponse, statusCode: numb
   response.end(html);
 };
 
-const getSafePdfFilename = (title: string | null) => {
+const getSafeDownloadFilename = (title: string | null) => {
   const safeTitle = (title || 'book')
     .trim()
     .replace(/[\\/:*?"<>|]+/g, '-')
@@ -56,7 +56,26 @@ const getSafePdfFilename = (title: string | null) => {
     .slice(0, 120)
     || 'book';
 
-  return /\.pdf$/i.test(safeTitle) ? safeTitle : `${safeTitle}.pdf`;
+  return safeTitle;
+};
+
+const getAsciiDownloadFilename = (filename: string) => {
+  const ascii = filename
+    .normalize('NFKD')
+    .replace(/[^\x20-\x7E]+/g, '-')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/-+/g, '-')
+    .replace(/^[\s.-]+|[\s.-]+$/g, '')
+    .slice(0, 120);
+
+  return /[a-z0-9]{3,}/i.test(ascii) ? ascii : 'download';
+};
+
+const getContentDisposition = (filename: string) => {
+  const safeFilename = getSafeDownloadFilename(filename);
+  const asciiFilename = getAsciiDownloadFilename(safeFilename);
+  return `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`;
 };
 
 export default async function handler(request: IncomingMessage, response: ServerResponse) {
@@ -88,7 +107,7 @@ export default async function handler(request: IncomingMessage, response: Server
   }
 
   const upstreamHeaders = new Headers({
-    accept: isReaderRequest ? 'application/pdf,application/xml,text/xml,text/plain,*/*' : 'application/pdf,*/*',
+    accept: shouldDownload ? '*/*' : isReaderRequest ? 'application/pdf,application/xml,text/xml,text/plain,*/*' : 'application/pdf,*/*',
     'user-agent': 'BitLibrary/0.5.0 (reader proxy; academic research access)',
   });
   const range = request.headers.range;
@@ -118,7 +137,7 @@ export default async function handler(request: IncomingMessage, response: Server
       || isXmlUrl
       || isTextUrl
     );
-    if (!normalizedContentType.includes('pdf') && !isPdfUrl && (!isReaderRequest || !isSupportedReaderContent)) {
+    if (!shouldDownload && !normalizedContentType.includes('pdf') && !isPdfUrl && (!isReaderRequest || !isSupportedReaderContent)) {
       (isReaderRequest ? sendReaderMessage : sendText)(response, 415, isReaderRequest ? 'Target is not a supported reader resource.' : 'Target is not a PDF.');
       return;
     }
@@ -136,7 +155,7 @@ export default async function handler(request: IncomingMessage, response: Server
     const upstreamHonoredRange = !range || upstream.status === 206;
     response.setHeader('accept-ranges', upstreamHonoredRange ? upstream.headers.get('accept-ranges') || 'bytes' : 'none');
     if (shouldDownload) {
-      response.setHeader('content-disposition', `attachment; filename="${getSafePdfFilename(requestUrl.searchParams.get('filename'))}"`);
+      response.setHeader('content-disposition', getContentDisposition(requestUrl.searchParams.get('filename') || 'download'));
     }
 
     ['content-length', 'content-range'].forEach((headerName) => {

@@ -11,7 +11,7 @@ const RESEARCH_MIN_QUERY_LENGTH = 2;
 const RESEARCH_CACHE_KEY = 'bitlibrary-research-cache-v1';
 const RESEARCH_CACHE_TTL = 20 * 60 * 1000;
 const RESEARCH_QUICK_TOPICS = ['climate adaptation', 'neural networks', 'public health', 'renewable energy', 'education policy', 'soil microbiome'];
-const READABLE_FORMATS: ResourceFormat[] = ['pdf', 'xml', 'text', 'epub', 'package'];
+const READABLE_FORMATS: ResourceFormat[] = ['pdf', 'xml', 'text', 'epub', 'package', 'audio', 'video'];
 
 interface ResearchCacheEntry {
   results: Book[];

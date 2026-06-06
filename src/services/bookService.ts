@@ -276,6 +276,8 @@ const getArchiveFileResourceFormat = (file: any): ResourceFormat => {
   if (format.includes('epub') || /\.epub$/i.test(name)) return 'epub';
   if (format.includes('djvutxt') || format.includes('full text') || /\.(?:txt|djvu\.txt)$/i.test(name)) return 'text';
   if (format.includes('xml') || /\.xml$/i.test(name)) return 'xml';
+  if (format.includes('audio') || /\.(?:mp3|m4a|wav|ogg|aac)$/i.test(name)) return 'audio';
+  if (format.includes('video') || /\.(?:mp4|webm|mov|mkv)$/i.test(name)) return 'video';
   if (/\.(?:zip|tar|gz|tgz)$/i.test(name)) return 'package';
   return 'unknown';
 };
@@ -311,7 +313,7 @@ const buildArchiveResourceLinks = (identifier?: string, item?: any, provider = '
           downloadable: true,
         };
       })
-      .filter((link: ResourceLink) => ['pdf', 'epub', 'text', 'xml', 'package'].includes(link.format))
+      .filter((link: ResourceLink) => ['pdf', 'epub', 'text', 'xml', 'package', 'audio', 'video'].includes(link.format))
       .forEach((link: ResourceLink) => links.push(link));
   }
 
@@ -917,6 +919,8 @@ const getResearchFormat = (url: string, type = '', label = ''): ResourceFormat =
   if (isResearchPdfUrl(url) || signature.includes('pdf') || signature.includes('application/pdf')) return 'pdf';
   if (isResearchEpubUrl(url) || signature.includes('epub')) return 'epub';
   if (isResearchXmlUrl(url) || signature.includes('xml') || signature.includes('jats') || signature.includes('bioc')) return 'xml';
+  if (/\.(?:mp3|m4a|wav|ogg|aac)(?:$|[?#])/i.test(url) || signature.includes('audio')) return 'audio';
+  if (/\.(?:mp4|webm|mov|mkv)(?:$|[?#])/i.test(url) || signature.includes('video')) return 'video';
   if (isResearchPackageUrl(url) || signature.includes('tgz') || signature.includes('tar') || signature.includes('package')) return 'package';
   if (/html?/i.test(signature) || signature.includes('fulltext') || signature.includes('full text') || /\.html?(?:$|[?#])/i.test(url)) return 'html';
   if (isResearchTextUrl(url) || signature.includes('text/plain') || signature === 'text' || signature.includes(' plain text')) return 'text';
@@ -947,7 +951,7 @@ const buildResearchResourceLinks = (
         label: label || type || format,
         relation,
         embeddable: isEmbeddableResearchResource(url, format),
-        downloadable: ['pdf', 'text', 'xml', 'epub', 'package'].includes(format),
+        downloadable: ['pdf', 'text', 'xml', 'epub', 'package', 'audio', 'video'].includes(format),
       };
     })
     .filter((item) => {
@@ -971,7 +975,7 @@ const chooseResearchResourceUrls = (resourceLinks: ResourceLink[]) => {
   );
   const reader = byFormat(['pdf', 'text', 'xml'], (link) => link.embeddable !== false)
     || byFormat(['epub']);
-  const download = byFormat(['pdf', 'text', 'xml', 'epub', 'package'], (link) => link.downloadable !== false);
+  const download = byFormat(['pdf', 'text', 'xml', 'epub', 'package', 'audio', 'video'], (link) => link.downloadable !== false);
 
   return {
     readerUrl: reader?.url,
@@ -1185,7 +1189,7 @@ const chooseCrossrefResourceUrls = (resourceLinks: ResourceLink[]) => {
   );
   const reader = findByFormat(['xml', 'text']) || findByFormat(['pdf']);
   const download = resourceLinks.find((link) => link.format === 'pdf' && !['source', 'doi', 'metadata'].includes(link.relation || '') && link.downloadable !== false)
-    || resourceLinks.find((link) => ['xml', 'text', 'epub', 'package'].includes(link.format) && !['source', 'doi', 'metadata'].includes(link.relation || '') && link.downloadable !== false);
+    || resourceLinks.find((link) => ['xml', 'text', 'epub', 'package', 'audio', 'video'].includes(link.format) && !['source', 'doi', 'metadata'].includes(link.relation || '') && link.downloadable !== false);
 
   return {
     readerUrl: reader?.url,
@@ -1251,7 +1255,7 @@ const mapEuropePmcWorkToBook = (item: any): Book => {
       relation: 'download' as const,
     })),
     ...(pmcid ? [
-      { url: `https://www.ebi.ac.uk/europepmc/webservices/rest/${pmcid}/fullTextXML`, type: 'application/xml', label: 'Full text XML', provider: 'Europe PMC', relation: 'reader' as const },
+      { url: `https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_xml/${pmcid}/unicode`, type: 'application/xml', label: 'BioC full text XML', provider: 'PubMed Central BioC', relation: 'reader' as const },
     ] : []),
     { url: sourceUrl, label: 'source page', provider: 'Europe PMC', relation: 'source' },
     ...(doi ? [{ url: `https://doi.org/${doi}`, label: 'doi', provider: 'DOI', relation: 'doi' as const }] : []),
@@ -1491,6 +1495,7 @@ const mapYoBookToBook = (item: any): Book => {
   const pdfUrl = getAbsoluteYoBookAssetUrl(item.pdfUrl);
   const audioUrl = getAbsoluteYoBookAssetUrl(item.audioUrl);
   const readUrl = getAbsoluteYoBookAssetUrl(item.readUrl);
+  const directDownloadUrl = getAbsoluteYoBookAssetUrl(item.downloadUrl);
   const zipUrl = getAbsoluteYoBookAssetUrl(item.zipUrl);
   const derivedNcertChapterPdfUrls = getNcertChapterPdfUrlsFromZipUrl(zipUrl);
   const chapterPdfUrls = Array.isArray(item.chapterPdfUrls)
@@ -1525,8 +1530,19 @@ const mapYoBookToBook = (item: any): Book => {
     'Pustakalaya',
     ...keywords,
   ].filter((value, index, list): value is string => Boolean(value) && list.indexOf(value as string) === index);
-  const primaryResourceUrl = isQuestionPaperCollection ? undefined : (pdfUrl || chapterPdfUrl || audioUrl || readUrl || sourceUrl);
-  const downloadResourceUrl = isQuestionPaperCollection ? undefined : (pdfUrl || (isPdfLikeResourceUrl(readUrl) ? readUrl : undefined) || chapterPdfUrl || zipUrl || audioUrl);
+  const pdfReadUrl = isPdfLikeResourceUrl(readUrl) ? readUrl : undefined;
+  const primaryResourceUrl = isQuestionPaperCollection ? undefined : (pdfUrl || directDownloadUrl || chapterPdfUrl || audioUrl || readUrl || sourceUrl);
+  const downloadResourceUrl = isQuestionPaperCollection ? undefined : (directDownloadUrl || pdfUrl || pdfReadUrl);
+  const resourceLinks = isQuestionPaperCollection ? [] : buildResearchResourceLinks([
+    { url: pdfUrl, type: 'application/pdf', label: 'PDF', provider: sourceLabel, relation: 'download' },
+    { url: directDownloadUrl, type: isPdfLikeResourceUrl(directDownloadUrl) ? 'application/pdf' : undefined, label: 'Download', provider: sourceLabel, relation: 'download' },
+    { url: pdfReadUrl, type: 'application/pdf', label: 'Reader PDF', provider: sourceLabel, relation: 'download' },
+    ...chapterPdfUrls.map((chapter: ChapterPdf) => ({ url: chapter.pdfUrl, type: 'application/pdf', label: chapter.title, provider: sourceLabel, relation: 'download' as const })),
+    { url: zipUrl, label: 'Package', provider: sourceLabel, relation: 'download' },
+    { url: audioUrl, label: 'Audio', provider: sourceLabel, relation: 'download' },
+    { url: readUrl && !pdfReadUrl ? readUrl : undefined, label: 'Reader', provider: sourceLabel, relation: 'reader' },
+    { url: sourceUrl || detailUrl, label: 'source page', provider: sourceLabel, relation: 'source' },
+  ], sourceLabel);
 
   return {
     id: `yobook-${item.id}`,
@@ -1546,6 +1562,7 @@ const mapYoBookToBook = (item: any): Book => {
     bookshelves: [grade ? `Class ${grade}` : '', item.level ? `Level ${item.level}` : '', curriculum, sourceLabel, 'Nepali Curriculum'].filter(Boolean),
     externalUrl: primaryResourceUrl,
     downloadUrl: downloadResourceUrl,
+    resourceLinks,
     audioUrl,
     detailUrl,
     sourceUrl,

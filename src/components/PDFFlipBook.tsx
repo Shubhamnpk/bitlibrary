@@ -6,6 +6,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import { getPdfProxyUrl } from '@/lib/pdf';
+import { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS } from '@/lib/pdf-reader-presets';
 import { getPdfSpeechSegments, type PdfSpeechItemRange, type PdfSpeechSegment, type PdfSpeechStatus } from '@/lib/pdf-speech';
 import {
   readPdfBackgroundPreset,
@@ -21,11 +22,6 @@ import {
 } from '@/lib/pdf-reader-storage';
 import { getPreferredSpeechVoiceURI, getSpeechWordAtBoundary, normalizeSpeechMatchText, speakUtterance } from '@/lib/speech';
 
-export {
-  readPdfBackgroundPreset,
-  readPdfHighlightColor,
-};
-
 export type {
   PdfBackgroundPresetId,
   PdfHighlightColorId,
@@ -37,7 +33,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 const PDFJS_WASM_URL = 'https://unpkg.com/pdfjs-dist@5.7.284/wasm/';
 const MIN_PDF_RENDER_RATIO = 3;
 const MAX_PDF_RENDER_RATIO = 4.5;
-const PDF_STABLE_RENDER_SCALE = 2.1;
+const PDF_STABLE_RENDER_SCALE = 2.6;
+const MAX_PDF_ZOOM = 2.5;
 const isTurnTouchDevice = () => Boolean(($ as unknown as { isTouch?: boolean }).isTouch);
 
 interface PDFFlipBookProps {
@@ -145,6 +142,53 @@ const mergeSpeechHighlightRects = (rects: PdfSpeechHighlightRect[]) => {
   return merged;
 };
 
+const normalizePdfSelectionRects = (rects: PdfSpeechHighlightRect[]) => {
+  const normalized = rects
+    .filter((rect) => rect.width > 0.2 && rect.height > 0.2)
+    .map((rect) => {
+      const height = Math.max(0.65, rect.height * 0.96);
+      const y = rect.y + (rect.height - height) / 2;
+      return { ...rect, y, height };
+    })
+    .sort((a, b) => (Math.abs((a.y + a.height / 2) - (b.y + b.height / 2)) < 0.35 ? a.x - b.x : a.y - b.y));
+
+  const merged: PdfSpeechHighlightRect[] = [];
+  normalized.forEach((rect) => {
+    const previous = merged[merged.length - 1];
+    if (!previous) {
+      merged.push({ ...rect });
+      return;
+    }
+
+    const previousCenter = previous.y + previous.height / 2;
+    const rectCenter = rect.y + rect.height / 2;
+    const sameLine = Math.abs(previousCenter - rectCenter) <= Math.max(previous.height, rect.height) * 0.62;
+    const gap = rect.x - (previous.x + previous.width);
+    if (sameLine && gap < 1.8) {
+      const left = Math.min(previous.x, rect.x);
+      const right = Math.max(previous.x + previous.width, rect.x + rect.width);
+      const top = Math.min(previous.y, rect.y);
+      const bottom = Math.max(previous.y + previous.height, rect.y + rect.height);
+      previous.x = left;
+      previous.y = top;
+      previous.width = right - left;
+      previous.height = bottom - top;
+      return;
+    }
+
+    merged.push({ ...rect });
+  });
+
+  return merged.map((rect) => {
+    const height = Math.max(0.65, rect.height * 1.08);
+    return {
+      ...rect,
+      y: rect.y + (rect.height - height) / 2,
+      height,
+    };
+  });
+};
+
 export interface PdfStudySnapshot {
   currentPage: number;
   pageCount: number;
@@ -178,7 +222,7 @@ export interface PdfTableOfContentsSnapshot {
 }
 
 type TurnBook = JQuery & {
-  turn: (commandOrOptions?: unknown, value?: unknown) => unknown;
+  turn: (commandOrOptions?: unknown, value?: unknown, secondValue?: unknown) => unknown;
 };
 
 type GestureEventLike = Event & {
@@ -191,57 +235,6 @@ type PdfOutlineItem = {
   items?: PdfOutlineItem[];
 };
 
-export const PDF_BACKGROUND_PRESETS: Array<{
-  id: PdfBackgroundPresetId;
-  label: string;
-  className: string;
-  swatch: string;
-}> = [
-  {
-    id: 'default',
-    label: 'Default',
-    className: 'bit-pdf-reader-bg-default',
-    swatch: 'linear-gradient(135deg, #0f172a, #2563eb)',
-  },
-  {
-    id: 'wood',
-    label: 'Wood',
-    className: 'bit-pdf-reader-bg-wood',
-    swatch: 'linear-gradient(135deg, #4a2616, #a76532 52%, #2a140c)',
-  },
-  {
-    id: 'paper',
-    label: 'Paper',
-    className: 'bit-pdf-reader-bg-paper',
-    swatch: 'linear-gradient(135deg, #d9b66d, #fff1c9 58%, #a7772d)',
-  },
-  {
-    id: 'sage',
-    label: 'Sage',
-    className: 'bit-pdf-reader-bg-sage',
-    swatch: 'linear-gradient(135deg, #26382f, #7f9a78 55%, #111b16)',
-  },
-  {
-    id: 'night',
-    label: 'Night',
-    className: 'bit-pdf-reader-bg-night',
-    swatch: 'linear-gradient(135deg, #131821, #334055 55%, #090b10)',
-  },
-];
-
-export const PDF_HIGHLIGHT_COLOR_PRESETS: Array<{
-  id: PdfHighlightColorId;
-  label: string;
-  swatch: string;
-  overlay: string;
-}> = [
-  { id: 'yellow', label: 'Yellow', swatch: '#fde047', overlay: 'rgba(253, 224, 71, 0.48)' },
-  { id: 'mint', label: 'Mint', swatch: '#86efac', overlay: 'rgba(134, 239, 172, 0.46)' },
-  { id: 'sky', label: 'Sky', swatch: '#7dd3fc', overlay: 'rgba(125, 211, 252, 0.44)' },
-  { id: 'rose', label: 'Rose', swatch: '#fda4af', overlay: 'rgba(253, 164, 175, 0.46)' },
-  { id: 'violet', label: 'Violet', swatch: '#c4b5fd', overlay: 'rgba(196, 181, 253, 0.44)' },
-];
-
 const isTurnBookReady = (book: TurnBook) => {
   try {
     return Boolean(book.turn('is'));
@@ -250,7 +243,14 @@ const isTurnBookReady = (book: TurnBook) => {
   }
 };
 
-const clampZoom = (value: number) => Math.min(1.75, Math.max(1, Number(value.toFixed(3))));
+const normalizePageNumber = (page: unknown, pageCount: number, fallback = 1) => {
+  const numericPage = typeof page === 'number' ? page : Number(page);
+  if (!Number.isFinite(numericPage) || numericPage < 1) return fallback;
+  if (!Number.isFinite(pageCount) || pageCount < 1) return Math.floor(numericPage);
+  return Math.min(pageCount, Math.floor(numericPage));
+};
+
+const clampZoom = (value: number) => Math.min(MAX_PDF_ZOOM, Math.max(1, Number(value.toFixed(3))));
 
 const getHighlightOverlay = (color?: PdfHighlightColorId) => (
   PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === color)?.overlay || PDF_HIGHLIGHT_COLOR_PRESETS[0].overlay
@@ -681,7 +681,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
     }
 
     const pageBounds = pageElement.getBoundingClientRect();
-    const rects = Array.from(selection.getRangeAt(0).getClientRects())
+    const rects = normalizePdfSelectionRects(Array.from(selection.getRangeAt(0).getClientRects())
       .map((rect) => {
         const left = Math.max(rect.left, pageBounds.left);
         const top = Math.max(rect.top, pageBounds.top);
@@ -695,7 +695,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
           height: ((bottom - top) / pageBounds.height) * 100,
         };
       })
-      .filter((rect) => rect.width > 0.2 && rect.height > 0.2);
+      .filter((rect) => rect.width > 0.2 && rect.height > 0.2));
 
     if (!rects.length) {
       clearTextLayerSelection();
@@ -862,6 +862,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [zoom, setZoom] = useState(() => getDefaultZoom());
+  const [turnFallbackMode, setTurnFallbackMode] = useState(false);
   const [isPageSliderActive, setIsPageSliderActive] = useState(false);
   const [pdfSpeechStatus, setPdfSpeechStatus] = useState<PdfSpeechStatus>('idle');
   const [pdfSpeechVoices, setPdfSpeechVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -913,6 +914,16 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const pageCountRef = useRef(1);
   const proxiedPdfUrl = useMemo(() => getPdfProxyUrl(pdfUrl), [pdfUrl]);
   const pageCount = document?.numPages || 0;
+  const effectiveDimensions = useMemo<FlipDimensions>(() => (
+    turnFallbackMode && dimensions.display === 'double'
+      ? {
+        width: Math.max(260, Math.min(430, Math.round(dimensions.width / 2))),
+        height: dimensions.height,
+        display: 'single',
+      }
+      : dimensions
+  ), [dimensions, turnFallbackMode]);
+  const readerDisplay = effectiveDimensions.display;
   const sortedBookmarks = useMemo(() => [...studyState.bookmarks].sort((a, b) => a - b), [studyState.bookmarks]);
   const studyPanelOpen = controlledStudyPanelOpen ?? internalStudyPanelOpen;
   const textSelectionModeEnabled = studyPanelOpen;
@@ -1094,7 +1105,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       window.speechSynthesis.cancel();
       setPdfSpeechStatus('loading');
 
-      const pageNumbers = dimensions.display === 'double'
+      const pageNumbers = readerDisplay === 'double'
         ? [currentPage, currentPage + 1].filter((pageNumber) => pageNumber <= pageCount)
         : [currentPage];
 
@@ -1125,7 +1136,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     } catch {
       setPdfSpeechStatus('idle');
     }
-  }, [currentPage, dimensions.display, document, pageCount, pdfSpeechStatus, speakPdfSpeechSegment, speechReadingOrder]);
+  }, [currentPage, document, pageCount, pdfSpeechStatus, readerDisplay, speakPdfSpeechSegment, speechReadingOrder]);
   readCurrentPdfPageRef.current = readCurrentPdfPage;
 
   const pausePdfSpeech = useCallback(() => {
@@ -1326,6 +1337,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
     const updateDimensions = () => {
       const rect = shell.getBoundingClientRect();
+      if (rect.width < 320 || rect.height < 360) return;
+
       const nextDimensions = getDimensions(rect.width, rect.height);
       setDimensions((currentDimensions) => {
         if (
@@ -1520,6 +1533,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     const pageToRestore = savedState.lastPage && savedState.lastPage > 0 ? savedState.lastPage : 1;
     setLoading(true);
     setError(null);
+    setTurnFallbackMode(false);
     currentPageRef.current = pageToRestore;
     setCurrentPage(pageToRestore);
     const defaultZoom = getDefaultZoom();
@@ -1600,22 +1614,25 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   }, [document, onTableOfContentsChange, pdfUrl, tableOfContentsRequestId]);
 
   useEffect(() => {
-    if (!document || !bookRef.current) return;
+    if (!document || !bookRef.current || readerDisplay !== 'double') return;
 
     const book = $(bookRef.current) as unknown as TurnBook;
+    const pageToRestore = normalizePageNumber(currentPageRef.current, document.numPages);
 
     try {
       if (isTurnBookReady(book)) {
-        book.turn('destroy');
+        book.turn('size', dimensions.width, dimensions.height);
+        if (pageToRestore !== normalizePageNumber(currentPageRef.current, document.numPages)) {
+          book.turn('page', pageToRestore);
+        }
+        return;
       }
-
-      const pageToRestore = Math.min(currentPageRef.current, document.numPages);
 
       book.turn({
         width: dimensions.width,
         height: dimensions.height,
-        display: dimensions.display,
-        autoCenter: dimensions.display !== 'single',
+        display: 'double',
+        autoCenter: true,
         gradients: !isTurnTouchDevice(),
         elevation: 80,
         duration: 900,
@@ -1624,7 +1641,9 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
         pages: document.numPages,
         when: {
           turned: (_event: unknown, page: number) => {
-            setCurrentPage(page);
+            const nextPage = normalizePageNumber(page, document.numPages, currentPageRef.current);
+            currentPageRef.current = nextPage;
+            setCurrentPage(nextPage);
             if (suppressNextSoundRef.current) {
               suppressNextSoundRef.current = false;
               return;
@@ -1633,39 +1652,48 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           },
         },
       });
-
-      if (pageToRestore > 1) {
-        suppressNextSoundRef.current = true;
-      }
-      book.turn('page', pageToRestore);
     } catch (turnError) {
       console.warn('[PDF Turn.js] Init skipped:', turnError);
+      setTurnFallbackMode(true);
+      return;
     }
 
-    return () => {
+    if (pageToRestore <= 1) return;
+
+    const restoreFrame = window.requestAnimationFrame(() => {
+      const restoredBook = getBook();
+      if (!restoredBook) return;
+
       try {
-        if (isTurnBookReady(book)) {
-          book.turn('destroy');
-        }
-      } catch {
-        // Turn.js can throw during teardown if a flip animation is mid-flight.
+        suppressNextSoundRef.current = true;
+        restoredBook.turn('page', pageToRestore);
+      } catch (turnError) {
+        suppressNextSoundRef.current = false;
+        console.warn('[PDF Turn.js] Restore page skipped:', turnError);
+        setTurnFallbackMode(true);
+        currentPageRef.current = 1;
+        setCurrentPage(1);
       }
-    };
-  }, [dimensions.display, dimensions.height, dimensions.width, document]);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(restoreFrame);
+    }
+  }, [dimensions.height, dimensions.width, document, getBook, readerDisplay]);
 
   const canZoomOut = zoom > 1;
-  const canZoomIn = zoom < 1.75;
+  const canZoomIn = zoom < MAX_PDF_ZOOM;
   const canGoPrevious = currentPage > 1 || Boolean(onPreviousBoundary);
   const canGoNext = currentPage < pageCount || Boolean(onNextBoundary);
   const renderScale = PDF_STABLE_RENDER_SCALE;
   const renderWindow = zoom > 1 ? 6 : 10;
-  const textLayerWindow = dimensions.display === 'single' ? 1 : 2;
+  const textLayerWindow = readerDisplay === 'single' ? 1 : 2;
   const isZoomed = zoom > 1;
-  const zoomedWidth = Math.round(dimensions.width * zoom);
-  const zoomedHeight = Math.round(dimensions.height * zoom);
-  const pageRenderWidth = dimensions.display === 'double' ? dimensions.width / 2 : dimensions.width;
-  const pageRenderHeight = dimensions.height;
-  const shouldCenterZoomedReader = isZoomed && dimensions.display === 'single';
+  const zoomedWidth = Math.round(effectiveDimensions.width * zoom);
+  const zoomedHeight = Math.round(effectiveDimensions.height * zoom);
+  const pageRenderWidth = readerDisplay === 'double' ? effectiveDimensions.width / 2 : effectiveDimensions.width;
+  const pageRenderHeight = effectiveDimensions.height;
+  const shouldCenterZoomedReader = isZoomed && readerDisplay === 'single';
   const pageSliderProgress = pageCount > 1 ? ((currentPage - 1) / (pageCount - 1)) * 100 : 0;
   const isLightReaderBackground = backgroundPreset === 'paper';
   const navButtonToneClass = isLightReaderBackground
@@ -1676,7 +1704,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   useEffect(() => {
     const wasZoomed = wasZoomedRef.current;
     wasZoomedRef.current = shouldCenterZoomedReader;
-    const layoutKey = `${currentPage}:${dimensions.width}:${dimensions.height}:${zoom}`;
+    const layoutKey = `${currentPage}:${effectiveDimensions.width}:${effectiveDimensions.height}:${zoom}`;
     const shouldCenterForLayout = shouldCenterZoomedReader && centeredMobileLayoutKeyRef.current !== layoutKey;
     if (!shouldCenterZoomedReader || (wasZoomed && !shouldCenterForLayout) || !shellRef.current) return;
     centeredMobileLayoutKeyRef.current = layoutKey;
@@ -1686,49 +1714,55 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       if (!shell) return;
       shell.scrollLeft = Math.max(0, (shell.scrollWidth - shell.clientWidth) / 2);
     });
-  }, [shouldCenterZoomedReader, currentPage, dimensions.width, dimensions.height, zoom]);
+  }, [shouldCenterZoomedReader, currentPage, effectiveDimensions.width, effectiveDimensions.height, zoom]);
 
   const goPrevious = useCallback(() => {
-    if (currentPageRef.current <= 1 && onPreviousBoundary) {
+    const currentSafePage = normalizePageNumber(currentPageRef.current, pageCount);
+
+    if (currentSafePage <= 1 && onPreviousBoundary) {
       onPreviousBoundary();
       return;
     }
 
-    if (dimensions.display === 'single') {
+    if (readerDisplay === 'single') {
       setCurrentPage((page) => Math.max(1, page - 1));
-      if (soundEnabledRef.current && currentPageRef.current > 1) playPageTurnSound();
+      if (soundEnabledRef.current && currentSafePage > 1) playPageTurnSound();
       return;
     }
 
     const book = getBook();
-    if (!book || currentPageRef.current <= 1) return;
+    if (!book || currentSafePage <= 1) return;
     try {
       book.turn('previous');
     } catch (turnError) {
       console.warn('[PDF Turn.js] Previous page skipped:', turnError);
+      setTurnFallbackMode(true);
     }
-  }, [dimensions.display, getBook, onPreviousBoundary]);
+  }, [getBook, onPreviousBoundary, pageCount, readerDisplay]);
 
   const goNext = useCallback(() => {
-    if (currentPageRef.current >= pageCount && onNextBoundary) {
+    const currentSafePage = normalizePageNumber(currentPageRef.current, pageCount);
+
+    if (currentSafePage >= pageCount && onNextBoundary) {
       onNextBoundary();
       return;
     }
 
-    if (dimensions.display === 'single') {
+    if (readerDisplay === 'single') {
       setCurrentPage((page) => Math.min(pageCount, page + 1));
-      if (soundEnabledRef.current && currentPageRef.current < pageCount) playPageTurnSound();
+      if (soundEnabledRef.current && currentSafePage < pageCount) playPageTurnSound();
       return;
     }
 
     const book = getBook();
-    if (!book || currentPageRef.current >= pageCount) return;
+    if (!book || currentSafePage >= pageCount) return;
     try {
       book.turn('next');
     } catch (turnError) {
       console.warn('[PDF Turn.js] Next page skipped:', turnError);
+      setTurnFallbackMode(true);
     }
-  }, [dimensions.display, getBook, onNextBoundary, pageCount]);
+  }, [getBook, onNextBoundary, pageCount, readerDisplay]);
 
   useEffect(() => {
     if (!pdfSpeechAdvancePending) return;
@@ -1738,21 +1772,25 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   }, [goNext, pdfSpeechAdvancePending]);
 
   const goToPage = useCallback((page: number) => {
-    if (dimensions.display === 'single') {
-      if (page < 1 || page > pageCount) return;
-      setCurrentPage(page);
+    const safePage = normalizePageNumber(page, pageCount);
+    if (safePage === normalizePageNumber(currentPageRef.current, pageCount)) return;
+
+    if (readerDisplay === 'single') {
+      if (safePage < 1 || safePage > pageCount) return;
+      setCurrentPage(safePage);
       return;
     }
 
     const book = getBook();
-    if (!book || page < 1 || page > pageCount) return;
+    if (!book || safePage < 1 || safePage > pageCount) return;
 
     try {
-      book.turn('page', page);
+      book.turn('page', safePage);
     } catch (turnError) {
       console.warn('[PDF Turn.js] Page jump skipped:', turnError);
+      setTurnFallbackMode(true);
     }
-  }, [dimensions.display, getBook, pageCount]);
+  }, [getBook, pageCount, readerDisplay]);
 
   const handlePageSliderChange = useCallback((event: React.ChangeEvent<HTMLInputElement> | React.FormEvent<HTMLInputElement>) => {
     goToPage(Number(event.currentTarget.value));
@@ -1814,27 +1852,25 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     const speechText = text.replace(/\s+/g, ' ').trim();
     if (!speechText || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
+    const itemTexts = speechText
+      .split(/(?<=[.!?\u0964])\s+/u)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    const playbackSegments = getPdfSpeechSegments(itemTexts.length ? itemTexts : [speechText])
+      .map((segment): PdfSpeechPlaybackSegment => ({
+        ...segment,
+        pageNumber: pendingTextSelection?.page || currentPageRef.current,
+      }));
+    if (playbackSegments.length === 0) return;
+
     pdfSpeechAutoAdvanceRef.current = false;
     pdfSpeechStoppedRef.current = false;
     selectedTextSpeechActiveRef.current = true;
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(speechText);
-    if (selectedPdfSpeechVoice) utterance.voice = selectedPdfSpeechVoice;
-    utterance.rate = pdfSpeechRateRef.current;
-    utterance.onend = () => {
-      selectedTextSpeechActiveRef.current = false;
-      if (!pdfSpeechStoppedRef.current) setPdfSpeechStatus('idle');
-    };
-    utterance.onerror = () => {
-      selectedTextSpeechActiveRef.current = false;
-      setPdfSpeechStatus('idle');
-    };
-    setPdfSpeechSegments([]);
-    pdfSpeechSegmentsRef.current = [];
-    setActivePdfSpeechSegmentIndex(null);
-    setPdfSpeechStatus('playing');
-    speakUtterance(utterance);
-  }, [selectedPdfSpeechVoice]);
+    setPdfSpeechSegments(playbackSegments);
+    pdfSpeechSegmentsRef.current = playbackSegments;
+    speakPdfSpeechSegment(playbackSegments, 0);
+  }, [pendingTextSelection?.page, speakPdfSpeechSegment]);
 
   useEffect(() => {
     onStudySnapshotChange?.({
@@ -2004,8 +2040,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           <div
             className="relative"
             style={{
-              width: isZoomed ? `${zoomedWidth}px` : `${dimensions.width}px`,
-              height: isZoomed ? `${zoomedHeight}px` : `${dimensions.height}px`,
+              width: isZoomed ? `${zoomedWidth}px` : `${effectiveDimensions.width}px`,
+              height: isZoomed ? `${zoomedHeight}px` : `${effectiveDimensions.height}px`,
             }}
           >
           <div
@@ -2015,7 +2051,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
               transformOrigin: 'top left',
             }}
           >
-            {dimensions.display === 'single' ? (
+            {readerDisplay === 'single' ? (
               <div className="h-full w-full overflow-hidden rounded-sm bg-white shadow-2xl">
                 <MemoPDFPageCanvas
                   document={document}
@@ -2041,7 +2077,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                 />
               </div>
             ) : (
-              <div ref={bookRef} className="bit-turn-book">
+              <div key={`${pdfUrl}:${pageCount}`} ref={bookRef} className="bit-turn-book">
                 {Array.from({ length: pageCount }, (_, index) => {
                   const pageNumber = index + 1;
                   const shouldRender = Math.abs(pageNumber - currentPage) <= renderWindow;

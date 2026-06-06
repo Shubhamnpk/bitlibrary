@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Book, ChapterAudio, ResourceLink } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, Download, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap, GripVertical, Headphones, Play, Pause, Volume2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap, GripVertical, Headphones, Play, Pause, Volume2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import PDFFlipBook, { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS, readPdfBackgroundPreset, readPdfHighlightColor, type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
+import PDFFlipBook, { type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
 import AppSelect from './AppSelect';
-import { downloadPdfOptimized, getBestPdfSourceUrl, getPdfProxyUrl, getReaderProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
+import DownloadSplitButton from './DownloadSplitButton';
+import { getPdfProxyUrl, getReaderProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
+import { getBookDownloadOptions } from '@/lib/downloads';
+import { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS } from '@/lib/pdf-reader-presets';
+import { readPdfBackgroundPreset, readPdfHighlightColor } from '@/lib/pdf-reader-storage';
 import { saveBook } from '@/lib/local-user';
 import { fetchYoBookGradeAudio, getYoBookAudioSubjectForBook } from '@/services/bookService';
 import { getPreferredSpeechVoiceURI, getSpeechSegments, getSpeechWordAtBoundary, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
@@ -324,11 +328,6 @@ const getReadableResourceLabel = (entry: ResourceLink) => {
   return entry.format.toUpperCase();
 };
 
-const getDownloadResource = (resources: ResourceLink[]) => (
-  resources.find((link) => link.format === 'pdf')
-  || resources.find((link) => ['text', 'xml', 'epub', 'package'].includes(link.format) && link.downloadable !== false)
-);
-
 const canEmbedExternalUrl = (url: string, isPdfReader: boolean) => {
   if (!url) return false;
   if (isPdfReader) return true;
@@ -544,7 +543,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const researchResources = book.resourceLinks || [];
   const selectedReaderResource = readableResources.find((link) => link.url === selectedResourceUrl);
   const readerResource = selectedReaderResource || readableResources[0] || getReaderResource(researchResources);
-  const downloadResource = getDownloadResource(researchResources);
+  const downloadOptions = useMemo(() => getBookDownloadOptions(book), [book]);
   const isExternal = !!book.externalUrl || researchResources.length > 0 || pdfChapters.length > 0;
   const directPdfReaderUrl = isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl : '';
   const embeddableExternalReaderUrl = book.externalUrl && canEmbedExternalUrl(book.externalUrl, false) ? book.externalUrl : '';
@@ -561,18 +560,12 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const isExternalTextReader = Boolean(isExternal && !isPdfReader && canEmbedReaderUrl && shouldUseReaderProxy(readerUrl, readerResource));
   const canUseReaderSpeech = !isExternal || isExternalTextReader;
   const sourcePageUrl = book.sourceUrl || researchResources.find((link) => ['source', 'landing', 'doi'].includes(link.relation || ''))?.url || book.detailUrl || book.externalUrl || book.downloadUrl || '';
-  const pdfDownloadUrl = getBestPdfSourceUrl(book);
-  const downloadUrl = pdfDownloadUrl || downloadResource?.url || book.downloadUrl;
   const preferFullPdfDocumentLoad = pdfChapters.length > 1 || readerResource?.format === 'pdf' || Boolean(book.resourceLinks?.some((link) => link.url === readerUrl && link.format === 'pdf'));
   const activeSpeechText = speechTextOverride || (isExternalTextReader ? externalReadableText : content);
   const speechSegments = useMemo(() => getSpeechSegments(activeSpeechText), [activeSpeechText]);
   const selectedSpeechVoice = speechVoices.find((voice) => voice.voiceURI === selectedSpeechVoiceURI) || null;
   const externalHighlightColor = EXTERNAL_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === externalHighlightColorId) || EXTERNAL_HIGHLIGHT_COLOR_PRESETS[0];
   const externalBackgroundPreset = EXTERNAL_READER_BACKGROUND_PRESETS.find((preset) => preset.id === externalBackgroundId) || EXTERNAL_READER_BACKGROUND_PRESETS[0];
-  const handleDownload = async () => {
-    if (!pdfDownloadUrl) return;
-    await downloadPdfOptimized(pdfDownloadUrl, book.title);
-  };
   const stopSpeech = useCallback(() => {
     speechStoppedRef.current = true;
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -1359,29 +1352,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 <ExternalLink size={17} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 sm:size-[18px]" />
               </a>
             )}
-            {pdfDownloadUrl ? (
-              <button
-                type="button"
-                onClick={handleDownload}
-                className="rounded-lg p-2.5 text-bit-accent transition-all hover:bg-bit-panel hover:text-bit-text sm:border-r sm:border-bit-border sm:p-3 group"
-                title="Download Archival Volume"
-                aria-label="Download book"
-              >
-                <Download size={17} className="transition-transform group-hover:translate-y-0.5 sm:size-[18px]" />
-              </button>
-            ) : downloadUrl && (
-              <a 
-                href={downloadUrl}
-                download={book.title}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="rounded-lg p-2.5 text-bit-accent transition-all hover:bg-bit-panel hover:text-bit-text sm:border-r sm:border-bit-border sm:p-3 group"
-                title="Download Archival Volume"
-                aria-label="Download book"
-              >
-                <Download size={17} className="transition-transform group-hover:translate-y-0.5 sm:size-[18px]" />
-              </a>
-            )}
+            <DownloadSplitButton options={downloadOptions} variant="icon" />
             <button
               onClick={toggleMinimized}
               className="rounded-lg p-2.5 text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-accent sm:p-3 group"
@@ -2120,7 +2091,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       )}
 
       {/* Main Content Area - Optimized Strip Layout */}
-      <main className={`flex-1 overflow-y-auto relative scrollbar-hide bg-bit-bg flex flex-col items-center transition-[padding] duration-300 ${sidebarOpen ? 'lg:pr-[23rem]' : ''}`}>
+      <main className="flex-1 overflow-y-auto relative scrollbar-hide bg-bit-bg flex flex-col items-center">
         {isPdfReader && pdfChapters.length > 1 && (
           <div className="flex w-full items-center gap-2 overflow-x-auto border-b border-bit-border bg-bit-bg px-3 py-2 md:hidden">
             {pdfChapters.map((entry, index) => (
@@ -2168,7 +2139,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             onPreviousBoundary={selectedPdfChapterIndex > 0 ? goToPreviousPdfChapter : undefined}
             onNextBoundary={selectedPdfChapterIndex < pdfChapters.length - 1 ? goToNextPdfChapter : undefined}
             preferFullDocumentLoad={preferFullPdfDocumentLoad}
-            controlsCompact={sidebarOpen}
+            controlsCompact={false}
           />
         ) : isExternal && canEmbedReaderUrl ? (
           <div className="w-full h-full bg-white relative shadow-2xl border-x border-bit-border overflow-hidden">

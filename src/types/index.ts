@@ -27,7 +27,7 @@ export interface QuestionPaper {
   fileSize?: string;
 }
 
-export type ResourceFormat = 'pdf' | 'text' | 'xml' | 'epub' | 'html' | 'package' | 'source' | 'unknown';
+export type ResourceFormat = 'pdf' | 'text' | 'xml' | 'epub' | 'html' | 'package' | 'audio' | 'video' | 'source' | 'unknown';
 
 export interface ResourceLink {
   url: string;

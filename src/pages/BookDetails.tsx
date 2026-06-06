@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Book, ChapterAudio, QuestionPaper, ViewState } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
-import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronLeft, ChevronRight, Share, Info, Maximize2, Library, Download, Bookmark, ExternalLink, Headphones, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronLeft, ChevronRight, Share, Info, Maximize2, Library, Bookmark, ExternalLink, Headphones, X } from 'lucide-react';
 import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
 import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
-import { downloadPdfOptimized, getBestPdfSourceUrl } from '@/lib/pdf';
+import DownloadSplitButton from '@/components/DownloadSplitButton';
+import { getBookDownloadOptions } from '@/lib/downloads';
 import { formatCompactAuthors, getBookAuthors } from '@/lib/authors';
 import { fetchYoBookGradeAudio, fetchYoBookGuideCollection, fetchYoBookTextbookCollection, getYoBookAudioSubjectForBook, isPriorCurriculumEdition } from '@/services/bookService';
 
@@ -92,11 +93,11 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const [fullDescription, setFullDescription] = useState<string>(book.description || '');
   const [descLoading, setDescLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const pdfDownloadUrl = getBestPdfSourceUrl(book);
-  const downloadUrl = pdfDownloadUrl || book.downloadUrl;
+  const downloadOptions = getBookDownloadOptions(book);
+  const hasDownloadOptions = downloadOptions.length > 0;
   const questionPaperCollection = isQuestionPaperCollection(book);
   const questionPapers = book.question_papers || [];
-  const hasTopLevelReadableFile = Boolean(downloadUrl || book.externalUrl || book.resourceLinks?.length || book.chapterPdfUrls?.length || book.audioUrl);
+  const hasTopLevelReadableFile = Boolean(hasDownloadOptions || book.externalUrl || book.resourceLinks?.length || book.chapterPdfUrls?.length || book.audioUrl);
   const displayCurriculum = book.curriculum === 'CDC Nepal' ? undefined : book.curriculum;
   const displayAuthors = getBookAuthors(book);
   const primaryAuthor = displayAuthors[0]?.name || book.author;
@@ -104,10 +105,6 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const visibleHeroAuthors = displayAuthors.slice(0, 3);
   const hiddenHeroAuthorCount = Math.max(0, displayAuthors.length - visibleHeroAuthors.length);
   const compactAuthorText = formatCompactAuthors(displayAuthors, { maxVisible: 2 });
-  const handleDownload = async () => {
-    if (!pdfDownloadUrl) return;
-    await downloadPdfOptimized(pdfDownloadUrl, book.title);
-  };
   const handleReadQuestionPaper = (paper: QuestionPaper, index: number) => {
     const paperUrl = getQuestionPaperReadUrl(paper);
     if (!paperUrl) return;
@@ -554,16 +551,8 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                   </h3>
                   {!questionPaperCollection && (
                     <div className="grid grid-cols-2 gap-3 sm:flex">
-                      {pdfDownloadUrl ? (
-                        <button type="button" onClick={handleDownload} className="flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent shadow-sm transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white active:scale-95 sm:px-6 group/dl">
-                          <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
-                        </button>
-                      ) : downloadUrl && (
-                        <a href={downloadUrl} download={book.title} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent shadow-sm transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white active:scale-95 sm:px-6 group/dl">
-                          <Download size={16} className="group-hover/dl:translate-y-0.5 transition-transform" /> Download
-                        </a>
-                      )}
-                      <button onClick={() => onRead()} className={`${downloadUrl ? 'hidden sm:flex' : 'col-span-2 hidden sm:flex'} items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
+                      {hasDownloadOptions && <DownloadSplitButton options={downloadOptions} />}
+                      <button onClick={() => onRead()} className={`${hasDownloadOptions ? 'hidden sm:flex' : 'col-span-2 hidden sm:flex'} items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
                         <BookOpen size={16} /> read
                       </button>
                     </div>

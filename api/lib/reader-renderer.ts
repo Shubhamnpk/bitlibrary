@@ -187,6 +187,179 @@ const readerTargetHighlightScript = `(() => {
       window.requestAnimationFrame(() => flashTarget(getHashTarget(), false));
     })();`;
 
+const readerSelectionStyle = `
+    mark.user-highlight{border-radius:3px;padding:0 .14em;-webkit-box-decoration-break:clone;box-decoration-break:clone;text-decoration:underline;text-decoration-thickness:.14em;text-underline-offset:.16em;text-decoration-color:rgba(255,255,255,.38);box-shadow:0 0 0 1px rgba(255,255,255,.14),0 8px 22px rgba(0,0,0,.14)}
+    #highlight-popover{position:fixed;z-index:20;display:none;align-items:center;gap:3px;border:1px solid rgba(161,161,170,.36);border-radius:999px;background:rgba(24,24,27,.9);color:#f4f4f5;padding:5px;font:700 11px/1 ui-sans-serif,system-ui,sans-serif;box-shadow:0 18px 46px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.04);backdrop-filter:blur(14px);transform:translateY(4px) scale(.98);opacity:0;transition:opacity .12s ease,transform .12s ease}
+    #highlight-popover.open{display:flex;opacity:1;transform:translateY(0) scale(1)}
+    #highlight-popover:after{content:"";position:absolute;left:var(--arrow-left,50%);top:100%;width:9px;height:9px;border-right:1px solid rgba(161,161,170,.36);border-bottom:1px solid rgba(161,161,170,.36);background:inherit;transform:translate(-50%,-4px) rotate(45deg);backdrop-filter:inherit}
+    #highlight-popover.below:after{top:auto;bottom:100%;transform:translate(-50%,4px) rotate(225deg)}
+    #highlight-popover button{height:32px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;cursor:pointer;transition:background .12s ease,color .12s ease,transform .12s ease}
+    #highlight-popover button:hover{background:rgba(255,255,255,.09);color:#67e8f9}#highlight-popover button:active{transform:scale(.94)}
+    .icon-action{display:inline-flex;width:34px;align-items:center;justify-content:center;padding:0!important}.icon-action svg{width:16px;height:16px}
+    .marker-action{position:relative;overflow:hidden;color:var(--marker-fg,#111827)!important;background:var(--marker-bg,#facc15)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.34),0 6px 16px rgba(0,0,0,.2)}.marker-action svg{position:relative;z-index:1}.marker-action .marker-swatch{position:absolute;inset:5px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,0)),var(--marker-bg,#facc15)}
+    #remove-highlight-action{display:none;color:#fca5a5!important}#remove-highlight-action.available{display:inline-flex}
+    #color-toggle{width:24px;padding:0!important;color:#a1a1aa}
+    .color-menu{position:absolute;left:5px;top:44px;display:none;grid-template-columns:repeat(4,24px);gap:7px;border:1px solid rgba(161,161,170,.34);border-radius:999px;background:rgba(24,24,27,.94);padding:7px;box-shadow:0 18px 46px rgba(0,0,0,.42);backdrop-filter:blur(14px)}
+    .color-menu.open{display:grid}.color-action{width:24px;height:24px!important;padding:0!important;border:2px solid transparent!important;background:var(--swatch)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.45),0 5px 12px rgba(0,0,0,.22)}.color-action[aria-pressed="true"]{border-color:#fff!important;box-shadow:0 0 0 2px rgba(103,232,249,.34),inset 0 0 0 1px rgba(255,255,255,.5)}
+    @media (max-width:560px){#highlight-popover{gap:2px;padding:4px}.icon-action{width:32px}#highlight-popover button{height:31px}.color-menu{left:50%;transform:translateX(-50%);border-radius:18px;grid-template-columns:repeat(4,24px)}}`;
+
+const readerSelectionToolbarHtml = `<div id="highlight-popover" role="toolbar" aria-label="Selection actions"><button id="highlight-action" class="icon-action marker-action" type="button" title="Highlight selected text" aria-label="Highlight selected text"><span id="current-highlight-swatch" class="marker-swatch"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 11 4 4L22 6l-4-4-9 9Z"/><path d="m13 15-5 5H4v-4l5-5"/><path d="m16 5 3 3"/></svg></button><button id="color-toggle" type="button" title="Choose highlight color" aria-label="Choose highlight color" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="color-menu" class="color-menu"><button class="color-action" type="button" data-bg="#facc15" data-fg="#111827" style="--swatch:#facc15" aria-label="Yellow highlight" aria-pressed="true"></button><button class="color-action" type="button" data-bg="#67e8f9" data-fg="#083344" style="--swatch:#67e8f9" aria-label="Cyan highlight" aria-pressed="false"></button><button class="color-action" type="button" data-bg="#86efac" data-fg="#052e16" style="--swatch:#86efac" aria-label="Green highlight" aria-pressed="false"></button><button class="color-action" type="button" data-bg="#f9a8d4" data-fg="#500724" style="--swatch:#f9a8d4" aria-label="Pink highlight" aria-pressed="false"></button></div><button id="remove-highlight-action" class="icon-action" type="button" title="Remove highlight from selection" aria-label="Remove highlight from selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 21-4-4 11-11 4 4-9 9"/><path d="m14 6 3-3 4 4-3 3"/><path d="M3 21h18"/><path d="m9 19 2 2"/></svg></button><button id="read-action" class="icon-action" type="button" title="Read selected text" aria-label="Read selected text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg></button></div>`;
+
+const readerSelectionScript = `(() => {
+      const popover = document.getElementById('highlight-popover');
+      const highlightAction = document.getElementById('highlight-action');
+      const removeAction = document.getElementById('remove-highlight-action');
+      const readAction = document.getElementById('read-action');
+      const colorToggle = document.getElementById('color-toggle');
+      const colorMenu = document.getElementById('color-menu');
+      const colorActions = Array.from(document.querySelectorAll('.color-action'));
+      const article = document.querySelector('[data-reader-content]');
+      let selectedColor = { bg: '#facc15', fg: '#111827' };
+      let savedRange = null;
+      let hideTimer = 0;
+      const hide = () => {
+        window.clearTimeout(hideTimer);
+        popover.classList.remove('open');
+        removeAction.classList.remove('available');
+        colorMenu.classList.remove('open');
+        colorToggle.setAttribute('aria-expanded', 'false');
+      };
+      const unwrapHighlight = (mark) => {
+        const parent = mark.parentNode;
+        if (!parent) return;
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+        parent.removeChild(mark);
+        parent.normalize();
+      };
+      const selectedTextNodes = (range) => {
+        const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, {
+          acceptNode: (node) => {
+            if (!node.textContent || !node.textContent.trim()) return NodeFilter.FILTER_REJECT;
+            const parent = node.parentElement;
+            if (!parent || parent.closest('script,style,button,#highlight-popover')) return NodeFilter.FILTER_REJECT;
+            return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+          },
+        });
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        return nodes;
+      };
+      const highlightsInRange = (range) => Array.from(article.querySelectorAll('mark.user-highlight')).filter((mark) => {
+        try { return range.intersectsNode(mark); } catch { return false; }
+      });
+      const applyHighlightStyle = (mark) => {
+        mark.style.backgroundColor = selectedColor.bg;
+        mark.style.color = selectedColor.fg;
+        mark.style.textDecorationColor = selectedColor.fg === '#111827' ? 'rgba(17,24,39,.32)' : 'rgba(255,255,255,.42)';
+      };
+      const highlightRange = (range) => {
+        const nodes = selectedTextNodes(range);
+        let applied = 0;
+        nodes.forEach((node) => {
+          const start = node === range.startContainer ? range.startOffset : 0;
+          const end = node === range.endContainer ? range.endOffset : node.textContent.length;
+          if (end <= start || !node.textContent.slice(start, end).trim()) return;
+          const parentHighlight = node.parentElement?.closest('mark.user-highlight');
+          if (parentHighlight) {
+            applyHighlightStyle(parentHighlight);
+            applied += 1;
+            return;
+          }
+          const nodeRange = document.createRange();
+          nodeRange.setStart(node, start);
+          nodeRange.setEnd(node, end);
+          const mark = document.createElement('mark');
+          mark.className = 'user-highlight';
+          applyHighlightStyle(mark);
+          try {
+            nodeRange.surroundContents(mark);
+            applied += 1;
+          } catch {
+            const selected = nodeRange.extractContents();
+            mark.appendChild(selected);
+            nodeRange.insertNode(mark);
+            applied += 1;
+          }
+        });
+        article.normalize();
+        return applied > 0;
+      };
+      const setSelectedColor = (color) => {
+        selectedColor = { bg: color.bg || '#facc15', fg: color.fg || '#111827' };
+        highlightAction.style.setProperty('--marker-bg', selectedColor.bg);
+        highlightAction.style.setProperty('--marker-fg', selectedColor.fg);
+        colorActions.forEach((entry) => entry.setAttribute('aria-pressed', String(entry.dataset.bg === selectedColor.bg)));
+      };
+      const placePopover = (range) => {
+        const rect = range.getBoundingClientRect();
+        if (!rect || (rect.width === 0 && rect.height === 0)) return hide();
+        popover.style.left = '0px';
+        popover.style.top = '0px';
+        popover.classList.add('open');
+        const width = popover.offsetWidth || 176;
+        const height = popover.offsetHeight || 42;
+        const margin = 10;
+        const center = rect.left + rect.width / 2;
+        const left = Math.max(margin, Math.min(window.innerWidth - width - margin, center - width / 2));
+        const showBelow = rect.top < height + 18;
+        const top = showBelow ? Math.min(window.innerHeight - height - margin, rect.bottom + 12) : Math.max(margin, rect.top - height - 12);
+        popover.style.left = left + 'px';
+        popover.style.top = top + 'px';
+        popover.style.setProperty('--arrow-left', Math.max(18, Math.min(width - 18, center - left)) + 'px');
+        popover.classList.toggle('below', showBelow);
+      };
+      colorActions.forEach((button) => {
+        button.addEventListener('click', () => {
+          setSelectedColor({ bg: button.dataset.bg, fg: button.dataset.fg });
+          colorMenu.classList.remove('open');
+          colorToggle.setAttribute('aria-expanded', 'false');
+        });
+      });
+      colorToggle.addEventListener('click', () => {
+        const open = !colorMenu.classList.contains('open');
+        colorMenu.classList.toggle('open', open);
+        colorToggle.setAttribute('aria-expanded', String(open));
+      });
+      window.addEventListener('message', (event) => {
+        if (event.origin !== window.location.origin || event.data?.type !== 'bitlibrary-highlight-color') return;
+        setSelectedColor(event.data.color || {});
+      });
+      document.addEventListener('selectionchange', () => {
+        window.clearTimeout(hideTimer);
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return hide();
+        const range = selection.getRangeAt(0);
+        if (!article.contains(range.commonAncestorContainer)) return hide();
+        savedRange = range.cloneRange();
+        removeAction.classList.toggle('available', highlightsInRange(savedRange).length > 0);
+        window.requestAnimationFrame(() => placePopover(savedRange));
+      });
+      popover.addEventListener('mousedown', (event) => event.preventDefault());
+      highlightAction.addEventListener('click', () => {
+        if (!savedRange || savedRange.collapsed) return hide();
+        highlightRange(savedRange);
+        window.getSelection()?.removeAllRanges();
+        hide();
+      });
+      removeAction.addEventListener('click', () => {
+        if (!savedRange || savedRange.collapsed) return hide();
+        highlightsInRange(savedRange).forEach(unwrapHighlight);
+        window.getSelection()?.removeAllRanges();
+        hide();
+      });
+      readAction.addEventListener('click', () => {
+        if (!savedRange || savedRange.collapsed) return hide();
+        const text = savedRange.toString().replace(/\\s+/g, ' ').trim();
+        if (text) window.parent?.postMessage({ type: 'bitlibrary-read-selection', text }, window.location.origin);
+        hide();
+      });
+      document.addEventListener('mousedown', (event) => {
+        if (!popover.contains(event.target)) hideTimer = window.setTimeout(hide, 150);
+      });
+      window.addEventListener('resize', hide);
+      window.addEventListener('scroll', hide, true);
+    })();`;
+
 const safeHref = (value: string) => {
   if (/^https?:\/\//i.test(value) || /^mailto:/i.test(value)) return value;
   if (/^\/[\w./%?#=&+@~,-]+$/i.test(value)) return value;
@@ -638,7 +811,6 @@ const renderBioCArticleHtml = (body: string, contentType: string, imageMap: Reco
     p{margin:0 0 18px;color:#e4e4e7}
     a{color:#67e8f9;text-decoration:underline;text-decoration-thickness:.08em;text-underline-offset:.18em}a:hover{color:#a5f3fc}
     mark{border-radius:4px;background:rgba(103,232,249,.14);color:#e0f2fe;padding:0 .18em}
-    mark.user-highlight{background:#facc15;color:#111827;box-shadow:0 0 0 2px rgba(250,204,21,.2)}
     .claim{color:#f8fafc;font-family:ui-sans-serif,system-ui,sans-serif}
     img{display:block;max-width:100%;height:auto;margin:0 auto}
     .meta,.keywords{color:#a1a1aa;font:13px/1.55 ui-sans-serif,system-ui,sans-serif}
@@ -657,9 +829,8 @@ const renderBioCArticleHtml = (body: string, contentType: string, imageMap: Reco
     tbody tr:nth-child(even) td{background:rgba(255,255,255,.025)}
     .refs{padding-left:22px;color:#d4d4d8;font-size:14px;line-height:1.55}
     .refs li{margin-bottom:12px}.refs li p{margin-bottom:4px}.refs span{color:#a1a1aa}
-    #highlight-popover{position:fixed;z-index:20;display:none;align-items:center;gap:4px;border:1px solid #3f3f46;border-radius:999px;background:#18181b;color:#f4f4f5;padding:5px;font:700 11px/1 ui-sans-serif,system-ui,sans-serif;box-shadow:0 12px 34px rgba(0,0,0,.35)}
-    #highlight-popover button{height:28px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;cursor:pointer}#highlight-popover button:hover{background:#27272a;color:#67e8f9}.icon-action{display:inline-flex;width:30px;align-items:center;justify-content:center;padding:0!important}.icon-action svg{width:15px;height:15px}.marker-action{position:relative;color:var(--marker-fg,#111827)!important;background:var(--marker-bg,#facc15)!important}.marker-action svg{position:relative;z-index:1}.marker-action .marker-swatch{position:absolute;inset:4px;border-radius:999px;background:var(--marker-bg,#facc15);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}#remove-highlight-action{display:none;color:#fca5a5!important}#remove-highlight-action.available{display:inline-flex}#color-toggle{width:20px;padding:0!important;color:#a1a1aa}.color-menu{position:absolute;left:5px;top:42px;display:none;grid-template-columns:repeat(4,22px);gap:6px;border:1px solid #3f3f46;border-radius:999px;background:#18181b;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.35)}.color-menu.open{display:grid}.color-action{width:22px;height:22px!important;padding:0!important;border:2px solid transparent!important;background:var(--swatch)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}.color-action[aria-pressed="true"]{border-color:#fff!important;box-shadow:0 0 0 2px rgba(103,232,249,.35),inset 0 0 0 1px rgba(255,255,255,.45)}
-  </style></head><body><div id="highlight-popover" role="toolbar" aria-label="Selection actions"><button id="highlight-action" class="icon-action marker-action" type="button" title="Highlight selected text" aria-label="Highlight selected text"><span id="current-highlight-swatch" class="marker-swatch"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 11 4 4L22 6l-4-4-9 9Z"/><path d="m13 15-5 5H4v-4l5-5"/><path d="m16 5 3 3"/></svg></button><button id="color-toggle" type="button" title="Choose highlight color" aria-label="Choose highlight color" aria-expanded="false">&#9662;</button><div id="color-menu" class="color-menu"><button class="color-action" type="button" data-bg="#facc15" data-fg="#111827" style="--swatch:#facc15" aria-label="Yellow highlight" aria-pressed="true"></button><button class="color-action" type="button" data-bg="#67e8f9" data-fg="#083344" style="--swatch:#67e8f9" aria-label="Cyan highlight" aria-pressed="false"></button><button class="color-action" type="button" data-bg="#86efac" data-fg="#052e16" style="--swatch:#86efac" aria-label="Green highlight" aria-pressed="false"></button><button class="color-action" type="button" data-bg="#f9a8d4" data-fg="#500724" style="--swatch:#f9a8d4" aria-label="Pink highlight" aria-pressed="false"></button></div><button id="remove-highlight-action" class="icon-action" type="button" title="Remove highlight from selection" aria-label="Remove highlight from selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 21-4-4 11-11 4 4-9 9"/><path d="m14 6 3-3 4 4-3 3"/><path d="M3 21h18"/><path d="m9 19 2 2"/></svg></button><button id="read-action" class="icon-action" type="button" title="Read selected text" aria-label="Read selected text">&#127911;</button></div><article data-reader-content="true"><header><div class="label">BioC full text</div><h1>${renderXmlInline(title)}</h1><div class="meta">${escapeHtml(authors.join(', ') || 'Unknown authors')}${year ? ` &middot; ${escapeHtml(year)}` : ''}${pmc ? ` &middot; ${escapeHtml(pmc)}` : ''}${doi ? ` &middot; DOI ${escapeHtml(doi)}` : ''}</div>${keywords ? `<div class="keywords">${escapeHtml(keywords)}</div>` : ''}</header>${renderBioCAbstractHtml()}${content.join('')}</article><script>
+    ${readerSelectionStyle}
+  </style></head><body>${readerSelectionToolbarHtml}<article data-reader-content="true"><header><div class="label">BioC full text</div><h1>${renderXmlInline(title)}</h1><div class="meta">${escapeHtml(authors.join(', ') || 'Unknown authors')}${year ? ` &middot; ${escapeHtml(year)}` : ''}${pmc ? ` &middot; ${escapeHtml(pmc)}` : ''}${doi ? ` &middot; DOI ${escapeHtml(doi)}` : ''}</div>${keywords ? `<div class="keywords">${escapeHtml(keywords)}</div>` : ''}</header>${renderBioCAbstractHtml()}${content.join('')}</article><script>
     (() => {
       const concreteIds = new Set();
       document.querySelectorAll('[id]').forEach((node) => {
@@ -670,137 +841,7 @@ const renderBioCArticleHtml = (body: string, contentType: string, imageMap: Reco
       });
     })();
     ${readerTargetHighlightScript}
-    (() => {
-      const popover = document.getElementById('highlight-popover');
-      const highlightAction = document.getElementById('highlight-action');
-      const removeAction = document.getElementById('remove-highlight-action');
-      const readAction = document.getElementById('read-action');
-      const colorToggle = document.getElementById('color-toggle');
-      const colorMenu = document.getElementById('color-menu');
-      const colorActions = Array.from(document.querySelectorAll('.color-action'));
-      const article = document.querySelector('[data-reader-content]');
-      let selectedColor = { bg: '#facc15', fg: '#111827' };
-      let savedRange = null;
-      const hide = () => {
-        popover.style.display = 'none';
-        removeAction.classList.remove('available');
-        colorMenu.classList.remove('open');
-        colorToggle.setAttribute('aria-expanded', 'false');
-      };
-      const unwrapHighlight = (mark) => {
-        const parent = mark.parentNode;
-        if (!parent) return;
-        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-        parent.removeChild(mark);
-        parent.normalize();
-      };
-      const selectedTextNodes = (range) => {
-        const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, {
-          acceptNode: (node) => {
-            if (!node.textContent || !node.textContent.trim()) return NodeFilter.FILTER_REJECT;
-            const parent = node.parentElement;
-            if (!parent || parent.closest('script,style,button,#highlight-popover')) return NodeFilter.FILTER_REJECT;
-            return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-          },
-        });
-        const nodes = [];
-        while (walker.nextNode()) nodes.push(walker.currentNode);
-        return nodes;
-      };
-      const highlightsInRange = (range) => Array.from(article.querySelectorAll('mark.user-highlight')).filter((mark) => {
-        try { return range.intersectsNode(mark); } catch { return false; }
-      });
-      const highlightRange = (range) => {
-        const nodes = selectedTextNodes(range);
-        let applied = 0;
-        nodes.forEach((node) => {
-          const start = node === range.startContainer ? range.startOffset : 0;
-          const end = node === range.endContainer ? range.endOffset : node.textContent.length;
-          if (end <= start || !node.textContent.slice(start, end).trim()) return;
-          const parentHighlight = node.parentElement?.closest('mark.user-highlight');
-          if (parentHighlight) {
-            parentHighlight.style.backgroundColor = selectedColor.bg;
-            parentHighlight.style.color = selectedColor.fg;
-            applied += 1;
-            return;
-          }
-          const nodeRange = document.createRange();
-          nodeRange.setStart(node, start);
-          nodeRange.setEnd(node, end);
-          const mark = document.createElement('mark');
-          mark.className = 'user-highlight';
-          mark.style.backgroundColor = selectedColor.bg;
-          mark.style.color = selectedColor.fg;
-          try {
-            nodeRange.surroundContents(mark);
-            applied += 1;
-          } catch {
-            const selected = nodeRange.extractContents();
-            mark.appendChild(selected);
-            nodeRange.insertNode(mark);
-            applied += 1;
-          }
-        });
-        article.normalize();
-        return applied > 0;
-      };
-      const setSelectedColor = (color) => {
-        selectedColor = { bg: color.bg || '#facc15', fg: color.fg || '#111827' };
-        highlightAction.style.setProperty('--marker-bg', selectedColor.bg);
-        highlightAction.style.setProperty('--marker-fg', selectedColor.fg);
-        colorActions.forEach((entry) => entry.setAttribute('aria-pressed', String(entry.dataset.bg === selectedColor.bg)));
-      };
-      colorActions.forEach((button) => {
-        button.addEventListener('click', () => {
-          setSelectedColor({ bg: button.dataset.bg, fg: button.dataset.fg });
-          colorMenu.classList.remove('open');
-          colorToggle.setAttribute('aria-expanded', 'false');
-        });
-      });
-      colorToggle.addEventListener('click', () => {
-        const open = !colorMenu.classList.contains('open');
-        colorMenu.classList.toggle('open', open);
-        colorToggle.setAttribute('aria-expanded', String(open));
-      });
-      window.addEventListener('message', (event) => {
-        if (event.origin !== window.location.origin || event.data?.type !== 'bitlibrary-highlight-color') return;
-        setSelectedColor(event.data.color || {});
-      });
-      document.addEventListener('selectionchange', () => {
-        const selection = window.getSelection();
-        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return hide();
-        const range = selection.getRangeAt(0);
-        if (!article.contains(range.commonAncestorContainer)) return hide();
-        savedRange = range.cloneRange();
-        removeAction.classList.toggle('available', highlightsInRange(savedRange).length > 0);
-        const rect = range.getBoundingClientRect();
-        popover.style.left = Math.max(12, rect.left + rect.width / 2 - 42) + 'px';
-        popover.style.top = Math.max(12, rect.top - 42) + 'px';
-        popover.style.display = 'flex';
-      });
-      popover.addEventListener('mousedown', (event) => event.preventDefault());
-      highlightAction.addEventListener('click', () => {
-        if (!savedRange || savedRange.collapsed) return hide();
-        highlightRange(savedRange);
-        window.getSelection()?.removeAllRanges();
-        hide();
-      });
-      removeAction.addEventListener('click', () => {
-        if (!savedRange || savedRange.collapsed) return hide();
-        highlightsInRange(savedRange).forEach(unwrapHighlight);
-        window.getSelection()?.removeAllRanges();
-        hide();
-      });
-      readAction.addEventListener('click', () => {
-        if (!savedRange || savedRange.collapsed) return hide();
-        const text = savedRange.toString().replace(/\\s+/g, ' ').trim();
-        if (text) window.parent?.postMessage({ type: 'bitlibrary-read-selection', text }, window.location.origin);
-        hide();
-      });
-      document.addEventListener('mousedown', (event) => {
-        if (!popover.contains(event.target)) window.setTimeout(hide, 150);
-      });
-    })();
+    ${readerSelectionScript}
   </script></body></html>`);
 };
 
@@ -1103,7 +1144,8 @@ const renderJatsArticleHtml = (body: string, target: URL, imageMap: Record<strin
     th,td{border:1px solid #3f3f46;padding:8px 10px;text-align:left;vertical-align:top}th{background:#27272a;color:#f4f4f5}
     .refs{padding-left:22px;color:#d4d4d8;font-size:14px;line-height:1.55}
     em{font-style:italic;color:#f8fafc}strong{font-weight:750;color:#fff}sub,sup{font-size:.72em;line-height:0}.xref,.inline-media{border-radius:4px;background:rgba(103,232,249,.12);padding:0 .2em;color:#a5f3fc;text-decoration:none}.inline-media{font:700 .78em/1.4 ui-sans-serif,system-ui,sans-serif}.small-caps{font-variant:small-caps}.formula{max-width:100%;vertical-align:middle}.formula-block{margin:18px 0;border:1px solid #27272a;border-radius:8px;background:#111113;padding:14px 16px;overflow-x:auto;overflow-y:visible;scrollbar-width:none;text-align:center}.formula-block::-webkit-scrollbar{width:0;height:0}.mathml-render{display:inline-flex;max-width:100%;overflow:visible;vertical-align:middle}.formula-block .mathml-render{display:inline-block;width:max-content;max-width:none;min-width:min-content}.mathml-render math{font-size:1.06em}.mathml-fallback{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#fef3c7}.katex{font-size:1.03em}.formula-block .katex-display{margin:0 auto}
-  </style></head><body><article data-reader-content="true"><header><div class="label">${escapeHtml(label)}</div><h1>${titleHtml}</h1><div class="meta">${escapeHtml(authors.join(', ') || journal || 'Unknown authors')}${year ? ` &middot; ${escapeHtml(year)}` : ''}${pmc ? ` &middot; ${escapeHtml(pmc)}` : ''}${doi ? ` &middot; DOI ${escapeHtml(doi)}` : ''}</div></header>${abstractHtml ? `<section class="abstract"><div class="label">Abstract</div>${abstractHtml}</section>` : ''}${frontMatterHtml}${sectionHtml || `<p>${escapeHtml(xmlToPlainText(body).slice(0, 4000))}</p>`}${backHtml}</article><script>(()=>{const concreteIds=new Set();document.querySelectorAll('[id]').forEach((node)=>{if(!/^(H[1-6]|UL|OL)$/.test(node.tagName))concreteIds.add(node.id)});document.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id],ul[id],ol[id]').forEach((node)=>{if(concreteIds.has(node.id))node.removeAttribute('id')});})();${readerTargetHighlightScript}</script></body></html>`);
+    ${readerSelectionStyle}
+  </style></head><body>${readerSelectionToolbarHtml}<article data-reader-content="true"><header><div class="label">${escapeHtml(label)}</div><h1>${titleHtml}</h1><div class="meta">${escapeHtml(authors.join(', ') || journal || 'Unknown authors')}${year ? ` &middot; ${escapeHtml(year)}` : ''}${pmc ? ` &middot; ${escapeHtml(pmc)}` : ''}${doi ? ` &middot; DOI ${escapeHtml(doi)}` : ''}</div></header>${abstractHtml ? `<section class="abstract"><div class="label">Abstract</div>${abstractHtml}</section>` : ''}${frontMatterHtml}${sectionHtml || `<p>${escapeHtml(xmlToPlainText(body).slice(0, 4000))}</p>`}${backHtml}</article><script>(()=>{const concreteIds=new Set();document.querySelectorAll('[id]').forEach((node)=>{if(!/^(H[1-6]|UL|OL)$/.test(node.tagName))concreteIds.add(node.id)});document.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id],ul[id],ol[id]').forEach((node)=>{if(concreteIds.has(node.id))node.removeAttribute('id')});})();${readerTargetHighlightScript}${readerSelectionScript}</script></body></html>`);
 };
 
 export const readerMessageHtml = (message: string) => `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -1127,140 +1169,8 @@ export const readerTextHtml = async (body: string, contentType: string, target: 
     body{margin:0;background:#09090b;color:#f4f4f5;font:15px/1.65 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace}
     header{position:sticky;top:0;background:#18181b;border-bottom:1px solid #27272a;padding:10px 18px;color:#a1a1aa;font:11px/1.4 ui-sans-serif,system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase}
     pre{box-sizing:border-box;width:min(1180px,calc(100% - 48px));min-height:100vh;margin:0 auto;padding:24px;white-space:pre-wrap;word-break:break-word;color:#f4f4f5;background:#09090b}
-    mark.user-highlight{border-radius:4px;background:#facc15;color:#111827;padding:0 .18em;box-shadow:0 0 0 2px rgba(250,204,21,.2)}
-    #highlight-popover{position:fixed;z-index:20;display:none;align-items:center;gap:4px;border:1px solid #3f3f46;border-radius:999px;background:#18181b;color:#f4f4f5;padding:5px;font:700 11px/1 ui-sans-serif,system-ui,sans-serif;box-shadow:0 12px 34px rgba(0,0,0,.35)}
-    #highlight-popover button{height:28px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;cursor:pointer}#highlight-popover button:hover{background:#27272a;color:#67e8f9}.icon-action{display:inline-flex;width:30px;align-items:center;justify-content:center;padding:0!important}.icon-action svg{width:15px;height:15px}.marker-action{position:relative;color:var(--marker-fg,#111827)!important;background:var(--marker-bg,#facc15)!important}.marker-action svg{position:relative;z-index:1}.marker-action .marker-swatch{position:absolute;inset:4px;border-radius:999px;background:var(--marker-bg,#facc15);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}#remove-highlight-action{display:none;color:#fca5a5!important}#remove-highlight-action.available{display:inline-flex}#color-toggle{width:20px;padding:0!important;color:#a1a1aa}.color-menu{position:absolute;left:5px;top:42px;display:none;grid-template-columns:repeat(4,22px);gap:6px;border:1px solid #3f3f46;border-radius:999px;background:#18181b;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.35)}.color-menu.open{display:grid}.color-action{width:22px;height:22px!important;padding:0!important;border:2px solid transparent!important;background:var(--swatch)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}.color-action[aria-pressed="true"]{border-color:#fff!important;box-shadow:0 0 0 2px rgba(103,232,249,.35),inset 0 0 0 1px rgba(255,255,255,.45)}
-  </style></head><body><div id="highlight-popover" role="toolbar" aria-label="Selection actions"><button id="highlight-action" class="icon-action marker-action" type="button" title="Highlight selected text" aria-label="Highlight selected text"><span id="current-highlight-swatch" class="marker-swatch"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 11 4 4L22 6l-4-4-9 9Z"/><path d="m13 15-5 5H4v-4l5-5"/><path d="m16 5 3 3"/></svg></button><button id="color-toggle" type="button" title="Choose highlight color" aria-label="Choose highlight color" aria-expanded="false">&#9662;</button><div id="color-menu" class="color-menu"><button class="color-action" type="button" data-bg="#facc15" data-fg="#111827" style="--swatch:#facc15" aria-label="Yellow highlight" aria-pressed="true"></button><button class="color-action" type="button" data-bg="#67e8f9" data-fg="#083344" style="--swatch:#67e8f9" aria-label="Cyan highlight" aria-pressed="false"></button><button class="color-action" type="button" data-bg="#86efac" data-fg="#052e16" style="--swatch:#86efac" aria-label="Green highlight" aria-pressed="false"></button><button class="color-action" type="button" data-bg="#f9a8d4" data-fg="#500724" style="--swatch:#f9a8d4" aria-label="Pink highlight" aria-pressed="false"></button></div><button id="remove-highlight-action" class="icon-action" type="button" title="Remove highlight from selection" aria-label="Remove highlight from selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 21-4-4 11-11 4 4-9 9"/><path d="m14 6 3-3 4 4-3 3"/><path d="M3 21h18"/><path d="m9 19 2 2"/></svg></button><button id="read-action" class="icon-action" type="button" title="Read selected text" aria-label="Read selected text">&#127911;</button></div><header>${escapeHtml(contentType)}</header><pre data-reader-content="true">${escapeHtml(body)}</pre><script>
-    (() => {
-      const popover = document.getElementById('highlight-popover');
-      const highlightAction = document.getElementById('highlight-action');
-      const removeAction = document.getElementById('remove-highlight-action');
-      const readAction = document.getElementById('read-action');
-      const colorToggle = document.getElementById('color-toggle');
-      const colorMenu = document.getElementById('color-menu');
-      const colorActions = Array.from(document.querySelectorAll('.color-action'));
-      const article = document.querySelector('[data-reader-content]');
-      let selectedColor = { bg: '#facc15', fg: '#111827' };
-      let savedRange = null;
-      const hide = () => {
-        popover.style.display = 'none';
-        removeAction.classList.remove('available');
-        colorMenu.classList.remove('open');
-        colorToggle.setAttribute('aria-expanded', 'false');
-      };
-      const unwrapHighlight = (mark) => {
-        const parent = mark.parentNode;
-        if (!parent) return;
-        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
-        parent.removeChild(mark);
-        parent.normalize();
-      };
-      const selectedTextNodes = (range) => {
-        const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, {
-          acceptNode: (node) => {
-            if (!node.textContent || !node.textContent.trim()) return NodeFilter.FILTER_REJECT;
-            const parent = node.parentElement;
-            if (!parent || parent.closest('script,style,button,#highlight-popover')) return NodeFilter.FILTER_REJECT;
-            return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-          },
-        });
-        const nodes = [];
-        while (walker.nextNode()) nodes.push(walker.currentNode);
-        return nodes;
-      };
-      const highlightsInRange = (range) => Array.from(article.querySelectorAll('mark.user-highlight')).filter((mark) => {
-        try { return range.intersectsNode(mark); } catch { return false; }
-      });
-      const highlightRange = (range) => {
-        const nodes = selectedTextNodes(range);
-        let applied = 0;
-        nodes.forEach((node) => {
-          const start = node === range.startContainer ? range.startOffset : 0;
-          const end = node === range.endContainer ? range.endOffset : node.textContent.length;
-          if (end <= start || !node.textContent.slice(start, end).trim()) return;
-          const parentHighlight = node.parentElement?.closest('mark.user-highlight');
-          if (parentHighlight) {
-            parentHighlight.style.backgroundColor = selectedColor.bg;
-            parentHighlight.style.color = selectedColor.fg;
-            applied += 1;
-            return;
-          }
-          const nodeRange = document.createRange();
-          nodeRange.setStart(node, start);
-          nodeRange.setEnd(node, end);
-          const mark = document.createElement('mark');
-          mark.className = 'user-highlight';
-          mark.style.backgroundColor = selectedColor.bg;
-          mark.style.color = selectedColor.fg;
-          try {
-            nodeRange.surroundContents(mark);
-            applied += 1;
-          } catch {
-            const selected = nodeRange.extractContents();
-            mark.appendChild(selected);
-            nodeRange.insertNode(mark);
-            applied += 1;
-          }
-        });
-        article.normalize();
-        return applied > 0;
-      };
-      const setSelectedColor = (color) => {
-        selectedColor = { bg: color.bg || '#facc15', fg: color.fg || '#111827' };
-        highlightAction.style.setProperty('--marker-bg', selectedColor.bg);
-        highlightAction.style.setProperty('--marker-fg', selectedColor.fg);
-        colorActions.forEach((entry) => entry.setAttribute('aria-pressed', String(entry.dataset.bg === selectedColor.bg)));
-      };
-      colorActions.forEach((button) => {
-        button.addEventListener('click', () => {
-          setSelectedColor({ bg: button.dataset.bg, fg: button.dataset.fg });
-          colorMenu.classList.remove('open');
-          colorToggle.setAttribute('aria-expanded', 'false');
-        });
-      });
-      colorToggle.addEventListener('click', () => {
-        const open = !colorMenu.classList.contains('open');
-        colorMenu.classList.toggle('open', open);
-        colorToggle.setAttribute('aria-expanded', String(open));
-      });
-      window.addEventListener('message', (event) => {
-        if (event.origin !== window.location.origin || event.data?.type !== 'bitlibrary-highlight-color') return;
-        setSelectedColor(event.data.color || {});
-      });
-      document.addEventListener('selectionchange', () => {
-        const selection = window.getSelection();
-        if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return hide();
-        const range = selection.getRangeAt(0);
-        if (!article.contains(range.commonAncestorContainer)) return hide();
-        savedRange = range.cloneRange();
-        removeAction.classList.toggle('available', highlightsInRange(savedRange).length > 0);
-        const rect = range.getBoundingClientRect();
-        popover.style.left = Math.max(12, rect.left + rect.width / 2 - 42) + 'px';
-        popover.style.top = Math.max(12, rect.top - 42) + 'px';
-        popover.style.display = 'flex';
-      });
-      popover.addEventListener('mousedown', (event) => event.preventDefault());
-      highlightAction.addEventListener('click', () => {
-        if (!savedRange || savedRange.collapsed) return hide();
-        highlightRange(savedRange);
-        window.getSelection()?.removeAllRanges();
-        hide();
-      });
-      removeAction.addEventListener('click', () => {
-        if (!savedRange || savedRange.collapsed) return hide();
-        highlightsInRange(savedRange).forEach(unwrapHighlight);
-        window.getSelection()?.removeAllRanges();
-        hide();
-      });
-      readAction.addEventListener('click', () => {
-        if (!savedRange || savedRange.collapsed) return hide();
-        const text = savedRange.toString().replace(/\\s+/g, ' ').trim();
-        if (text) window.parent?.postMessage({ type: 'bitlibrary-read-selection', text }, window.location.origin);
-        hide();
-      });
-      document.addEventListener('mousedown', (event) => {
-        if (!popover.contains(event.target)) window.setTimeout(hide, 150);
-      });
-    })();
+    ${readerSelectionStyle}
+  </style></head><body>${readerSelectionToolbarHtml}<header>${escapeHtml(contentType)}</header><pre data-reader-content="true">${escapeHtml(body)}</pre><script>
+    ${readerSelectionScript}
   </script></body></html>`;
 };
