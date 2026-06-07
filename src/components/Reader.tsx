@@ -8,6 +8,7 @@ import AppSelect from './AppSelect';
 import DownloadSplitButton from './DownloadSplitButton';
 import { getPdfProxyUrl, getReaderProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
 import { getBookDownloadOptions } from '@/lib/downloads';
+import { getAccessMode } from '@/lib/access';
 import { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS } from '@/lib/pdf-reader-presets';
 import { readPdfBackgroundPreset, readPdfHighlightColor } from '@/lib/pdf-reader-storage';
 import { saveBook } from '@/lib/local-user';
@@ -566,6 +567,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const selectedReaderResource = readableResources.find((link) => link.url === selectedResourceUrl);
   const readerResource = selectedReaderResource || readableResources[0] || getReaderResource(researchResources);
   const downloadOptions = useMemo(() => getBookDownloadOptions(book), [book]);
+  const accessMode = useMemo(() => getAccessMode(book), [book]);
+  const isDownloadOnly = accessMode === 'download';
   const isExternal = !!book.externalUrl || researchResources.length > 0 || pdfChapters.length > 0;
   const directPdfReaderUrl = isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl : '';
   const embeddableExternalReaderUrl = book.externalUrl && canEmbedExternalUrl(book.externalUrl, false) ? book.externalUrl : '';
@@ -2160,7 +2163,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             ))}
           </div>
         )}
-        {isExternal && isPdfReader ? (
+        {isExternal && isPdfReader && !isDownloadOnly ? (
           <PDFFlipBook
             pdfUrl={readerUrl}
             title={book.title}
@@ -2180,7 +2183,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             preferFullDocumentLoad={preferFullPdfDocumentLoad}
             controlsCompact={false}
           />
-        ) : isExternal && canEmbedReaderUrl ? (
+        ) : isExternal && canEmbedReaderUrl && !isDownloadOnly ? (
           <div className="w-full h-full bg-white relative shadow-2xl border-x border-bit-border overflow-hidden">
             {iframeLoading && (
               <div className="absolute inset-0 bg-bit-bg z-20 p-12 md:p-24 animate-fade-in flex flex-col gap-10">
@@ -2217,8 +2220,15 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               <p className="text-[10px] font-mono font-bold uppercase tracking-[0.24em] text-bit-accent">External source</p>
               <h2 className="mt-3 text-2xl font-display font-bold text-bit-text">{book.title}</h2>
               <p className="mt-4 text-sm leading-7 text-bit-muted">
-                This material is available, but the selected format cannot be embedded here. Open the best readable file or use another available format.
+                {downloadOptions.length > 0
+                  ? 'This material is available, but the selected format cannot be viewed inside BitLibrary. Download it to open with a compatible app.'
+                  : 'This material is available, but the selected format cannot be embedded here. Open the best readable file or use another available format.'}
               </p>
+              {downloadOptions.length > 0 && (
+                <div className="mt-6 flex justify-center">
+                  <DownloadSplitButton options={downloadOptions} />
+                </div>
+              )}
               {researchResources.length > 0 && (
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
                   {researchResources

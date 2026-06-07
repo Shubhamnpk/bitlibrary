@@ -739,7 +739,7 @@ const renderBioCArticleHtml = (body: string, contentType: string, imageMap: Reco
       const imageUrl = imageMap[fileName] || getCloudPmcAssetUrl(passage.xml) || getPmcInstanceAssetUrl(pmc, fileName);
       const tableHtml = passage.xml ? renderSimpleXmlTable(passage.xml) : '';
       const figureTitle = titleByFile.get(keyedPassage) || (passage.type === 'fig_title_caption' ? passage.text : '');
-      const caption = captionByFile.get(keyedPassage) || (figureTitle ? '' : passage.text);
+      const caption = captionByFile.get(keyedPassage) || (figureTitle || tableHtml ? '' : passage.text);
       const captionHtml = [
         figureTitle ? `<p><strong>${enhanceBioCText(renderXmlInline(figureTitle), xrefAnchors)}</strong></p>` : '',
         caption ? `<p>${enhanceBioCText(renderXmlInline(caption), xrefAnchors)}</p>` : '',

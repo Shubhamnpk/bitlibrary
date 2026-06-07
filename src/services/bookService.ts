@@ -521,6 +521,9 @@ const YOBOOK_SOURCE_LABELS: Record<string, string> = {
   'pustakalaya-other-educational': 'Pustakalaya Educational',
   'cdc-library': 'CDC Library',
   'ncert-official': 'NCERT',
+  tu: 'Tribhuvan University',
+  'tu-report': 'Tribhuvan University Reports',
+  tucl: 'Tribhuvan University',
 };
 
 const getYoBookQueryType = (value?: string): 'all' | 'grade' | 'subject' | 'query' => {
@@ -925,10 +928,7 @@ const getResearchProxyUrl = (provider: string, params: Record<string, string>): 
   return `/api/research-proxy?${searchParams.toString()}`;
 };
 
-const getAcademicCoverUrl = (source: string) => {
-  const seed = encodeURIComponent(source);
-  return `https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&q=80&w=400&seed=${seed}`;
-};
+const getAcademicCoverUrl = (_source: string) => undefined;
 
 const stripMarkup = (value: string) => value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -1425,7 +1425,7 @@ const mapDataCiteDoiToBook = (item: any): Book => {
     source: 'DataCite',
     subjects: subjects.slice(0, 8),
     keywords: [doi, item.id].filter(Boolean),
-    externalUrl: readable.readerUrl,
+    externalUrl: undefined,
     downloadUrl: readable.downloadUrl,
     resourceLinks,
     sourceUrl,
@@ -1474,7 +1474,7 @@ const enrichDataCiteWithRepositoryFiles = async (books: Book[], signal?: AbortSi
 
     return {
       ...book,
-      externalUrl: readable.readerUrl || book.externalUrl,
+      externalUrl: undefined,
       downloadUrl: readable.downloadUrl || book.downloadUrl,
       resourceLinks,
       providerSource: book.providerSource || 'Zenodo',
@@ -1678,6 +1678,75 @@ const mapYoBookToBook = (item: any): Book => {
     country: toText(item.country, 'np'),
     year: item.scrapedAt ? new Date(item.scrapedAt).getFullYear() : undefined,
     popularity: grade ? Math.max(50, 100 - Math.abs(grade - 6) * 3) : 75,
+    downloads: 0,
+  };
+};
+
+const getYearFromYoBookResearchValue = (value: unknown): number | undefined => {
+  const year = Number(toText(value).match(/\d{4}/)?.[0]);
+  const maxReasonableYear = new Date().getFullYear() + 1;
+  return Number.isFinite(year) && year >= 1800 && year <= maxReasonableYear ? year : undefined;
+};
+
+const mapYoBookResearchToBook = (item: any): Book => {
+  const sourceKey = toText(item.source, 'tu');
+  const sourceLabel = YOBOOK_SOURCE_LABELS[sourceKey] || YOBOOK_SOURCE_LABELS.tu;
+  const detailUrl = getAbsoluteYoBookAssetUrl(item.detailUrl);
+  const readUrl = getAbsoluteYoBookAssetUrl(item.readUrl);
+  const downloadUrl = getAbsoluteYoBookAssetUrl(item.downloadUrl);
+  const sourceUrl = getAbsoluteYoBookAssetUrl(item.sourceUrl);
+  const category = toText(item.category, 'Research');
+  const subcategory = toText(item.subcategory);
+  const academicLevel = toText(item.academicLevel);
+  const publisher = toText(item.publisher);
+  const institute = toText(item.institute || item.institutes || item.affiliatedInstitute);
+  const keywords = Array.isArray(item.keywords)
+    ? item.keywords.filter((keyword: unknown): keyword is string => typeof keyword === 'string')
+    : [];
+  const resourceLinks = buildResearchResourceLinks([
+    { url: readUrl, type: 'application/pdf', label: 'Reader PDF', provider: sourceLabel, relation: 'reader' },
+    { url: downloadUrl, type: 'application/pdf', label: 'PDF', provider: sourceLabel, relation: 'download' },
+    { url: sourceUrl || detailUrl, label: 'source page', provider: sourceLabel, relation: 'source' },
+  ], sourceLabel);
+  const readable = chooseResearchResourceUrls(resourceLinks);
+  const subjects = [
+    category,
+    subcategory,
+    academicLevel,
+    publisher,
+    institute,
+    sourceLabel,
+    ...keywords,
+  ].filter((value, index, list): value is string => Boolean(value) && list.indexOf(value as string) === index);
+
+  return {
+    id: `yobook-research-${toText(item.id, stableResearchId('tu', toText(item.title)))}`,
+    title: toText(item.title, 'Untitled TU Research Work'),
+    author: toText(item.author, 'Unknown Author'),
+    authors: toText(item.author)
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .map((name) => ({ name })),
+    category: subcategory || category,
+    description: toText(
+      item.description,
+      [category, academicLevel, publisher || institute].filter(Boolean).join(' | ') || 'Research record from YoBook.'
+    ),
+    coverUrl: undefined,
+    year: getYearFromYoBookResearchValue(item.publishedYear),
+    source: 'YoBook Research',
+    subjects: subjects.slice(0, 12),
+    keywords,
+    bookshelves: [academicLevel, category, subcategory, sourceLabel].filter(Boolean),
+    externalUrl: readable.readerUrl || readUrl || downloadUrl || sourceUrl || detailUrl,
+    downloadUrl: readable.downloadUrl || downloadUrl || readUrl,
+    resourceLinks,
+    detailUrl,
+    sourceUrl: sourceUrl || detailUrl,
+    providerSource: sourceKey,
+    language: toText(item.language, 'en'),
+    country: toText(item.country, 'np'),
     downloads: 0,
   };
 };
@@ -2530,8 +2599,47 @@ export const searchDataCiteWorks = async (query: string, signal?: AbortSignal): 
   }
 };
 
+export const searchYoBookResearchWorks = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
+  const cacheKey = `yobook-research-search-${normalizeCacheKey(query)}`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('yobook')) {
+    warnProviderCooldown('yobook');
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      limit: '12',
+      page: '1',
+    });
+    const response = await fetch(`${YOBOOK_BASE}/api/research?${params.toString()}`, { signal });
+    if (!response.ok) {
+      markProviderFailure('yobook', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const result = (Array.isArray(data.data) ? data.data : [])
+      .filter((item: any) => item?.id && item?.title)
+      .map(mapYoBookResearchToBook);
+    const readableResult = result.filter(hasUsableResearchResource);
+    setInCache(cacheKey, readableResult);
+    markProviderSuccess('yobook');
+    return readableResult;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('yobook');
+      console.error('YoBook research search failed:', error);
+    }
+    return [];
+  }
+};
+
 export const searchAcademicResearch = async (query: string, signal?: AbortSignal): Promise<Book[]> => {
   const results = await Promise.allSettled([
+    searchYoBookResearchWorks(query, signal),
     searchArxivPapers(query, signal),
     searchSemanticScholarPapers(query, signal),
     searchPubMedCentralArticles(query, signal),
@@ -2652,6 +2760,18 @@ export const fetchBookById = async (id: string): Promise<Book | null> => {
   }
 
   try {
+    // Handle research theses and reports from YoBook.
+    if (id.startsWith('yobook-research-')) {
+      const yoBookResearchId = id.replace('yobook-research-', '');
+      if (!/^[\w.-]+$/.test(yoBookResearchId)) return null;
+      const response = await fetch(`${YOBOOK_BASE}/api/research/${encodeURIComponent(yoBookResearchId)}`);
+      if (!response.ok) return null;
+      const data = await response.json();
+      const result = data.data ? mapYoBookResearchToBook(data.data) : null;
+      if (result) setInCache(cacheKey, result);
+      return result;
+    }
+
     // Handle Nepali curriculum textbooks from YoBook
     if (id.startsWith('yobook-')) {
       const yoBookId = id.replace('yobook-', '');

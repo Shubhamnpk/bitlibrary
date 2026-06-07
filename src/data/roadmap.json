@@ -278,19 +278,19 @@
       "subGoals": [
         {
           "title": "Bottom navigation bar",
-          "progress": 20
+          "progress": 35
         },
         {
           "title": "Quick actions for phones",
-          "progress": 18
+          "progress": 30
         },
         {
           "title": "Library and reader shortcuts",
-          "progress": 16
+          "progress": 28
         },
         {
           "title": "Comfortable spacing on mobile",
-          "progress": 18
+          "progress": 32
         }
       ]
     },

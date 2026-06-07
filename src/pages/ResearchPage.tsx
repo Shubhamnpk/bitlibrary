@@ -6,6 +6,7 @@ import Seo from '@/components/Seo';
 import type { Book, ResourceFormat } from '@/types/index';
 import { searchAcademicResearch } from '@/services/bookService';
 import { recordRecentSearch } from '@/lib/local-user';
+import { getAccessMode } from '@/lib/access';
 
 const RESEARCH_MIN_QUERY_LENGTH = 2;
 const RESEARCH_CACHE_KEY = 'bitlibrary-research-cache-v1';
@@ -151,7 +152,7 @@ const ResearchPage: React.FC<ResearchPageProps> = ({ onBookClick, onRead, onResu
   ), [activeFormat, activeSource, results]);
 
   const resultStats = useMemo(() => ({
-    readable: results.filter((book) => book.externalUrl || book.resourceLinks?.some((link) => link.embeddable !== false)).length,
+    readable: results.filter((book) => getAccessMode(book) === 'read').length,
     pdf: results.filter((book) => getResourceFormats(book).includes('pdf')).length,
     xml: results.filter((book) => getResourceFormats(book).includes('xml')).length,
   }), [results]);

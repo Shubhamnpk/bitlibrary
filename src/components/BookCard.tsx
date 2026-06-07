@@ -1,10 +1,12 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Book } from '@/types/index';
-import { BookOpen, Bookmark, BarChart, Files } from 'lucide-react';
+import { BookOpen, Bookmark, BarChart, Files, Download } from 'lucide-react';
 import { toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import { HighlightedText } from './HighlightedText';
 import { formatCompactAuthors, getBookAuthors } from '@/lib/authors';
+import { getAccessMode } from '@/lib/access';
+import { downloadResource, getBookDownloadOptions } from '@/lib/downloads';
 
 interface BookCardProps {
   book: Book;
@@ -14,6 +16,55 @@ interface BookCardProps {
   variant?: 'compact' | 'full';
   searchQuery?: string;
 }
+
+const researchCoverThemes = [
+  {
+    bg: 'from-cyan-500/18 via-bit-panel to-emerald-500/20',
+    accent: 'text-cyan-200',
+    border: 'border-cyan-300/30',
+    chip: 'bg-cyan-300/10 text-cyan-100',
+  },
+  {
+    bg: 'from-amber-400/18 via-bit-panel to-rose-500/18',
+    accent: 'text-amber-100',
+    border: 'border-amber-200/30',
+    chip: 'bg-amber-200/10 text-amber-100',
+  },
+  {
+    bg: 'from-lime-400/16 via-bit-panel to-sky-500/18',
+    accent: 'text-lime-100',
+    border: 'border-lime-200/30',
+    chip: 'bg-lime-200/10 text-lime-100',
+  },
+  {
+    bg: 'from-fuchsia-400/14 via-bit-panel to-orange-400/18',
+    accent: 'text-fuchsia-100',
+    border: 'border-fuchsia-200/30',
+    chip: 'bg-fuchsia-200/10 text-fuchsia-100',
+  },
+];
+
+const getInitials = (value: string) => (
+  value
+    .split(/[^a-z0-9]+/i)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase() || 'R'
+);
+
+const RESEARCH_SOURCES = new Set([
+  'arXiv',
+  'Semantic Scholar',
+  'PubMed Central',
+  'Europe PMC',
+  'OpenAlex',
+  'Crossref',
+  'DataCite',
+  'Unpaywall',
+  'YoBook Research',
+]);
 
 const BookCard: React.FC<BookCardProps> = ({ 
   book, 
@@ -28,13 +79,9 @@ const BookCard: React.FC<BookCardProps> = ({
   const isSaved = state.savedBooks.some((entry) => entry.id === book.id);
   const questionPaperCount = book.questionPaperCount || book.question_papers?.length || 0;
   const isQuestionPaperCollection = questionPaperCount > 0;
-  const hasDirectReadableFile = Boolean(
-    book.externalUrl
-    || book.downloadUrl
-    || book.resourceLinks?.length
-    || book.chapterPdfUrls?.length
-    || book.audioUrl
-  );
+  const accessMode = getAccessMode(book);
+  const downloadOptions = getBookDownloadOptions(book);
+  const primaryDownloadOption = downloadOptions[0];
   const hidesResourceFormatBadges = book.source === 'YoBook'
     || book.source === 'Gutendex'
     || book.id.startsWith('yobook-')
@@ -50,6 +97,12 @@ const BookCard: React.FC<BookCardProps> = ({
     : formatCompactAuthors(displayAuthors, { maxVisible: variant === 'compact' ? 1 : 2 });
   const fullAuthorText = displayAuthors.map((author) => author.name).join(', ');
   const primaryAuthor = displayAuthors[0]?.name || book.author;
+  const researchSourceLabel = book.source || 'Research';
+  const isResearchCover = RESEARCH_SOURCES.has(researchSourceLabel) || /^(arxiv|s2|pmc|epmc|openalex|crossref|datacite|yobook-research)-/.test(book.id);
+  const researchTheme = researchCoverThemes[Math.abs(book.id.length + book.title.length) % researchCoverThemes.length];
+  const researchType = book.bookshelves?.find((value) => ['Thesis', 'Report'].includes(value)) || book.category.split(',')[0] || 'Research';
+  const researchLevel = book.bookshelves?.find((value) => /bachelor|masters|m\.phil|ph\.?d/i.test(value)) || book.year || researchSourceLabel;
+  const researchMark = getInitials(researchSourceLabel === 'YoBook Research' ? book.category : researchSourceLabel);
 
   // Generate a deterministic aesthetic gradient based on ID
   const gradients = [
@@ -97,17 +150,63 @@ const BookCard: React.FC<BookCardProps> = ({
             />
           ) : (
             // Abstract Book Cover Art
-            <div className="w-full h-full relative bg-bit-panel/50">
-              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
-              <div className="absolute bottom-4 left-4 right-4">
-                <h3 className="font-display font-bold text-lg leading-tight text-bit-text mb-1 line-clamp-3">
-                   <HighlightedText text={book.title} query={searchQuery} />
-                </h3>
-                <p className="text-[10px] text-bit-muted/40 font-mono tracking-widest uppercase">
-                   <HighlightedText text={book.author} query={searchQuery} />
-                </p>
+            isResearchCover ? (
+              <div className={`relative h-full w-full overflow-hidden bg-gradient-to-br ${researchTheme.bg} p-4 text-left`}>
+                <div
+                  className="absolute inset-0 opacity-25"
+                  style={{
+                    backgroundImage: 'linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px)',
+                    backgroundSize: '18px 18px',
+                  }}
+                />
+                <div className="absolute -right-10 top-12 h-32 w-32 rounded-full border border-white/10" />
+                <div className="absolute -bottom-12 -left-8 h-32 w-32 rounded-full border border-white/10" />
+                <div className="relative flex h-full flex-col">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className={`rounded-md border ${researchTheme.border} bg-bit-bg/35 px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-widest ${researchTheme.accent}`}>
+                      {researchSourceLabel}
+                    </div>
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md border ${researchTheme.border} bg-bit-bg/35 font-display text-sm font-black ${researchTheme.accent}`}>
+                      {researchMark}
+                    </div>
+                  </div>
+                  <div className="mt-auto">
+                    <div className={`mb-3 inline-flex max-w-full rounded-full px-2.5 py-1 font-mono text-[8px] font-bold uppercase tracking-widest ${researchTheme.chip}`}>
+                      <span className="truncate">{researchType}</span>
+                    </div>
+                    <h3 className="mb-3 line-clamp-5 font-display text-[1.05rem] font-bold leading-tight text-bit-text">
+                      <HighlightedText text={book.title} query={searchQuery} />
+                    </h3>
+                    <div className="flex items-end justify-between gap-3 border-t border-white/10 pt-3">
+                      <p className="line-clamp-2 min-w-0 text-[9px] font-mono uppercase tracking-widest text-bit-muted/80">
+                        <HighlightedText text={book.author} query={searchQuery} />
+                      </p>
+                      <p className={`shrink-0 font-mono text-[9px] font-bold uppercase tracking-widest ${researchTheme.accent}`}>
+                        {researchLevel}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="relative h-full w-full bg-bit-panel/50">
+                <div
+                  className="absolute inset-0 opacity-20"
+                  style={{
+                    backgroundImage: 'radial-gradient(circle at 18px 18px, rgba(255,255,255,.12) 1px, transparent 1px)',
+                    backgroundSize: '28px 28px',
+                  }}
+                />
+                <div className="absolute bottom-4 left-4 right-4">
+                  <h3 className="font-display font-bold text-lg leading-tight text-bit-text mb-1 line-clamp-3">
+                     <HighlightedText text={book.title} query={searchQuery} />
+                  </h3>
+                  <p className="text-[10px] text-bit-muted/40 font-mono tracking-widest uppercase">
+                     <HighlightedText text={book.author} query={searchQuery} />
+                  </p>
+                </div>
+              </div>
+            )
           )}
 
           {/* Always show category badge */}
@@ -139,13 +238,22 @@ const BookCard: React.FC<BookCardProps> = ({
 
           {/* Cinematic Overlay & Action HUD Stack */}
           <div className="absolute inset-0 bg-bit-panel/90 opacity-0 group-hover:opacity-100 backdrop-blur-[6px] transition-all duration-500 flex flex-col items-center justify-center p-6 gap-3 z-20">
-            {onRead && hasDirectReadableFile && (
+            {onRead && accessMode === 'read' && (
               <button
                 onClick={(e) => { e.stopPropagation(); onRead(book); }}
                 className="w-full py-3 bg-bit-accent text-white rounded-xl shadow-lg shadow-bit-accent/30 flex items-center justify-center gap-3 transform -translate-y-4 group-hover:translate-y-0 transition-all duration-500 hover:scale-105 active:scale-95 border-2 border-bit-accent/10 group/btn"
               >
                 <BookOpen size={18} />
                 <span className="text-[10px] font-mono font-bold tracking-widest uppercase">Read</span>
+              </button>
+            )}
+            {accessMode === 'download' && primaryDownloadOption && (
+              <button
+                onClick={(e) => { e.stopPropagation(); downloadResource(primaryDownloadOption); }}
+                className="w-full py-3 bg-bit-accent text-white rounded-xl shadow-lg shadow-bit-accent/30 flex items-center justify-center gap-3 transform -translate-y-4 group-hover:translate-y-0 transition-all duration-500 hover:scale-105 active:scale-95 border-2 border-bit-accent/10 group/btn"
+              >
+                <Download size={18} />
+                <span className="text-[10px] font-mono font-bold tracking-widest uppercase">Download</span>
               </button>
             )}
             <button

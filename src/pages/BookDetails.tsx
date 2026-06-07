@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Book, ChapterAudio, QuestionPaper, ViewState } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
-import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronLeft, ChevronRight, Share, Info, Maximize2, Library, Bookmark, ExternalLink, Headphones, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronLeft, ChevronRight, Share, Info, Maximize2, Library, Bookmark, ExternalLink, Headphones, X, Download } from 'lucide-react';
 import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
 import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
@@ -10,6 +10,7 @@ import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 import DownloadSplitButton from '@/components/DownloadSplitButton';
 import { getBookDownloadOptions } from '@/lib/downloads';
+import { getAccessMode } from '@/lib/access';
 import { formatCompactAuthors, getBookAuthors } from '@/lib/authors';
 import { fetchYoBookGradeAudio, fetchYoBookGuideCollection, fetchYoBookTextbookCollection, getYoBookAudioSubjectForBook, isPriorCurriculumEdition } from '@/services/bookService';
 
@@ -95,9 +96,11 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const [isExpanded, setIsExpanded] = useState(false);
   const downloadOptions = getBookDownloadOptions(book);
   const hasDownloadOptions = downloadOptions.length > 0;
+  const accessMode = getAccessMode(book);
   const questionPaperCollection = isQuestionPaperCollection(book);
   const questionPapers = book.question_papers || [];
-  const hasTopLevelReadableFile = Boolean(hasDownloadOptions || book.externalUrl || book.resourceLinks?.length || book.chapterPdfUrls?.length || book.audioUrl);
+  const canReadInApp = accessMode === 'read';
+  const isDownloadOnly = accessMode === 'download';
   const displayCurriculum = book.curriculum === 'CDC Nepal' ? undefined : book.curriculum;
   const displayAuthors = getBookAuthors(book);
   const primaryAuthor = displayAuthors[0]?.name || book.author;
@@ -440,7 +443,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent transition-all duration-500 sm:group-hover:via-black/20" />
-            {!questionPaperCollection && hasTopLevelReadableFile && (
+            {!questionPaperCollection && canReadInApp && (
               <div className="absolute inset-0 z-10 hidden items-center justify-center opacity-0 backdrop-blur-[4px] transition-all duration-700 sm:flex sm:group-hover:opacity-100">
                 <button
                   onClick={(e) => { e.stopPropagation(); onRead(); }}
@@ -504,13 +507,18 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               </div>
             </div>
           </div>
-          {!questionPaperCollection && hasTopLevelReadableFile && (
+          {!questionPaperCollection && canReadInApp && (
             <button
               onClick={() => onRead()}
               className="mt-4 flex w-full items-center justify-center gap-3 rounded-xl bg-bit-accent px-5 py-3 text-xs font-mono font-bold uppercase tracking-widest text-white shadow-lg shadow-bit-accent/20 transition-all active:scale-95 sm:hidden"
             >
               <BookOpen size={17} /> Read
             </button>
+          )}
+          {!questionPaperCollection && isDownloadOnly && hasDownloadOptions && (
+            <div className="mt-4 sm:hidden">
+              <DownloadSplitButton options={downloadOptions} />
+            </div>
           )}
         </div>
 
@@ -552,12 +560,22 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                   {!questionPaperCollection && (
                     <div className="grid grid-cols-2 gap-3 sm:flex">
                       {hasDownloadOptions && <DownloadSplitButton options={downloadOptions} />}
+                      {canReadInApp && (
                       <button onClick={() => onRead()} className={`${hasDownloadOptions ? 'hidden sm:flex' : 'col-span-2 hidden sm:flex'} items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
                         <BookOpen size={16} /> read
                       </button>
+                      )}
                     </div>
                   )}
                 </div>
+                {isDownloadOnly && (
+                  <div className="mb-6 flex max-w-3xl items-start gap-3 rounded-lg border border-bit-accent/20 bg-bit-accent/10 px-4 py-3 text-sm leading-6 text-bit-muted">
+                    <Download size={18} className="mt-0.5 shrink-0 text-bit-accent" />
+                    <p>
+                      This resource is available as a download, but its format cannot be viewed inside BitLibrary.
+                    </p>
+                  </div>
+                )}
                 <div className="max-w-3xl text-base leading-8 text-bit-muted sm:text-lg sm:leading-relaxed">
                   {descLoading ? (
                     <div className="flex flex-col gap-4">

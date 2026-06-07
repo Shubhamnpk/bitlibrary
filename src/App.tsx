@@ -21,6 +21,7 @@ import RoadmapPage from '@/pages/RoadmapPage';
 import AudiobooksPage from '@/pages/AudiobooksPage';
 import AudiobookDetails from '@/pages/AudiobookDetails';
 import CurriculumPage from '@/pages/CurriculumPage';
+import CurriculumSubjectsPage from '@/pages/CurriculumSubjectsPage';
 import DictionaryPage from '@/pages/DictionaryPage';
 import SourcesPage from '@/pages/SourcesPage';
 import { recordRecentSearch, recordRecentlyViewedBook, useLocalUserState } from '@/lib/local-user';
@@ -38,7 +39,7 @@ const SEARCH_DEBOUNCE_MS = 400;
 const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
-const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/mylibrary','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources',];
+const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/curriculum/subjects','/mylibrary','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources',];
 const HERO_ORBIT_NODES = {
   star: {
     title: 'Archive Star',
@@ -570,6 +571,15 @@ const App: React.FC = () => {
               <CurriculumPage
                 onBookClick={navigateToBook}
                 onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
+                onRead={handleReadBook}
+              />
+            </div>
+          } />
+
+          <Route path="/curriculum/subjects" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <CurriculumSubjectsPage
+                onBookClick={navigateToBook}
                 onRead={handleReadBook}
               />
             </div>
