@@ -9,6 +9,15 @@ interface ReleasesPageProps {
 
 const releaseNotes = [
   {
+    version: 'v0.6.0',
+    title: 'Cache system setup',
+    status: 'Processing',
+    summary: 'Version 0.6.0 is open for planning and development. The main target for this version is the cache system.',
+    changes: [
+      'Planning started for cache management in v0.6.0.',
+    ],
+  },
+  {
     version: 'v0.5.0',
     title: 'Reader study tools and smarter search',
     status: 'Released',
@@ -69,9 +78,9 @@ const releaseNotes = [
 ];
 
 const releaseStats = [
-  { label: 'Current build', value: 'v0.5.0' },
+  { label: 'Current build', value: 'v0.6.0-dev' },
   { label: 'Major releases', value: releaseNotes.length.toString() },
-  { label: 'Primary focus', value: 'Reader + Search' },
+  { label: 'Primary focus', value: 'Cache System' },
 ];
 
 const releaseHighlights = [

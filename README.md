@@ -6,7 +6,7 @@
 
 BitLibrary is an open digital library for discovering books, curriculum resources, audiobooks, research papers, and reader-friendly public knowledge.
 
-The current release is **v0.5.0**, focused on smarter search, stronger reader study tools, curriculum audio, inline dictionary support, and a calmer local-first library experience.
+
 
 - Website: [bitlibrary.bitnepal.net](https://bitlibrary.bitnepal.net)
 - Release history: [bitlibrary.bitnepal.net/releases](https://bitlibrary.bitnepal.net/releases)

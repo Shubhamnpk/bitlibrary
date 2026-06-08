@@ -433,6 +433,36 @@
       ]
     },
     {
+      "id": "cache-management",
+      "title": "Cache management",
+      "area": "Core",
+      "icon": "sync",
+      "version": "v0.6.0",
+      "summary": "Version 0.6.0 focuses on a proper cache system so local data is visible, predictable, and safe to clean up.",
+      "subGoals": [
+        {
+          "title": "Show cache size, age, and source groups",
+          "progress": 0
+        },
+        {
+          "title": "Clear stale API caches without clearing saved library data",
+          "progress": 0
+        },
+        {
+          "title": "Explain what each storage area controls",
+          "progress": 0
+        },
+        {
+          "title": "Add selective cleanup for search, reader, research, and source caches",
+          "progress": 0
+        },
+        {
+          "title": "Protect bookmarks, highlights, saved books, and profile data during cleanup",
+          "progress": 0
+        }
+      ]
+    },
+    {
       "id": "account-sync",
       "title": "Account sync",
       "area": "Library",
