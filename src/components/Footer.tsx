@@ -7,7 +7,7 @@ interface FooterProps {
   isReaderActive: boolean;
 }
 
-const FOOTER_BUILD_LABEL = 'v0.5.0 . Build 2026.05.25 . oss';
+const FOOTER_BUILD_LABEL = 'v0.5.0 . Build 2026.06.08 . oss';
 
 const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
   if (isReaderActive) return null;

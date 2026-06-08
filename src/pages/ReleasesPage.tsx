@@ -11,7 +11,7 @@ const releaseNotes = [
   {
     version: 'v0.5.0',
     title: 'Reader study tools and smarter search',
-    status: 'Current preview',
+    status: 'Released',
     summary: 'Made the PDF reader more useful for study sessions and tightened search behavior across books, audiobooks, and YoBook-powered educational content.',
     changes: [
       'YoBook-powered books and curriculum audiobooks are integrated into search, curriculum, and audiobook discovery.',
