@@ -194,9 +194,12 @@ Behavior:
 
 - managed localStorage values are unreadable at rest,
 - AES-GCM uses a 256-bit per-browser key,
-- the key is stored in IndexedDB,
+- the key is stored in a generic IndexedDB runtime record,
+- encryption is bound to `VITE_STORAGE_PRIVACY_SEED` and the specific localStorage key through AES-GCM additional data,
 - `src/main.tsx` initializes encrypted storage before React mounts,
 - plaintext active-key values are encrypted on startup when encountered,
+- managed writes do not fall back to readable localStorage when encryption is unavailable,
+- older descriptive IndexedDB key storage is copied into the generic runtime record and cleaned up,
 - older `alg` / `iv` / `data` envelopes can still be read and are rewritten in the compact format,
 - this is browser privacy/obfuscation, not user-secret encryption.
 

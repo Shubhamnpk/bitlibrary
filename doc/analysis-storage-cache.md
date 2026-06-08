@@ -18,7 +18,7 @@ BitLibrary should keep browser storage simple at the localStorage key level:
 
 This avoids the old scattered-cache problem while keeping implementation risk low. No migration or legacy-cache compatibility is part of this pass; old cache data can be handled later by a separate helper/migration system.
 
-The active keys are written as AES-GCM encrypted envelopes in localStorage for browser-side privacy. The app keeps the decryption key in IndexedDB and initializes the decrypted in-memory view before React mounts.
+The active keys are written as AES-GCM encrypted envelopes in localStorage for browser-side privacy. The app keeps the decryption key in a generic IndexedDB runtime record, binds encryption to `VITE_STORAGE_PRIVACY_SEED` plus the specific storage key, and initializes the decrypted in-memory view before React mounts.
 
 ---
 
