@@ -8,8 +8,9 @@ import Seo from '@/components/Seo';
 import { ArrowLeft, Calendar, Download, ExternalLink, Gauge, Headphones, Heart, Library, ListMusic, Pause, Play, Radio, RotateCcw, RotateCw, ShieldCheck, SkipBack, SkipForward } from 'lucide-react';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 import { toggleSavedAudiobook as toggleLocalSavedAudiobook, useLocalUserState } from '@/lib/local-user';
+import { readReaderEntry, writeReaderEntry } from '@/lib/storage-manager';
 
-const PROGRESS_KEY_PREFIX = 'bitlibrary-audiobook-progress';
+const PROGRESS_KEY_PREFIX = 'audiobook-progress';
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2];
 const SKIP_SECONDS = 15;
 const DESCRIPTION_PREVIEW_LENGTH = 150;
@@ -62,11 +63,11 @@ const AudiobookDetails: React.FC = () => {
 
         if (result && typeof window !== 'undefined') {
           try {
-            const progress = JSON.parse(window.localStorage.getItem(getProgressKey(result.id)) || 'null') as {
+            const progress = readReaderEntry<{
               trackId?: string;
               currentTime?: number;
               playbackRate?: number;
-            } | null;
+            }>(getProgressKey(result.id));
             const savedTrack = result.tracks.find((track) => track.id === progress?.trackId);
             if (savedTrack) {
               nextTrack = savedTrack;
@@ -177,24 +178,24 @@ const AudiobookDetails: React.FC = () => {
   };
   const persistProgress = (time: number) => {
     if (!audiobook || !activeTrack || typeof window === 'undefined') return;
-    window.localStorage.setItem(getProgressKey(audiobook.id), JSON.stringify({
+    writeReaderEntry(getProgressKey(audiobook.id), {
       trackId: activeTrack.id,
       currentTime: time,
       playbackRate,
       updatedAt: Date.now(),
-    }));
+    });
   };
   const selectTrack = (track: AudiobookTrack) => {
     setResumeNotice('');
     setPendingSeekTime(0);
     setActiveTrack(track);
     if (audiobook && typeof window !== 'undefined') {
-      window.localStorage.setItem(getProgressKey(audiobook.id), JSON.stringify({
+      writeReaderEntry(getProgressKey(audiobook.id), {
         trackId: track.id,
         currentTime: 0,
         playbackRate,
         updatedAt: Date.now(),
-      }));
+      });
     }
   };
   const changeTrack = (direction: -1 | 1) => {

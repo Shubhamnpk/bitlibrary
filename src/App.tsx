@@ -7,8 +7,8 @@ import Reader, { ReaderSkeleton } from '@/components/Reader';
 import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight, ArrowUpRight, Clock3, House, BookOpenText, Info } from 'lucide-react';
 import BookDetails from '@/pages/BookDetails';
 import { BookDetailsSkeleton, BookCardSkeleton } from '@/components/Skeletons';
+import MyLibraryPage from '@/pages/MyLibrary';
 import LibraryPage from '@/pages/Library';
-import BrowseBooks from '@/pages/BrowseBooks';
 import AboutPage from '@/pages/AboutPage';
 import StaticPage from '@/pages/StaticPage';
 import AuthorDetails from '@/pages/AuthorDetails';
@@ -25,6 +25,7 @@ import CurriculumSubjectsPage from '@/pages/CurriculumSubjectsPage';
 import DictionaryPage from '@/pages/DictionaryPage';
 import SourcesPage from '@/pages/SourcesPage';
 import { recordRecentSearch, recordRecentlyViewedBook, useLocalUserState } from '@/lib/local-user';
+import { readCacheEntry, writeCacheEntry } from '@/lib/storage-manager';
 
 import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams, matchPath } from 'react-router-dom';
 
@@ -36,7 +37,7 @@ import MobileBottomNav from '@/components/MobileBottomNav';
 import MobileProfileModal from '@/components/MobileProfileModal';
 
 const SEARCH_DEBOUNCE_MS = 400;
-const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
+const EXPLORE_CACHE_KEY = 'explore';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
 const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/curriculum/subjects','/mylibrary','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources',];
@@ -78,16 +79,8 @@ const readExploreCache = (): ExploreCachePayload | null => {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = window.localStorage.getItem(EXPLORE_CACHE_KEY);
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as ExploreCachePayload;
-    if (!parsed?.timestamp || Date.now() - parsed.timestamp > EXPLORE_CACHE_TTL) {
-      window.localStorage.removeItem(EXPLORE_CACHE_KEY);
-      return null;
-    }
-
-    return parsed;
+    const parsed = readCacheEntry<Omit<ExploreCachePayload, 'timestamp'>>('page', EXPLORE_CACHE_KEY, EXPLORE_CACHE_TTL);
+    return parsed ? { ...parsed, timestamp: Date.now() } : null;
   } catch {
     return null;
   }
@@ -97,13 +90,7 @@ const writeExploreCache = (payload: Omit<ExploreCachePayload, 'timestamp'>) => {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.setItem(
-      EXPLORE_CACHE_KEY,
-      JSON.stringify({
-        ...payload,
-        timestamp: Date.now(),
-      })
-    );
+    writeCacheEntry('page', EXPLORE_CACHE_KEY, payload);
   } catch {
     // Ignore storage failures and continue with network-backed state.
   }
@@ -562,9 +549,9 @@ const App: React.FC = () => {
           } />
 
           {/* Discovery / Library Registry */}
-          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
-          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
-          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><LibraryPage onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><LibraryPage onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><LibraryPage onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
 
           <Route path="/curriculum" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -588,7 +575,7 @@ const App: React.FC = () => {
           {/* Personal Bookshelf */}
           <Route path="/mylibrary" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
-              <LibraryPage
+              <MyLibraryPage
                 borrowedBooks={borrowedBooks}
                 savedBooks={localUserState.savedBooks}
                 savedAudiobooks={localUserState.savedAudiobooks}

@@ -14,6 +14,7 @@ import { readPdfBackgroundPreset, readPdfHighlightColor } from '@/lib/pdf-reader
 import { saveBook } from '@/lib/local-user';
 import { fetchYoBookGradeAudio, getYoBookAudioSubjectForBook } from '@/services/bookService';
 import { getPreferredSpeechVoiceURI, getSpeechSegments, getSpeechWordAtBoundary, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
+import { readReaderEntry, writeReaderEntry } from '@/lib/storage-manager';
 
 interface ReaderProps {
   book: Book;
@@ -22,7 +23,7 @@ interface ReaderProps {
   onToggleMinimize?: (minimized: boolean) => void;
 }
 
-const getPdfReaderProgressKey = (bookId: string) => `bitlibrary-pdf-reader-progress-v1:${encodeURIComponent(bookId).slice(0, 160)}`;
+const getPdfReaderProgressKey = (bookId: string) => `pdf-progress:${encodeURIComponent(bookId).slice(0, 160)}`;
 const FRAME_BLOCKED_HOSTS = new Set([
   'dropbox.com',
 ]);
@@ -346,7 +347,7 @@ const readSavedPdfChapterIndex = (bookId: string, chapterCount: number) => {
   if (typeof window === 'undefined' || chapterCount < 2) return 0;
 
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(getPdfReaderProgressKey(bookId)) || 'null') as { chapterIndex?: number } | null;
+    const parsed = readReaderEntry<{ chapterIndex?: number }>(getPdfReaderProgressKey(bookId));
     const chapterIndex = typeof parsed?.chapterIndex === 'number' && Number.isFinite(parsed.chapterIndex) ? Math.floor(parsed.chapterIndex) : 0;
     return Math.min(chapterCount - 1, Math.max(0, chapterIndex));
   } catch {
@@ -358,7 +359,7 @@ const writeSavedPdfChapterIndex = (bookId: string, chapterIndex: number) => {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.setItem(getPdfReaderProgressKey(bookId), JSON.stringify({ chapterIndex }));
+    writeReaderEntry(getPdfReaderProgressKey(bookId), { chapterIndex, updatedAt: Date.now() });
   } catch {
     // Reader progress is helpful, but storage failures should not block reading.
   }

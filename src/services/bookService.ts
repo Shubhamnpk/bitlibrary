@@ -2,6 +2,7 @@
 import { INITIAL_BOOKS } from '@/constants';
 import type { ResourceFormat, ResourceLink } from '@/types/index';
 import { ChapterAudio, ChapterPdf } from '@/types/index';
+import { readCacheEntry, readCacheSnapshot, writeCacheEntry } from '@/lib/storage-manager';
 
 const GUTENDEX_BASE = 'https://gutendex.com/books';
 const GOOGLE_BOOKS_BASE = 'https://www.googleapis.com/books/v1/volumes';
@@ -20,10 +21,8 @@ const DATACITE_BASE = 'https://api.datacite.org/dois';
 
 // --- Browser Cache Configuration ---
 const CACHE_TTL = 6 * 60 * 60 * 1000;
-const CACHE_STORAGE_PREFIX = 'bitlibrary-book-cache-v12';
 const cache: Record<string, { data: any, timestamp: number }> = {};
-
-const getStorageKey = (key: string) => `${CACHE_STORAGE_PREFIX}:${key}`;
+const getStorageKey = (key: string) => `book:${key}`;
 
 const getFromCache = <T>(key: string): T | null => {
   const item = cache[key];
@@ -34,17 +33,11 @@ const getFromCache = <T>(key: string): T | null => {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = window.localStorage.getItem(getStorageKey(key));
-    if (!raw) return null;
+    const data = readCacheEntry<T>('api', getStorageKey(key), CACHE_TTL);
+    if (!data) return null;
 
-    const stored = JSON.parse(raw) as { data: T; timestamp: number };
-    if (!stored?.timestamp || Date.now() - stored.timestamp > CACHE_TTL) {
-      window.localStorage.removeItem(getStorageKey(key));
-      return null;
-    }
-
-    cache[key] = stored;
-    return stored.data;
+    cache[key] = { data, timestamp: Date.now() };
+    return data;
   } catch {
     return null;
   }
@@ -59,7 +52,7 @@ const setInCache = (key: string, data: any) => {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.setItem(getStorageKey(key), JSON.stringify(item));
+    writeCacheEntry('api', getStorageKey(key), data);
   } catch {
     // Keep the in-memory cache when persistent storage is full or blocked.
   }
@@ -101,13 +94,12 @@ const findCachedBookById = (id: string): Book | null => {
   if (typeof window === 'undefined') return null;
 
   try {
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index) || '';
-      if (!key.startsWith(CACHE_STORAGE_PREFIX) && !key.startsWith('bitlibrary-research-cache') && key !== 'bitlibrary-local-user-v1') continue;
-      const raw = window.localStorage.getItem(key);
-      if (!raw) continue;
-      const parsed = JSON.parse(raw);
-      const result = findBookInValue(parsed?.data ?? parsed, id);
+    const cacheEntries = [
+      ...Object.values(readCacheSnapshot('api')),
+      ...Object.values(readCacheSnapshot('page')),
+    ];
+    for (const entry of cacheEntries) {
+      const result = findBookInValue(entry?.data, id);
       if (result) return result;
     }
   } catch {

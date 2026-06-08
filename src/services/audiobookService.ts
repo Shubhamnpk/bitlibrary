@@ -1,10 +1,11 @@
 import { Audiobook, AudiobookTrack, Author, Book } from '@/types/index';
 import { fetchBookById, fetchBooksFromYoBook, fetchYoBookBooksBySource, searchYoBookBooks } from '@/services/bookService';
+import { readCacheEntry, writeCacheEntry } from '@/lib/storage-manager';
 
 const LIBRIVOX_API_BASE = 'https://librivox.org/api/feed/audiobooks';
 const CACHE_TTL = 6 * 60 * 60 * 1000;
-const CACHE_STORAGE_PREFIX = 'bitlibrary-audiobook-cache-v3';
 const YOBOOK_AUDIO_ID_PREFIX = 'yobook-audio-';
+const getStorageKey = (key: string) => `audiobook:${key}`;
 const cache: Record<string, { data: unknown; timestamp: number }> = {};
 const inFlightRequests: Record<string, Promise<any[]> | undefined> = {};
 
@@ -91,18 +92,11 @@ const getCached = <T>(key: string): T | null => {
   if (typeof window === 'undefined') return null;
 
   try {
-    const storageKey = `${CACHE_STORAGE_PREFIX}:${key}`;
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return null;
+    const data = readCacheEntry<T>('api', getStorageKey(key), CACHE_TTL);
+    if (!data) return null;
 
-    const stored = JSON.parse(raw) as { data: T; timestamp: number };
-    if (!stored?.timestamp || Date.now() - stored.timestamp > CACHE_TTL) {
-      window.localStorage.removeItem(storageKey);
-      return null;
-    }
-
-    cache[key] = stored;
-    return stored.data;
+    cache[key] = { data, timestamp: Date.now() };
+    return data;
   } catch {
     return null;
   }
@@ -115,7 +109,7 @@ const setCached = (key: string, data: unknown) => {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.setItem(`${CACHE_STORAGE_PREFIX}:${key}`, JSON.stringify(item));
+    writeCacheEntry('api', getStorageKey(key), data);
   } catch {
     // Keep the in-memory cache when persistent storage is full or blocked.
   }

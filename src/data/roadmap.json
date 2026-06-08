@@ -239,7 +239,7 @@
       "title": "Reader comfort and look",
       "area": "Reader",
       "icon": "design",
-      "version": "v0.5.0",
+      "version": "v0.6.0",
       "summary": "The reader should feel crisp, centered, calm, and usable on mobile and desktop, with side-panel tools and bottom controls staying intentional.",
       "subGoals": [
         {
@@ -270,11 +270,11 @@
     },
     {
       "id": "mobile-bottom-nav",
-      "title": "Dedicated mobile navigation",
+      "title": "Mobile navigation and spacing polish",
       "area": "Core",
       "icon": "design",
-      "version": "v0.5.0",
-      "summary": "Mobile readers should get a thumb-friendly bottom navigation and simpler mobile-first paths into search, library, reader, and audio.",
+      "version": "v0.6.0",
+      "summary": "Mobile readers should get thumb-friendly navigation, cleaner spacing, and simpler mobile-first paths into search, library, reader, and audio.",
       "subGoals": [
         {
           "title": "Bottom navigation bar",
@@ -299,7 +299,7 @@
       "title": "Connected book and audio paths",
       "area": "Audio",
       "icon": "audio",
-      "version": "v0.5.0",
+      "version": "v0.6.0",
       "summary": "Books and matching audio should point to each other when they describe the same work or curriculum unit.",
       "subGoals": [
         {
@@ -321,7 +321,7 @@
       "title": "Library portability",
       "area": "Library",
       "icon": "sync",
-      "version": "v0.5.0",
+      "version": "v0.6.0",
       "summary": "Users should be able to keep, move, and recover their local reading and listening data.",
       "subGoals": [
         {
@@ -340,11 +340,11 @@
     },
     {
       "id": "local-profile-management",
-      "title": "Local profile management",
+      "title": "Local account/profile management",
       "area": "Library",
       "icon": "library",
-      "version": "v0.5.0",
-      "summary": "The local reader profile should grow from a simple name into a proper private profile with preferences, identity details, and management tools.",
+      "version": "v0.6.0",
+      "summary": "The local reader profile should grow from a simple name into a proper private account/profile space with preferences, identity details, and management tools.",
       "subGoals": [
         {
           "title": "Edit name and picture",
@@ -366,11 +366,11 @@
     },
     {
       "id": "trust-layer",
-      "title": "Trust and source clarity",
+      "title": "Source quality and usage-right clarity",
       "area": "Trust",
       "icon": "trust",
-      "version": "v0.5.0",
-      "summary": "Every archive-backed item should make source, license, access quality, and readable availability clearer.",
+      "version": "v0.6.0",
+      "summary": "Every archive-backed item should make source quality, usage rights, license signals, access quality, and readable availability clearer.",
       "subGoals": [
         {
           "title": "Show source quality",
@@ -458,6 +458,84 @@
         },
         {
           "title": "Protect bookmarks, highlights, saved books, and profile data during cleanup",
+          "progress": 0
+        }
+      ]
+    },
+    {
+      "id": "safe-cache-cleanup",
+      "title": "Safe cache cleanup",
+      "area": "Core",
+      "icon": "sync",
+      "version": "v0.6.0",
+      "summary": "Cache cleanup should be selective, understandable, and careful enough to avoid deleting important local library data.",
+      "subGoals": [
+        {
+          "title": "Separate cache cleanup from saved library cleanup",
+          "progress": 0
+        },
+        {
+          "title": "Require confirmation before destructive cleanup",
+          "progress": 0
+        },
+        {
+          "title": "Preview what will be removed",
+          "progress": 0
+        },
+        {
+          "title": "Keep protected reader and profile records safe",
+          "progress": 0
+        }
+      ]
+    },
+    {
+      "id": "ui-polish",
+      "title": "UI polish",
+      "area": "Core",
+      "icon": "design",
+      "version": "v0.6.0",
+      "summary": "The app should feel cleaner and more consistent across settings, empty states, cards, navigation, reader controls, and library workflows.",
+      "subGoals": [
+        {
+          "title": "Polish empty and loading states",
+          "progress": 0
+        },
+        {
+          "title": "Improve settings and profile surfaces",
+          "progress": 0
+        },
+        {
+          "title": "Tighten labels, spacing, and repeated actions",
+          "progress": 0
+        },
+        {
+          "title": "Reduce visual clutter in dense views",
+          "progress": 0
+        }
+      ]
+    },
+    {
+      "id": "feature-enhancement-pass",
+      "title": "General feature enhancement pass",
+      "area": "Core",
+      "icon": "foundation",
+      "version": "v0.6.0",
+      "summary": "Small improvements from real usage should be tracked together so the version improves the whole product, not only one screen.",
+      "subGoals": [
+        {
+          "title": "Collect small workflow bugs and papercuts",
+          "progress": 0
+        },
+        {
+          "title": "Improve source handling where users hit dead ends",
+          "progress": 0
+        },
+        {
+          "title": "Tighten copy, labels, and route-to-route context",
+          "progress": 0
+        },
+        {
+          "title": "Keep build warnings and performance costs visible",
           "progress": 0
         }
       ]

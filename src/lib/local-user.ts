@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { Audiobook, Book, LocalUserState, ThemeMode } from '@/types/index';
+import { readStorageItem, removeStorageItem, writeStorageItem } from '@/lib/encrypted-storage';
+import { notifyStorageReportChanged } from '@/lib/storage-manager';
 
 const USER_STATE_KEY = 'bitlibrary-user-state-v1';
 const LEGACY_SAVED_AUDIOBOOKS_KEY = 'bitlibrary-saved-audiobooks-v1';
 const LEGACY_KEYS = [
-  'bitlibrary-explore-cache-v1',
-  'bitlibrary-search-cache-v1',
   LEGACY_SAVED_AUDIOBOOKS_KEY,
   'recentSearches',
 ];
@@ -176,6 +176,7 @@ const pruneLegacyLocalData = () => {
 const emitUserStateChange = () => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event(USER_STATE_EVENT));
+  notifyStorageReportChanged();
 };
 
 const readLegacySavedAudiobooks = (): Audiobook[] => {
@@ -193,7 +194,7 @@ export const readLocalUserState = (): LocalUserState => {
   if (typeof window === 'undefined') return defaultUserState;
 
   try {
-    const raw = window.localStorage.getItem(USER_STATE_KEY);
+    const raw = readStorageItem(USER_STATE_KEY);
     if (!raw) {
       return {
         ...defaultUserState,
@@ -247,7 +248,7 @@ export const writeLocalUserState = (state: LocalUserState) => {
 
   for (const candidate of candidates) {
     try {
-      window.localStorage.setItem(USER_STATE_KEY, JSON.stringify(candidate));
+      writeStorageItem(USER_STATE_KEY, JSON.stringify(candidate));
       emitUserStateChange();
       return;
     } catch {
@@ -256,7 +257,7 @@ export const writeLocalUserState = (state: LocalUserState) => {
   }
 
   try {
-    window.localStorage.setItem(
+    writeStorageItem(
       USER_STATE_KEY,
       JSON.stringify({
         ...defaultUserState,
@@ -353,7 +354,7 @@ export const setThemeMode = (theme: ThemeMode) => {
 export const clearLocalUserData = () => {
   if (typeof window === 'undefined') return;
 
-  window.localStorage.removeItem(USER_STATE_KEY);
+  removeStorageItem(USER_STATE_KEY);
   LEGACY_KEYS.forEach((key) => window.localStorage.removeItem(key));
   emitUserStateChange();
 };

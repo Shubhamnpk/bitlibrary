@@ -7,9 +7,10 @@ import type { Book, ResourceFormat } from '@/types/index';
 import { searchAcademicResearch } from '@/services/bookService';
 import { recordRecentSearch } from '@/lib/local-user';
 import { getAccessMode } from '@/lib/access';
+import { readCacheEntry, writeCacheEntry } from '@/lib/storage-manager';
 
 const RESEARCH_MIN_QUERY_LENGTH = 2;
-const RESEARCH_CACHE_KEY = 'bitlibrary-research-cache-v1';
+const RESEARCH_CACHE_KEY = 'research';
 const RESEARCH_CACHE_TTL = 20 * 60 * 1000;
 const RESEARCH_QUICK_TOPICS = ['climate adaptation', 'neural networks', 'public health', 'renewable energy', 'education policy', 'soil microbiome'];
 const READABLE_FORMATS: ResourceFormat[] = ['pdf', 'xml', 'text', 'epub', 'package', 'audio', 'video'];
@@ -36,7 +37,7 @@ const getFormatIcon = (format: ResourceFormat) => {
 const getResearchCache = (): Record<string, ResearchCacheEntry> => {
   if (typeof window === 'undefined') return {};
   try {
-    return JSON.parse(window.localStorage.getItem(RESEARCH_CACHE_KEY) || '{}') as Record<string, ResearchCacheEntry>;
+    return readCacheEntry<Record<string, ResearchCacheEntry>>('page', RESEARCH_CACHE_KEY, RESEARCH_CACHE_TTL) || {};
   } catch {
     return {};
   }
@@ -62,7 +63,7 @@ const writeResearchCache = (query: string, results: Book[]) => {
         .sort((a, b) => b[1].timestamp - a[1].timestamp)
         .slice(0, 16)
     );
-    window.localStorage.setItem(RESEARCH_CACHE_KEY, JSON.stringify(fresh));
+    writeCacheEntry('page', RESEARCH_CACHE_KEY, fresh);
   } catch {
     // Network results still render when local storage is unavailable.
   }
