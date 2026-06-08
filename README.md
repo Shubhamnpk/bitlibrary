@@ -1,24 +1,54 @@
 <p>
-  <img src="./assets/bitlibrary-logo.svg" alt="BitLibrary logo" width="220" />
+  <img src="./public/assets/bitlibrary-logo.svg" alt="BitLibrary logo" width="240" />
 </p>
 
 # BitLibrary
 
-BitLibrary is an open digital library for books, curriculum resources, audiobooks, and focused reading. It is built with React, Vite, TypeScript, Tailwind CSS, PDF.js, and public book/audio APIs.
+BitLibrary is an open digital library for discovering books, curriculum resources, audiobooks, research papers, and reader-friendly public knowledge.
 
-The app is local-first where possible: saved books, saved audiobooks, profile preferences, reader progress, PDF bookmarks, and highlights live in the browser unless a future backend feature moves them elsewhere.
+The current release is **v0.5.0**, focused on smarter search, stronger reader study tools, curriculum audio, inline dictionary support, and a calmer local-first library experience.
 
-## Current Features
+- Website: [bitlibrary.bitnepal.net](https://bitlibrary.bitnepal.net)
+- Release history: [bitlibrary.bitnepal.net/releases](https://bitlibrary.bitnepal.net/releases)
+- Roadmap: [bitlibrary.bitnepal.net/roadmap](https://bitlibrary.bitnepal.net/roadmap)
+- Source: [github.com/Shubhamnpk/bitlibrary](https://github.com/Shubhamnpk/bitlibrary)
 
-- Multi-source book discovery across Gutendex, Google Books, Open Library, Internet Archive, IT Bookstore, and YoBook
-- Curriculum library for Nepal and NCERT resources, with grade, subject, and resource-type filters
-- Audiobook browsing and playback using LibriVox and YoBook audio sources
-- Book detail pages with source links, downloads, related books, and AI-assisted summaries when configured
-- PDF flip-book reader powered by PDF.js and Turn.js
-- PDF study tools: page bookmarks, text highlights, highlight colors, background presets, last-page restore, and on-demand PDF outline loading
-- Local profile dropdown, saved books, saved audiobooks, recent searches, recently viewed books, and theme preference
-- Optimized PDF download path with a browser-first download attempt and Vercel proxy fallback
-- SEO metadata, sitemap/robots handling, release notes, roadmap, terms, and about pages
+## What BitLibrary Does
+
+BitLibrary brings multiple public book and learning sources into one reading interface. It helps users search across open catalogs, inspect book metadata, read PDFs, listen to audiobooks, save items locally, and use study tools without needing an account.
+
+The app is local-first where possible. Saved books, saved audiobooks, profile preferences, recent searches, recently viewed items, reader settings, PDF bookmarks, highlights, and reading progress are stored in the browser.
+
+## Current Highlights
+
+- Multi-source book discovery across Gutendex, Google Books, Open Library, Internet Archive, IT Bookstore, and YoBook.
+- Search with a 2-character threshold, 400ms debounce, pagination, safer URL syncing, source filters, voice search, and English/Nepali correction suggestions.
+- Inline dictionary cards and spelling support for English and Nepali learning flows.
+- Curriculum pages for Nepal and NCERT resources with grade, subject, and resource-type filtering.
+- YoBook-powered curriculum books, chapter PDFs, and chapter-level audio where available.
+- Audiobook discovery and playback using LibriVox and YoBook audio sources.
+- Book detail pages with source links, download options, related books, metadata, and optional AI-assisted descriptions.
+- PDF reader powered by PDF.js with Turn.js desktop page-turn behavior.
+- Reader study tools: bookmarks, grouped highlights, removable highlights, highlight colors, background presets, focus mode, touch zoom, page slider, and last-page restore.
+- Reader read-aloud tools for generated text and PDF pages, including continuous page/spread playback, live sentence highlighting, voice/speed controls, and movable desktop audio controls.
+- Local profile, saved library, saved audio, recently viewed books, recent searches, and theme preference.
+- Research mode for scholarly sources such as arXiv, Semantic Scholar, PubMed Central, Europe PMC, OpenAlex, Crossref, DataCite, and Unpaywall.
+- SEO metadata, sitemap/robots handling, static project pages, release notes, roadmap, terms, sources, and about pages.
+
+## Roadmap
+
+Active roadmap work is tracked in [src/data/roadmap.json](./src/data/roadmap.json) and displayed at [bitlibrary.bitnepal.net/roadmap](https://bitlibrary.bitnepal.net/roadmap).
+
+Current active areas include:
+
+- YoBook curriculum coverage and clearer source provenance.
+- Reader comfort on mobile and desktop.
+- Connected book/audio paths.
+- Source quality, license, and usage-right clarity.
+- Local profile management.
+- Mobile bottom navigation.
+- Library portability for collections, import/export, bookmarks, and highlights.
+- Future account sync after the local-first experience is solid.
 
 ## Tech Stack
 
@@ -32,21 +62,29 @@ The app is local-first where possible: saved books, saved audiobooks, profile pr
 - Lucide React
 - Axios
 - Convex client package
-- Vercel serverless API route for PDF proxying
+- Vercel serverless API routes
 
 ## Data Sources
 
-BitLibrary reads public metadata and media from several sources:
+BitLibrary uses public APIs and open catalogs. Some sources are faster or more complete than others, so the app uses staged loading, client-side caching, ranking, source filtering, and fallbacks.
 
 - Gutendex / Project Gutenberg
 - Google Books
 - Open Library
 - Internet Archive
 - IT Bookstore
-- YoBook curriculum and audio records
+- YoBook and audio records
 - LibriVox audiobook feeds
+- arXiv
+- Semantic Scholar
+- PubMed Central
+- Europe PMC
+- OpenAlex
+- Crossref
+- DataCite
+- Unpaywall
 
-Some sources are slower or less consistent than others, so the app uses client-side caching, staged loading, ranking, and fallbacks.
+Research sources are opt-in from the UI and are not called during normal book search.
 
 ## Getting Started
 
@@ -63,13 +101,13 @@ pnpm install
 
 ### Environment
 
-Copy the example file:
+Copy the example environment file:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Optional AI enrichment uses OpenRouter:
+Optional OpenRouter settings enable AI-assisted summaries and search insight enrichment:
 
 ```text
 VITE_OPENROUTER_API_KEY=your_openrouter_api_key
@@ -78,13 +116,19 @@ VITE_OPENROUTER_SITE_URL=http://localhost:5173
 VITE_OPENROUTER_APP_NAME=BitLibrary
 ```
 
-Without an OpenRouter key, the app still works. AI summaries, streamed chapter-style responses, and search insight enrichment fall back gracefully or are disabled.
+Optional Unpaywall configuration improves DOI-based open-access lookup in research mode:
 
-Convex is present in the repo, but the current app is primarily client/local-first. If you wire Convex features locally, set:
+```text
+VITE_UNPAYWALL_EMAIL=research-contact@example.com
+```
+
+Convex files are present for backend experiments. The current application is primarily browser-local. If you wire Convex locally, set:
 
 ```text
 VITE_CONVEX_URL=your_convex_url
 ```
+
+Without optional keys, the core app still works. AI and some research enrichments simply fall back or stay disabled.
 
 ## Development
 
@@ -121,72 +165,85 @@ pnpm preview
 
 ## Scripts
 
-- `pnpm dev` - Start the Vite development server
-- `pnpm typecheck` - Run TypeScript typechecking
-- `pnpm build` - Build production assets
-- `pnpm preview` - Preview the production build locally
-- `pnpm check` - Run typecheck and build
+- `pnpm dev` - Start the Vite development server.
+- `pnpm typecheck` - Run TypeScript typechecking.
+- `pnpm build` - Build production assets.
+- `pnpm preview` - Preview the production build locally.
+- `pnpm check` - Run typecheck and build.
+
+## Main Routes
+
+- `/` - Home and discovery surface.
+- `/library`, `/books`, `/browse` - Book discovery and collection browsing.
+- `/category/:categoryId` - Category detail page.
+- `/curriculum` - Nepal and NCERT curriculum library.
+- `/curriculum/subjects` - Curriculum subject browsing.
+- `/audiobooks` - Audiobook browse page.
+- `/audiobooks/category/:categoryId` - Audiobook category page.
+- `/book/:id` - Book detail and reader entry.
+- `/audiobook/:id` - Audiobook detail and player page.
+- `/author/:name` - Author detail page.
+- `/mylibrary` - Local saved books, saved audio, profile state, and history.
+- `/search?q=...` - Search results.
+- `/research` - Research discovery surface.
+- `/dictionary` - Dictionary and spelling tools.
+- `/sources` - Sources and credits.
+- `/releases` - Release history.
+- `/roadmap` - Product roadmap.
+- `/about` - About BitLibrary.
+- `/terms` - Terms of use.
 
 ## Project Structure
 
 ```text
 api/
   pdf-proxy.ts              Vercel API route for PDF streaming/download fallback
+  research-proxy.ts         Vercel API route for research-source requests
+  lib/                      Server-side API helpers
 
 convex/
   schema.ts, books.ts       Convex schema/functions kept for backend experiments
 
+public/
+  assets/                   Brand assets and social images
+  fixtures/                 XML/SVG fixtures for reader and research parsing
+  sitemap.xml, robots.txt   Search metadata
+
 src/
   components/               Shared UI, reader, cards, navbar, SEO
   pages/                    Route-level screens
-  services/                 Book, audiobook, and AI service integrations
-  lib/                      Local user state, PDF helpers, SEO, search ranking
-  styles/                   Global CSS and PDF reader styles
-  data/                     Roadmap/release content
+  services/                 Book, audiobook, dictionary, spellcheck, and AI services
+  lib/                      Local user state, downloads, PDF helpers, SEO, search ranking
+  styles/                   Global CSS and reader styles
+  data/                     Roadmap data
   content/                  Static page content
 ```
 
-## Main Routes
-
-- `/` - Home
-- `/library`, `/books`, `/browse` - Book discovery
-- `/curriculum` - Nepal and NCERT curriculum library
-- `/audiobooks` - Audiobook browse page
-- `/audiobooks/category/:categoryId` - Audiobook category page
-- `/book/:id` - Book detail page
-- `/audiobook/:id` - Audiobook detail/player page
-- `/author/:name` - Author page
-- `/mylibrary` - Local saved books, saved audio, profile state
-- `/search?q=...` - Search results
-- `/releases`, `/roadmap`, `/about`, `/terms` - Project pages
-
 ## Reader Notes
 
-The PDF reader uses PDF.js for rendering and Turn.js for page navigation. Study state is stored under a single localStorage record:
+The PDF reader uses PDF.js for rendering and Turn.js for page navigation on desktop. Study state is stored in a single localStorage record:
 
 ```text
 bitlibrary-pdf-reader-storage-v1
 ```
 
-That record stores PDF reader preferences, recent PDF study records, last page, bookmarks, and text highlights. Older scattered PDF reader keys are migrated/cleaned up by `src/lib/pdf-reader-storage.ts`.
+That record stores PDF reader preferences, recent PDF study records, last page, bookmarks, highlights, and highlight colors. Older scattered PDF reader keys are migrated or cleaned up by [src/lib/pdf-reader-storage.ts](./src/lib/pdf-reader-storage.ts).
 
 ## Deployment
 
-The app is designed to deploy cleanly on Vercel as a Vite frontend with one serverless API route:
+The app is designed for Vercel as a Vite frontend with serverless API routes in [api/](./api).
 
-```text
-api/pdf-proxy.ts
-```
-
-The proxy is used when direct PDF download or loading needs same-origin help. Static SPA routing is handled by `vercel.json`.
+Static SPA routing, cache headers, and API route behavior are configured in [vercel.json](./vercel.json).
 
 ## Known Limitations
 
-- Public APIs can rate-limit, timeout, or return inconsistent metadata.
-- PDF rendering quality depends on the source PDF, browser, fonts, and device memory.
-- PDF outlines only appear when the PDF contains embedded outline data.
+- Public APIs can rate-limit, timeout, return inconsistent metadata, or remove downloadable files.
+- PDF rendering quality depends on the source PDF, browser, fonts, device memory, and network behavior.
+- PDF outlines only appear when the source PDF contains embedded outline data.
 - User library/profile data is browser-local and can be cleared by browser storage cleanup.
-- Large bundles currently produce Vite chunk-size warnings during build.
+- AI-assisted features require an OpenRouter key and depend on model/provider availability.
+- Research API behavior depends on each upstream source and can vary by topic, DOI coverage, and open-access availability.
+- Large production bundles currently produce Vite chunk-size warnings during build.
 
 ## Contributing
 
