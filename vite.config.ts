@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFile, readdir } from 'node:fs/promises';
 import { defineConfig, loadEnv, type Plugin, type ViteDevServer } from 'vite';
 import react from '@vitejs/plugin-react';
+import gutenbergAudioHandler from './api/gutenberg-audio';
 import pdfProxyHandler from './api/pdf-proxy';
 import { readerMessageHtml, readerTextHtml } from './api/lib/reader-renderer';
 
@@ -105,8 +106,8 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     server: {
-      port: 3000,
-      host: '0.0.0.0',
+      port: 5173,
+      host: 'localhost',
       proxy: {
         '/api/gutendex': {
           target: 'https://gutendex.com',
@@ -147,6 +148,9 @@ export default defineConfig(({ mode }) => {
           });
           server.middlewares.use('/api/pdf-proxy', (req, res) => {
             void pdfProxyHandler(req, res);
+          });
+          server.middlewares.use('/api/gutenberg-audio', (req, res) => {
+            void gutenbergAudioHandler(req, res);
           });
           server.middlewares.use('/api/research-proxy', async (req, res) => {
             try {

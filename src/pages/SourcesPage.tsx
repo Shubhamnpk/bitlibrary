@@ -150,6 +150,13 @@ const sourceCredits: SourceCredit[] = [
     url: 'https://archive.org',
   },
   {
+    category: 'audio',
+    name: 'Project Gutenberg audio books',
+    role: 'Public-domain audiobook pages with direct MP3 and Ogg audio tracks.',
+    credit: 'Used as a supplemental audiobook source for selected public-domain classics.',
+    url: 'https://www.gutenberg.org/browse/categories/1',
+  },
+  {
     category: 'dictionary',
     name: 'dictionaryapi.dev',
     role: 'English dictionary definitions, phonetics, examples, synonyms, and audio pronunciation links.',

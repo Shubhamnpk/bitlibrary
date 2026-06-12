@@ -1743,10 +1743,10 @@ const mapYoBookResearchToBook = (item: any): Book => {
   };
 };
 
-const fetchYoBookEndpointPage = async (endpoint: 'textbooks' | 'teacher-guides', page: number, signal?: AbortSignal): Promise<{ items: any[]; pages: number }> => {
+const fetchYoBookEndpointPage = async (endpoint: 'textbooks' | 'teacher-guides', page: number, signal?: AbortSignal, limit = 200): Promise<{ items: any[]; pages: number }> => {
   const params = new URLSearchParams({
     page: String(page),
-    limit: '200',
+    limit: String(limit),
     full: 'true',
   });
   const response = await fetch(`${YOBOOK_BASE}/api/${endpoint}?${params.toString()}`, { signal });
@@ -2016,6 +2016,35 @@ export const fetchYoBookTextbookRows = async (signal?: AbortSignal): Promise<Rec
 export const fetchYoBookTextbookCollection = async (signal?: AbortSignal): Promise<YoBookGradeCollection> => (
   fetchYoBookEndpointCollection('textbooks', signal)
 );
+
+export const fetchYoBookTextbookShelf = async (limit = 10, signal?: AbortSignal): Promise<Book[]> => {
+  const pageSize = Math.min(100, Math.max(1, limit));
+  const cacheKey = `yobook-textbook-shelf-${pageSize}-v1`;
+  const cached = getFromCache<Book[]>(cacheKey);
+  if (cached) return cached;
+  if (isProviderInCooldown('yobook')) {
+    warnProviderCooldown('yobook');
+    return [];
+  }
+
+  try {
+    const page = await fetchYoBookEndpointPage('textbooks', 1, signal, pageSize);
+    const books = page.items
+      .map(mapYoBookToBook)
+      .filter((book, index, list) => list.findIndex((entry) => entry.id === book.id) === index)
+      .slice(0, pageSize);
+
+    setInCache(cacheKey, books);
+    markProviderSuccess('yobook');
+    return books;
+  } catch (error) {
+    if (!isAbortError(error)) {
+      markProviderFailure('yobook');
+      console.error('Failed to fetch YoBook textbook shelf:', error);
+    }
+    return [];
+  }
+};
 
 export const fetchYoBookGuideRows = async (signal?: AbortSignal): Promise<Record<number, Book[]>> => (
   fetchYoBookEndpointCollection('teacher-guides', signal).then((collection) => collection.rows)

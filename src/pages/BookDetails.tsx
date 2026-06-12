@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Book, ChapterAudio, QuestionPaper, ViewState } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
@@ -94,6 +95,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
   const [fullDescription, setFullDescription] = useState<string>(book.description || '');
   const [descLoading, setDescLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [gutenbergAudioId, setGutenbergAudioId] = useState<string | null>(null);
   const downloadOptions = getBookDownloadOptions(book);
   const hasDownloadOptions = downloadOptions.length > 0;
   const accessMode = getAccessMode(book);
@@ -234,6 +236,27 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
     setChapterAudioRequested(false);
     setSelectedChapterAudioIndex(null);
   }, [book.id]);
+
+  useEffect(() => {
+    let active = true;
+    setGutenbergAudioId(null);
+    if (!book.gutenbergId) return;
+
+    fetch(`/api/gutenberg-audio?id=${encodeURIComponent(String(book.gutenbergId))}`)
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (active && Array.isArray(payload?.tracks) && payload.tracks.length > 0) {
+          setGutenbergAudioId(`gutenberg-audio-${book.gutenbergId}`);
+        }
+      })
+      .catch(() => {
+        if (active) setGutenbergAudioId(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [book.gutenbergId]);
 
   // Synchronize Similar Books
   useEffect(() => {
@@ -400,8 +423,54 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
             >
               <Bookmark size={18} className={isSaved ? 'fill-current' : ''} />
             </button>
-            <button className="text-bit-muted hover:text-bit-text transition-colors" aria-label="Share book"><Share2 size={18} /></button>
-            <button className="text-bit-muted hover:text-bit-text transition-colors" aria-label="Book tools"><Zap size={18} /></button>
+            <button
+              onClick={async () => {
+                const shareUrl = `${window.location.origin}/book/${book.id}`;
+                const shareTitle = `${book.title} by ${book.author || 'Unknown Author'} | BitLibrary`;
+                const shareText = `Read "${book.title}" by ${book.author || 'Unknown Author'} on BitLibrary`;
+
+                if (navigator.share) {
+                  try {
+                    await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
+                  } catch (err) {
+                    if ((err as DOMException).name !== 'AbortError') {
+                      console.error('Share failed:', err);
+                    }
+                  }
+                } else {
+                  try {
+                    await navigator.clipboard.writeText(shareUrl);
+                    const btn = document.activeElement as HTMLButtonElement | null;
+                    if (btn) {
+                      const originalInner = btn.innerHTML;
+                      btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                      btn.classList.add('text-green-400');
+                      setTimeout(() => {
+                        btn.innerHTML = originalInner;
+                        btn.classList.remove('text-green-400');
+                      }, 2000);
+                    }
+                  } catch (err) {
+                    console.error('Clipboard copy failed:', err);
+                  }
+                }
+              }}
+              className="text-bit-muted hover:text-bit-text transition-colors"
+              aria-label="Share book"
+            >
+              <Share2 size={18} />
+            </button>
+            <button
+              onClick={async () => {
+                if (!descLoading) {
+                  await handleGenerateSummary();
+                }
+              }}
+              className={`transition-colors ${descLoading ? 'text-bit-accent animate-pulse' : 'text-bit-muted hover:text-bit-text'}`}
+              aria-label={descLoading ? 'Generating AI summary...' : 'Book tools'}
+            >
+              <Zap size={18} />
+            </button>
           </div>
         </div>
       </div>
@@ -515,6 +584,14 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               <BookOpen size={17} /> Read
             </button>
           )}
+          {gutenbergAudioId && (
+            <Link
+              to={`/audiobook/${gutenbergAudioId}`}
+              className="mt-3 flex w-full items-center justify-center gap-3 rounded-xl border border-bit-accent/30 bg-bit-panel/50 px-5 py-3 text-xs font-mono font-bold uppercase tracking-widest text-bit-accent transition-all active:scale-95 sm:hidden"
+            >
+              <Headphones size={17} /> Listen audio
+            </Link>
+          )}
           {!questionPaperCollection && isDownloadOnly && hasDownloadOptions && (
             <div className="mt-4 sm:hidden">
               <DownloadSplitButton options={downloadOptions} />
@@ -560,6 +637,14 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                   {!questionPaperCollection && (
                     <div className="grid grid-cols-2 gap-3 sm:flex">
                       {hasDownloadOptions && <DownloadSplitButton options={downloadOptions} />}
+                      {gutenbergAudioId && (
+                        <Link
+                          to={`/audiobook/${gutenbergAudioId}`}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-bit-accent/30 bg-bit-panel/50 px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-bit-accent transition-all hover:border-bit-accent hover:bg-bit-accent hover:text-white sm:px-6"
+                        >
+                          <Headphones size={16} /> audio
+                        </Link>
+                      )}
                       {canReadInApp && (
                       <button onClick={() => onRead()} className={`${hasDownloadOptions ? 'hidden sm:flex' : 'col-span-2 hidden sm:flex'} items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
                         <BookOpen size={16} /> read

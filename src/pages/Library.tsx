@@ -4,7 +4,7 @@ import { Audiobook, Book } from '@/types/index';
 import { CATEGORIES, INITIAL_BOOKS } from '@/constants';
 import BookCard from '@/components/BookCard';
 import AudiobookCard from '@/components/AudiobookCard';
-import { fetchBooksFromGutendex, fetchBooksFromYoBook, searchGoogleBooks, searchInternetArchive, searchOpenLibrary } from '@/services/bookService';
+import { fetchBooksFromGutendex, fetchBooksFromYoBook, fetchYoBookTextbookShelf, searchGoogleBooks, searchInternetArchive, searchOpenLibrary } from '@/services/bookService';
 import { fetchFeaturedAudiobooks } from '@/services/audiobookService';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { ArrowRight, BookOpen, Disc, Headphones, LayoutGrid, List } from 'lucide-react';
@@ -18,6 +18,7 @@ const CATEGORY_ROW_BATCH_SIZE = 2;
 const CATEGORY_ROW_LOAD_MARGIN = '240px';
 const CATEGORY_ROW_SCROLL_STEP = 140;
 const SHELF_PRIMARY_TIMEOUT_MS = 3500;
+const CURRICULUM_SHELF_TIMEOUT_MS = 10000;
 const SHELF_FALLBACK_TIMEOUT_MS = 3500;
 const BROWSE_CACHE_TTL = 6 * 60 * 60 * 1000;
 const BROWSE_CACHE_PREFIX = 'browse';
@@ -150,11 +151,16 @@ const loadCurriculumShelf = async (): Promise<Book[]> => {
    if (cached?.books?.length) return cached.books;
 
    const controller = new AbortController();
-   const timeoutId = window.setTimeout(() => controller.abort(), SHELF_PRIMARY_TIMEOUT_MS);
-   const { books } = await fetchBooksFromYoBook(1, 'Nepali Curriculum', controller.signal).finally(() => {
+   const timeoutId = window.setTimeout(() => controller.abort(), CURRICULUM_SHELF_TIMEOUT_MS);
+   let shelfBooks = await fetchYoBookTextbookShelf(SHELF_ITEM_LIMIT, controller.signal).finally(() => {
       window.clearTimeout(timeoutId);
    });
-   const shelfBooks = dedupeBooks(books).slice(0, SHELF_ITEM_LIMIT);
+   shelfBooks = dedupeBooks(shelfBooks).slice(0, SHELF_ITEM_LIMIT);
+
+   if (shelfBooks.length === 0) {
+      const { books } = await fetchBooksFromYoBook(1, 'Nepali Curriculum');
+      shelfBooks = dedupeBooks(books).slice(0, SHELF_ITEM_LIMIT);
+   }
 
    if (shelfBooks.length > 0) {
       writeCachePayload(getCurriculumShelfCacheKey(), { books: shelfBooks });

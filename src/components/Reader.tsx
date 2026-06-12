@@ -30,6 +30,7 @@ const FRAME_BLOCKED_HOSTS = new Set([
 
 const isTextLikeReaderUrl = (url: string) => /\.(?:txt|xml)(?:$|[?#])/i.test(url) || /fulltextxml/i.test(url) || /[?&](?:format|type)=(?:txt|text|xml)(?:&|$)/i.test(url);
 const isHtmlLikeReaderUrl = (url: string) => /\.x?html?(?:$|[?#])/i.test(url) || /[?&](?:format|type)=(?:html?)(?:&|$)/i.test(url);
+const isArchiveEmbedReaderUrl = (url: string) => /^https:\/\/(?:www\.)?archive\.org\/embed\/[^/?#]+/i.test(url);
 const isEpubLikeReaderUrl = (url: string) => /\.epub(?:$|[?#])/i.test(url);
 const isBlockedFrameUrl = (url: string) => {
   try {
@@ -56,6 +57,7 @@ const isSupportedDirectReaderUrl = (url?: string) => (
 
 const shouldUseReaderProxy = (url: string, resource?: ResourceLink) => {
   if (!/^https?:\/\//i.test(url)) return false;
+  if (isArchiveEmbedReaderUrl(url)) return false;
   if (resource?.format && ['html', 'text', 'xml'].includes(resource.format)) return true;
   return isHtmlLikeReaderUrl(url) || isTextLikeReaderUrl(url);
 };
