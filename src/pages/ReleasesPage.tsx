@@ -10,11 +10,30 @@ interface ReleasesPageProps {
 const releaseNotes = [
   {
     version: 'v0.6.0',
-    title: 'Cache system setup',
-    status: 'Processing',
-    summary: 'Version 0.6.0 is open for planning and development. The main target for this version is the cache system.',
+    title: 'Reading progress, cache system, and library UX',
+    status: 'Beta',
+    summary: 'BitLibrary enters beta with reading progress tracking across chapter-based and single-PDF books, a proper cache management system, Gutenberg audiobooks, blog content, SEO foundations, and a significantly improved My Library experience.',
     changes: [
-      'Planning started for cache management in v0.6.0.',
+      'Reading progress indicators — circular SVG rings on BookCard and BookDetails show chapter or page completion with percentage.',
+      'Chapter-based progress for NCERT multi-chapter PDFs and page-based progress for single-PDF books both persisted and displayed.',
+      'Total chapters and page count are stored alongside progress data for accurate percentage calculation.',
+      'Continue Reading section now shows all recently viewed books (no progress filter required) with drag-scroll and view-all link.',
+      'My Library tools collapsed into a slide-in sidebar drawer accessible from a floating tab.',
+      'History tab shows progress rings on books that have saved reading data.',
+      'Cache management system with IndexedDB storage, selective cleanup, and per-category reporting (account, reader, API cache, page cache).',
+      'Storage-report UI in My Library showing cache sizes, age, and source groups with selective cleanup.',
+      'Local data reset with confirmation in My Library tools.',
+      'Gutenberg audio API integration — LibriVox audiobooks surfaced alongside Gutenberg texts.',
+      'Blog engine — BlogPage, BlogPostPage, and BlogTableOfContents components with JSON content source.',
+      'Sitemap generation script and robots.txt for search engine indexing.',
+      'JSON-LD structured data on book detail, author, category, curriculum, and search pages for better SEO.',
+      'Canonical URLs and meta description/keywords tags across all major pages.',
+      'Conditional Downloads and Impact Score rendering on BookDetails (hide when data unavailable).',
+      'Storage architecture documentation and encrypted-to-generic IndexedDB migration.',
+      'Reader improvements: read-aloud sentence highlighting, PMC image fallback, HTML document rendering support.',
+      'Various styling polish across book cards, navigation, footer, and curriculum pages.',
+      'Library tools sidebar is now compact and collapsible.',
+      'BookCard progress indicators visible in My Library favorites and history.',
     ],
   },
   {
@@ -78,25 +97,25 @@ const releaseNotes = [
 ];
 
 const releaseStats = [
-  { label: 'Current build', value: 'v0.6.0-dev' },
+  { label: 'Current build', value: 'v0.6.0-beta' },
   { label: 'Major releases', value: releaseNotes.length.toString() },
-  { label: 'Primary focus', value: 'Cache System' },
+  { label: 'Primary focus', value: 'Reading Progress & Cache' },
 ];
 
 const releaseHighlights = [
   {
-    title: 'Reader study tools matured',
-    body: 'Bookmarks, grouped highlights, highlight colors, focus mode, and smoother PDF controls now work together in the reader.',
+    title: 'Reading progress tracking',
+    body: 'Books now show circular progress rings on cards and detail pages. Chapter-based (NCERT multi-PDF) and page-based (single PDF) progress are both tracked, stored, and displayed with percentages.',
     icon: CheckCircle2,
   },
   {
-    title: 'Search became calmer',
-    body: 'Search now waits for enough signal, avoids fast-typing character loss, limits results, and ranks books plus audiobooks more deliberately.',
+    title: 'My Library overhaul',
+    body: 'Continue Reading shows all recent books with drag-scroll. History tab includes progress indicators. Library tools are now a collapsible sidebar drawer. Cache management with per-category reporting and selective cleanup.',
     icon: Sparkles,
   },
   {
-    title: 'YoBook content expanded',
-    body: 'YoBook books and educational audiobooks now have stronger priority across search, curriculum, and audiobook routes.',
+    title: 'SEO, blog & Gutenberg audio',
+    body: 'Sitemap generation, JSON-LD structured data, canonical URLs, and meta tags for search visibility. Blog engine with rich posts. Gutenberg audiobooks surfaced alongside classic texts.',
     icon: Headphones,
   },
 ];
