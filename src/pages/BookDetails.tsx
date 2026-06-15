@@ -7,8 +7,11 @@ import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, Chevr
 import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
 import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
+import { readReaderEntry, getPdfReaderProgressKey } from '@/lib/storage-manager';
+import { isPdfLikeUrl } from '@/lib/pdf';
+import { getStudyId } from '@/lib/pdf-reader-storage';
 import Seo from '@/components/Seo';
-import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
+import { createBreadcrumbSchema, createFaqSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 import DownloadSplitButton from '@/components/DownloadSplitButton';
 import { getBookDownloadOptions } from '@/lib/downloads';
 import { getAccessMode } from '@/lib/access';
@@ -364,6 +367,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
           ...(book.subjects || []).slice(0, 6),
           'read online',
           'public domain book',
+          ...(book.grade ? [`class ${book.grade}`, `grade ${book.grade}`, `${book.category} class ${book.grade}`] : []),
         ].filter(Boolean)}
         structuredData={[
           createBreadcrumbSchema([
@@ -399,6 +403,20 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                 }
               : undefined,
           },
+          {
+            '@context': 'https://schema.org',
+            '@type': 'WebPage',
+            speakable: {
+              '@type': 'SpeakableSpecification',
+              cssSelector: ['h1', '.prose'],
+            },
+          },
+          ...(book.description ? [createFaqSchema([
+            { question: `Who wrote ${book.title}?`, answer: `${book.title} was written by ${book.author || 'an unknown author'}.` },
+            { question: `What is ${book.title} about?`, answer: truncate(book.description, 200) },
+            ...(book.grade ? [{ question: `What grade is ${book.title} for?`, answer: `${book.title} is for class ${book.grade} students.` }] : []),
+            ...(book.category ? [{ question: `What genre is ${book.title}?`, answer: `${book.title} belongs to the ${book.category} genre.` }] : []),
+          ])] : []),
         ]}
       />
       <div className="mb-6 flex items-center justify-between gap-4 opacity-80 transition-opacity hover:opacity-100 sm:mb-8">
@@ -508,7 +526,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               <img
                 src={book.coverUrl}
                 className="absolute inset-0 h-full w-full object-cover opacity-45 transition-opacity duration-700 sm:group-hover:opacity-60"
-                alt=""
+                alt={book.title}
               />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent transition-all duration-500 sm:group-hover:via-black/20" />
@@ -714,7 +732,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                         <div key={`${paper.title}-${paper.year || index}`} className="group flex gap-4 rounded-lg border border-bit-border bg-bit-panel/25 p-3 transition-all hover:border-bit-accent/40 hover:bg-bit-panel/40">
                           <div className="h-24 w-16 shrink-0 overflow-hidden rounded border border-bit-border bg-bit-bg/60">
                             {paper.coverUrl ? (
-                              <img src={paper.coverUrl} alt="" className="h-full w-full object-cover opacity-80 transition-opacity group-hover:opacity-100" loading="lazy" />
+                              <img src={paper.coverUrl} alt={paper.title} className="h-full w-full object-cover opacity-80 transition-opacity group-hover:opacity-100" loading="lazy" />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-bit-accent/70">
                                 <BookOpen size={22} />
@@ -752,14 +770,18 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
               <section className="mb-12">
                 <h3 className="text-xl font-display font-semibold text-bit-text mb-6">Metadata Archive</h3>
                 <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
-                  <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
-                    <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Impact Score</p>
-                    <p className="text-xl font-display font-bold text-bit-text">{book.popularity || 0}%</p>
-                  </div>
-                  <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
-                    <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Downloads</p>
-                    <p className="text-xl font-display font-bold text-bit-text">{(book.downloads || 0).toLocaleString()}</p>
-                  </div>
+                  {book.popularity ? (
+                    <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
+                      <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Impact Score</p>
+                      <p className="text-xl font-display font-bold text-bit-text">{book.popularity}%</p>
+                    </div>
+                  ) : null}
+                  {book.downloads ? (
+                    <div className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 shadow-sm">
+                      <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted">Downloads</p>
+                      <p className="text-xl font-display font-bold text-bit-text">{book.downloads.toLocaleString()}</p>
+                    </div>
+                  ) : null}
                   <button onClick={() => onAuthorClick?.(primaryAuthor)} className="rounded-lg border border-bit-border bg-bit-panel/30 p-3 text-left shadow-sm transition-colors hover:border-bit-accent/50 group/meta" title={fullAuthorText}>
                     <p className="mb-1 text-[9px] font-mono font-bold uppercase text-bit-muted transition-colors group-hover/meta:text-bit-accent">{book.source === 'YoBook' ? 'By Publisher' : 'By Author'}</p>
                     <p className="line-clamp-2 text-sm font-display font-bold text-bit-text transition-colors group-hover/meta:text-bit-accent">{compactAuthorText}</p>
@@ -882,6 +904,50 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                 </section>
               )}
 
+              {(() => {
+                let current = 0, total = 0, label = '';
+
+                const ch = readReaderEntry<{ chapterIndex?: number; totalChapters?: number }>(getPdfReaderProgressKey(book.id));
+                if (ch?.chapterIndex) {
+                  current = ch.chapterIndex;
+                  total = ch.totalChapters || book.chapterPdfUrls?.length || 0;
+                  label = 'Chapter';
+                } else {
+                  const pdfUrl = book.chapterPdfUrls?.[0]?.pdfUrl || (isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl : null);
+                  if (pdfUrl) {
+                    const s = readReaderEntry<{ studies?: Record<string, { lastPage?: number; pageCount?: number }> }>('pdf');
+                    const study = s?.studies?.[getStudyId(pdfUrl)];
+                    if (study?.lastPage) {
+                      current = study.lastPage;
+                      total = study.pageCount || book.pages || 0;
+                      label = 'Page';
+                    }
+                  }
+                }
+
+                if (!current) return null;
+
+                const pct = total > 0 ? Math.min(current / total, 1) : 0;
+                const circ = 2 * Math.PI * 42;
+
+                return (
+                  <div className="mb-12 flex items-center gap-6 rounded-xl border border-bit-accent/20 bg-bit-accent/5 p-6">
+                    <svg viewBox="0 0 100 100" className="h-24 w-24 shrink-0 -rotate-90">
+                      <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="6" className="text-bit-accent/10" />
+                      {total > 0 && (
+                        <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" strokeWidth="6" strokeLinecap="round"
+                          className="text-bit-accent" strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)} />
+                      )}
+                    </svg>
+                    <div>
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-accent">Reading progress</p>
+                      <p className="mt-1 text-lg font-display font-bold text-bit-text">
+                        {label} {current}{total > 0 ? ` — ${Math.round(pct * 100)}%` : ''}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
               {book.chapterPdfUrls && book.chapterPdfUrls.length > 0 && (
                 <section className="mb-12">
                   <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

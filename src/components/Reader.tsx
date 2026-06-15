@@ -357,11 +357,11 @@ const readSavedPdfChapterIndex = (bookId: string, chapterCount: number) => {
   }
 };
 
-const writeSavedPdfChapterIndex = (bookId: string, chapterIndex: number) => {
+const writeSavedPdfChapterIndex = (bookId: string, chapterIndex: number, totalChapters?: number) => {
   if (typeof window === 'undefined') return;
 
   try {
-    writeReaderEntry(getPdfReaderProgressKey(bookId), { chapterIndex, updatedAt: Date.now() });
+    writeReaderEntry(getPdfReaderProgressKey(bookId), { chapterIndex, totalChapters, updatedAt: Date.now() });
   } catch {
     // Reader progress is helpful, but storage failures should not block reading.
   }
@@ -1106,7 +1106,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
   useEffect(() => {
     if (pdfChapters.length < 2) return;
-    writeSavedPdfChapterIndex(book.id, selectedPdfChapterIndex);
+    writeSavedPdfChapterIndex(book.id, selectedPdfChapterIndex, pdfChapters.length);
   }, [book.id, pdfChapters.length, selectedPdfChapterIndex]);
 
   useEffect(() => {
@@ -1266,7 +1266,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       >
         <div className="relative w-full h-full overflow-hidden">
           {book.coverUrl ? (
-            <img src={book.coverUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-700" alt="" />
+            <img src={book.coverUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-700" alt={book.title} />
           ) : (
             <div className={`w-full h-full bg-gradient-to-br ${book.coverGradient || 'from-bit-accent/10 to-transparent'} flex items-center justify-center p-6 text-center`}>
               <p className="text-bit-muted font-display font-bold text-xs uppercase tracking-widest leading-relaxed">{book.title}</p>

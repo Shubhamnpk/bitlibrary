@@ -284,6 +284,73 @@
   @apply text-bit-accent hover:text-bit-text underline transition-colors;
 }
 
+.prose-bit table {
+  @apply w-full border-collapse my-8 text-sm;
+}
+
+.prose-bit thead {
+  @apply border-b-2 border-bit-accent/30;
+}
+
+.prose-bit th {
+  @apply text-left py-3 px-4 font-mono text-[10px] uppercase tracking-widest text-bit-muted font-bold;
+}
+
+.prose-bit td {
+  @apply py-3 px-4 border-b border-bit-border/50 text-bit-muted leading-relaxed;
+}
+
+.prose-bit tr:hover td {
+  @apply bg-bit-panel/30;
+}
+
+.prose-bit tr:last-child td {
+  @apply border-b-0;
+}
+
+.prose-bit code {
+  @apply bg-bit-panel/50 border border-bit-border rounded px-2 py-0.5 text-[13px] font-mono text-bit-accent;
+}
+
+.prose-bit pre {
+  @apply bg-bit-panel/40 border border-bit-border rounded-2xl p-5 my-6 overflow-x-auto;
+}
+
+.prose-bit pre code {
+  @apply bg-transparent border-0 p-0 text-bit-text;
+}
+
+.prose-bit ul {
+  @apply space-y-2 my-6;
+}
+
+.prose-bit ul li {
+  @apply flex items-start gap-3 text-bit-muted leading-relaxed;
+}
+
+.prose-bit ul li::before {
+  content: "→";
+  @apply text-bit-accent font-mono shrink-0;
+}
+
+.prose-bit ol {
+  @apply space-y-3 my-6 list-decimal list-inside;
+}
+
+.prose-bit ol li {
+  @apply text-bit-muted leading-relaxed pl-2;
+}
+
+.prose-bit h2 {
+  @apply text-2xl md:text-3xl font-display font-bold text-bit-text mb-6 mt-14 tracking-tight;
+  scroll-margin-top: 6rem;
+}
+
+.prose-bit h3 {
+  @apply text-xl font-display font-bold text-bit-text mb-4 mt-10 tracking-tight;
+  scroll-margin-top: 6rem;
+}
+
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }

@@ -21,6 +21,7 @@ export interface PdfTextHighlight {
 
 export interface PdfStudyState {
   lastPage?: number;
+  pageCount?: number;
   bookmarks: number[];
   highlights: number[];
   notes: Record<string, string>;
@@ -70,9 +71,13 @@ const compactStudyState = (state: Partial<PdfStudyState> | null | undefined): Pd
   const parsedLastPage = typeof state?.lastPage === 'number' && Number.isFinite(state.lastPage) && state.lastPage > 0
     ? Math.floor(state.lastPage)
     : undefined;
+  const parsedPageCount = typeof state?.pageCount === 'number' && Number.isFinite(state.pageCount) && state.pageCount > 0
+    ? Math.floor(state.pageCount)
+    : undefined;
 
   return {
     lastPage: parsedLastPage,
+    pageCount: parsedPageCount,
     bookmarks: Array.isArray(state?.bookmarks) ? state.bookmarks.filter(Number.isFinite) : [],
     highlights: Array.isArray(state?.highlights) ? state.highlights.filter(Number.isFinite) : [],
     notes: state?.notes && typeof state.notes === 'object' ? state.notes as Record<string, string> : {},
@@ -86,7 +91,7 @@ const compactStudyState = (state: Partial<PdfStudyState> | null | undefined): Pd
   };
 };
 
-const getStudyId = (pdfUrl: string) => {
+export const getStudyId = (pdfUrl: string) => {
   let hash = 0;
   for (let index = 0; index < pdfUrl.length; index += 1) {
     hash = Math.imul(31, hash) + pdfUrl.charCodeAt(index) | 0;

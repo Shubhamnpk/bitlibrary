@@ -211,20 +211,27 @@ const Navbar: React.FC<NavbarProps> = ({
 
             {showSearchSurface && (
               <div className="absolute left-0 right-0 top-[calc(100%+0.75rem)] rounded-3xl border border-bit-border bg-bit-panel/95 backdrop-blur-2xl shadow-2xl shadow-bit-bg/40 overflow-hidden">
-                <div className="px-5 py-4 border-b border-bit-border/40 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent">Search Control</p>
-                    <p className="text-sm text-bit-muted mt-1">
-                      {voiceSearchError
-                        ? voiceSearchError
-                        : trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
-                        ? `Press Enter to open results for "${trimmedSearchQuery}".`
-                        : `Type at least ${SEARCH_MIN_QUERY_LENGTH} characters to start searching.`}
-                    </p>
+                <div className="px-5 py-4 border-b border-bit-border/40 space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent">Search Control</p>
+                      <p className="text-sm text-bit-muted mt-1">
+                        {voiceSearchError
+                          ? voiceSearchError
+                          : trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
+                          ? `Press Enter to open results for "${trimmedSearchQuery}".`
+                          : `Type at least ${SEARCH_MIN_QUERY_LENGTH} characters to start searching.`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/50 px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted">
+                      <Command size={12} />
+                      /
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/50 px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted">
-                    <Command size={12} />
-                    /
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-bit-muted/40 border border-bit-border/30 rounded-full px-3 py-1.5">
+                      Modes — coming soon
+                    </span>
                   </div>
                 </div>
 

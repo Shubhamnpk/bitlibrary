@@ -3,10 +3,13 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   DEFAULT_DESCRIPTION,
   DEFAULT_KEYWORDS,
+  DEFAULT_LOCALE,
   DEFAULT_TITLE,
+  GEO_KEYWORDS,
   SITE_NAME,
   SITE_URL,
   createBreadcrumbSchema,
+  createSearchActionSchema,
   toAbsoluteUrl,
   truncate,
 } from '@/lib/seo';
@@ -20,6 +23,10 @@ interface SeoProps {
   robots?: string;
   keywords?: string[];
   structuredData?: Array<Record<string, unknown>>;
+  locale?: string;
+  publishedTime?: string;
+  modifiedTime?: string;
+  noCrawl?: boolean;
 }
 
 const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
@@ -30,6 +37,7 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
       title: DEFAULT_TITLE,
       description: DEFAULT_DESCRIPTION,
       canonicalPath: '/',
+      locale: 'en_US',
     };
   }
 
@@ -39,6 +47,7 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
       description:
         'Browse BitLibrary by subject, author, and source to find public-domain books, open educational resources, classics, research texts, and readable digital editions.',
       canonicalPath: '/library',
+      locale: 'en_US',
       structuredData: [
         createBreadcrumbSchema([
           { name: 'BitLibrary', path: '/' },
@@ -51,14 +60,20 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
   const categoryMatch = pathname.match(/^\/(?:library|browse|books|category)\/(.+)$/);
   if (categoryMatch) {
     const category = decodeParam(categoryMatch[1]);
+    const isNepaliCategory = /Nepali|nepali|CDC|Curriculum|Social Studies|Health|Hamro/i.test(category);
     return {
       title: `${category} Books and Open Archives | BitLibrary`,
       description: truncate(
-        `Explore ${category} books, public-domain texts, author collections, and open archive records in BitLibrary's digital library.`,
-        155
+        `Explore ${category} books, public-domain texts, author collections, and open archive records in BitLibrary's digital library. Free online reading.`,
+        158
       ),
       canonicalPath: `/category/${encodeURIComponent(category)}`,
-      keywords: [category, `${category} books`, `${category} ebooks`, `${category} open library`],
+      keywords: [
+        category, `${category} books`, `${category} ebooks`,
+        `${category} open library`, `${category} public domain`,
+        ...(isNepaliCategory ? [`${category} Nepal`, `${category} CDC`, `class ${category}`] : []),
+      ],
+      locale: isNepaliCategory ? 'en_US' : 'en_US',
       structuredData: [
         createBreadcrumbSchema([
           { name: 'BitLibrary', path: '/' },
@@ -76,11 +91,12 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
       title: `${author} Books, Biography, and Works | BitLibrary`,
       description: truncate(
         `Discover books and open archive records by ${author}. Browse readable public-domain editions, related works, and author metadata on BitLibrary.`,
-        155
+        158
       ),
       canonicalPath: `/author/${encodeURIComponent(author)}`,
       type: 'profile',
-      keywords: [author, `${author} books`, `${author} works`, `${author} bibliography`],
+      locale: 'en_US',
+      keywords: [author, `${author} books`, `${author} works`, `${author} bibliography`, `${author} public domain`],
       structuredData: [
         createBreadcrumbSchema([
           { name: 'BitLibrary', path: '/' },
@@ -96,9 +112,10 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
     return {
       title: 'Book Details and Reading Options | BitLibrary',
       description:
-        'Inspect book metadata, author details, related works, reading options, downloads, and source links in BitLibrary.',
+        'Inspect book metadata, author details, related works, reading options, downloads, and source links in BitLibrary. Read public domain books online free.',
       canonicalPath: pathname,
       type: 'book',
+      locale: 'en_US',
     };
   }
 
@@ -110,7 +127,7 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
       description:
         'Search BitLibrary across public-domain books, open archive records, authors, subjects, and readable digital editions.',
       canonicalPath: '/search',
-      robots: 'noindex,follow',
+      locale: 'en_US',
     };
   }
 
@@ -118,9 +135,10 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
     return {
       title: 'Public Domain Audiobooks | BitLibrary',
       description:
-        'Listen to public-domain audiobooks from LibriVox inside BitLibrary, with source attribution and chapter-level playback.',
+        'Listen to public-domain audiobooks from LibriVox inside BitLibrary, with source attribution and chapter-level playback. Free classic audiobooks online.',
       canonicalPath: '/audiobooks',
-      keywords: ['public domain audiobooks', 'LibriVox audiobooks', 'free audiobooks', 'classic audiobooks'],
+      locale: 'en_US',
+      keywords: ['public domain audiobooks', 'LibriVox audiobooks', 'free audiobooks', 'classic audiobooks', 'free audio books online'],
       structuredData: [
         createBreadcrumbSchema([
           { name: 'BitLibrary', path: '/' },
@@ -136,6 +154,7 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
       description: 'Listen to a public-domain audiobook with chapter metadata, source links, and LibriVox attribution in BitLibrary.',
       canonicalPath: pathname,
       type: 'book',
+      locale: 'en_US',
     };
   }
 
@@ -145,6 +164,7 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
       description:
         'Learn how BitLibrary helps students, researchers, and readers discover open books, public-domain classics, authors, and digital reading paths.',
       canonicalPath: '/about',
+      locale: 'en_US',
       structuredData: [
         {
           '@context': 'https://schema.org',
@@ -163,6 +183,7 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
       description:
         'Follow BitLibrary version history, shipped improvements, small changes, and development direction.',
       canonicalPath: '/releases',
+      locale: 'en_US',
       keywords: ['BitLibrary releases', 'BitLibrary changelog', 'digital library version history'],
       structuredData: [
         createBreadcrumbSchema([
@@ -179,6 +200,7 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
       description:
         'See what BitLibrary is working on now, what is planned next, and the principles guiding future development.',
       canonicalPath: '/roadmap',
+      locale: 'en_US',
       keywords: ['BitLibrary roadmap', 'digital library roadmap', 'audiobook roadmap'],
       structuredData: [
         createBreadcrumbSchema([
@@ -189,12 +211,109 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
     };
   }
 
+  if (pathname === '/curriculum') {
+    return {
+      title: 'Nepal Curriculum Books and Resources | BitLibrary',
+      description:
+        'Browse Nepal CDC curriculum textbooks, teacher guides, and educational resources by grade and subject for Class 1-12.',
+      canonicalPath: '/curriculum',
+      locale: 'en_US',
+      keywords: ['Nepal curriculum', 'CDC textbooks', 'class 1-12 books', 'Nepali education', 'Nepal school books', 'CDC Nepal'],
+      structuredData: [
+        createBreadcrumbSchema([
+          { name: 'BitLibrary', path: '/' },
+          { name: 'Curriculum', path: '/curriculum' },
+        ]),
+      ],
+    };
+  }
+
+  if (pathname === '/curriculum/subjects') {
+    return {
+      title: 'Curriculum Subjects | BitLibrary',
+      description: 'Browse all curriculum subjects including Nepali, English, Mathematics, Science, Social Studies, and Health.',
+      canonicalPath: '/curriculum/subjects',
+      locale: 'en_US',
+      keywords: ['curriculum subjects', 'Nepali subject', 'English subject', 'Mathematics', 'Science', 'Social Studies'],
+      structuredData: [
+        createBreadcrumbSchema([
+          { name: 'BitLibrary', path: '/' },
+          { name: 'Curriculum', path: '/curriculum' },
+          { name: 'Subjects', path: '/curriculum/subjects' },
+        ]),
+      ],
+    };
+  }
+
+  if (pathname === '/dictionary') {
+    return {
+      title: searchQuery
+        ? `Dictionary Results for ${searchQuery} | BitLibrary`
+        : 'English and Nepali Dictionary | BitLibrary',
+      description:
+        'Search English definitions and Nepali dictionary entries in Devanagari script inside BitLibrary.',
+      canonicalPath: '/dictionary',
+      locale: 'en_US',
+      keywords: ['English dictionary', 'Nepali dictionary', 'Yo Shabdakosh', 'word definitions', 'BitLibrary dictionary'],
+    };
+  }
+
+  if (pathname === '/sources') {
+    return {
+      title: 'Data Sources and Credits | BitLibrary',
+      description: 'BitLibrary integrates with open book, research, and audio sources. See all credits, API attributions, and open-source tools here.',
+      canonicalPath: '/sources',
+      locale: 'en_US',
+      keywords: ['BitLibrary sources', 'open data sources', 'book API credits', 'Gutendex', 'Open Library', 'LibriVox'],
+    };
+  }
+
+  if (pathname === '/blog') {
+    return {
+      title: 'BitLibrary Blog: Guides on Public Domain Books, Free Audiobooks, and Digital Reading',
+      description:
+        'Read guides on public domain books, free audiobooks, Nepal education curriculum, digital libraries, and open educational resources.',
+      canonicalPath: '/blog',
+      locale: 'en_US',
+      keywords: ['BitLibrary blog', 'digital library guide', 'public domain books guide', 'free audiobooks guide', 'free ebooks blog'],
+      structuredData: [
+        createBreadcrumbSchema([
+          { name: 'BitLibrary', path: '/' },
+          { name: 'Blog', path: '/blog' },
+        ]),
+      ],
+    };
+  }
+
+  if (pathname.startsWith('/blog/')) {
+    return {
+      title: 'BitLibrary Blog',
+      description: 'Read guides and resources about public domain books, free audiobooks, and digital reading on BitLibrary.',
+      canonicalPath: pathname,
+      locale: 'en_US',
+      type: 'article',
+    };
+  }
+
+  if (pathname === '/research') {
+    return {
+      title: searchQuery
+        ? `Research Results for ${searchQuery} | BitLibrary`
+        : 'Academic Research Search | BitLibrary',
+      description: 'Search academic papers across arXiv, PubMed, Semantic Scholar, OpenAlex, Crossref, and other open research databases.',
+      canonicalPath: '/research',
+      locale: 'en_US',
+      keywords: ['academic research', 'research papers', 'arXiv', 'PubMed', 'Semantic Scholar', 'open research'],
+    };
+  }
+
   if (pathname === '/mylibrary') {
     return {
       title: 'My Library | BitLibrary',
       description: 'Your local BitLibrary reading history, saved books, and recent searches.',
       canonicalPath: '/mylibrary',
-      robots: 'noindex,nofollow',
+      locale: 'en_US',
+      noCrawl: true,
     };
   }
 
@@ -203,7 +322,8 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
       title: 'Terms and Responsible Use | BitLibrary',
       description: 'Read the terms, acceptable-use notes, content limitations, and reader responsibilities for BitLibrary.',
       canonicalPath: '/terms',
-      robots: 'noindex,follow',
+      locale: 'en_US',
+      noCrawl: true,
     };
   }
 
@@ -211,7 +331,8 @@ const getRouteSeo = (pathname: string, searchQuery: string): SeoProps => {
     title: 'Page Not Found | BitLibrary',
     description: 'This BitLibrary page could not be found.',
     canonicalPath: pathname,
-    robots: 'noindex,follow',
+    locale: 'en_US',
+    noCrawl: true,
   };
 };
 
@@ -255,11 +376,13 @@ const writeStructuredData = (items: Array<Record<string, unknown>>) => {
 const Seo = (props: SeoProps) => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const routeSeo = getRouteSeo(location.pathname, searchParams.get('q')?.trim() || '');
+  const searchQuery = searchParams.get('q')?.trim() || '';
+  const routeSeo = getRouteSeo(location.pathname, searchQuery);
   const seo = {
     ...routeSeo,
     ...props,
     structuredData: [...(routeSeo.structuredData || []), ...(props.structuredData || [])],
+    noCrawl: props.noCrawl ?? routeSeo.noCrawl ?? false,
   };
 
   useEffect(() => {
@@ -268,15 +391,21 @@ const Seo = (props: SeoProps) => {
     const canonicalPath = seo.canonicalPath || location.pathname;
     const canonical = toAbsoluteUrl(canonicalPath);
     const image = toAbsoluteUrl(seo.image || '/assets/bitlibrary-og.png');
-    const keywords = Array.from(new Set([...(seo.keywords || []), ...DEFAULT_KEYWORDS]));
-    const robots = seo.robots || 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1';
+    const keywords = Array.from(new Set([...(seo.keywords || []), ...GEO_KEYWORDS]));
+    const locale = seo.locale || DEFAULT_LOCALE;
+
+    const robots = seo.noCrawl
+      ? 'noindex,nofollow'
+      : (seo.robots || 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1');
 
     document.title = title;
+
     upsertMeta('meta[name="description"]', { name: 'description', content: description });
     upsertMeta('meta[name="keywords"]', { name: 'keywords', content: keywords.join(', ') });
     upsertMeta('meta[name="robots"]', { name: 'robots', content: robots });
     upsertMeta('meta[name="author"]', { name: 'author', content: 'BitLibrary Team' });
     upsertMeta('meta[name="theme-color"]', { name: 'theme-color', content: '#0f1117' });
+    upsertMeta('meta[name="application-name"]', { name: 'application-name', content: 'BitLibrary' });
 
     upsertMeta('meta[property="og:site_name"]', { property: 'og:site_name', content: SITE_NAME });
     upsertMeta('meta[property="og:title"]', { property: 'og:title', content: title });
@@ -285,6 +414,20 @@ const Seo = (props: SeoProps) => {
     upsertMeta('meta[property="og:url"]', { property: 'og:url', content: canonical });
     upsertMeta('meta[property="og:image"]', { property: 'og:image', content: image });
     upsertMeta('meta[property="og:image:alt"]', { property: 'og:image:alt', content: `${SITE_NAME} preview image` });
+    upsertMeta('meta[property="og:locale"]', { property: 'og:locale', content: locale });
+
+    if (seo.publishedTime) {
+      upsertMeta('meta[property="article:published_time"]', { property: 'article:published_time', content: seo.publishedTime });
+    } else {
+      removeMeta('meta[property="article:published_time"]');
+    }
+
+    if (seo.modifiedTime) {
+      upsertMeta('meta[property="article:modified_time"]', { property: 'article:modified_time', content: seo.modifiedTime });
+    } else {
+      removeMeta('meta[property="article:modified_time"]');
+    }
+
     if (seo.image) {
       removeMeta('meta[property="og:image:width"]');
       removeMeta('meta[property="og:image:height"]');
@@ -298,39 +441,39 @@ const Seo = (props: SeoProps) => {
     upsertMeta('meta[name="twitter:description"]', { name: 'twitter:description', content: description });
     upsertMeta('meta[name="twitter:image"]', { name: 'twitter:image', content: image });
     upsertMeta('meta[name="twitter:image:alt"]', { name: 'twitter:image:alt', content: `${SITE_NAME} preview image` });
+    upsertMeta('meta[name="twitter:site"]', { name: 'twitter:site', content: '@bitlibrary' });
 
     upsertLink('canonical', canonical);
     upsertLink('alternate', canonical, { hreflang: 'en' });
 
-    const baseStructuredData = [
+    const baseStructuredData: Array<Record<string, unknown>> = [
       {
         '@context': 'https://schema.org',
         '@type': 'Organization',
         name: SITE_NAME,
         url: SITE_URL,
         logo: toAbsoluteUrl('/assets/bitlibrary-logo.svg'),
-        sameAs: ['https://github.com/Shubhamnpk/bitlibrary'],
+        sameAs: [
+          'https://github.com/Shubhamnpk/bitlibrary',
+        ],
+        description: 'An open digital library for books, authors, public-domain classics, and research-friendly reading.',
       },
-      {
-        '@context': 'https://schema.org',
-        '@type': 'WebSite',
-        name: SITE_NAME,
-        url: SITE_URL,
-        potentialAction: {
-          '@type': 'SearchAction',
-          target: `${SITE_URL}/search?q={search_term_string}`,
-          'query-input': 'required name=search_term_string',
-        },
-      },
+      createSearchActionSchema(),
     ];
 
-    writeStructuredData([...baseStructuredData, ...(seo.structuredData || [])]);
+    const allStructuredData = [...baseStructuredData, ...(seo.structuredData || [])];
+
+    writeStructuredData(allStructuredData);
   }, [
     location.pathname,
     seo.canonicalPath,
     seo.description,
     seo.image,
     seo.keywords,
+    seo.locale,
+    seo.modifiedTime,
+    seo.noCrawl,
+    seo.publishedTime,
     seo.robots,
     seo.structuredData,
     seo.title,

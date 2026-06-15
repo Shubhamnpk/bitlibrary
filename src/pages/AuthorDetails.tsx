@@ -13,7 +13,7 @@ import BookCard from '@/components/BookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { ArrowLeft, User, Calendar, Zap, Info, Library } from 'lucide-react';
 import Seo from '@/components/Seo';
-import { createItemListSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
+import { createFaqSchema, createItemListSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 import { isReadableSearchBook } from '@/lib/searchOptimization';
 
 const AUTHOR_PROVIDER_TIMEOUT_MS = 5500;
@@ -168,7 +168,7 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
         )}
         canonicalPath={`/author/${encodeURIComponent(authorName)}`}
         type="profile"
-        keywords={[authorName, `${authorName} books`, `${authorName} bibliography`, `${authorName} works`].filter(Boolean)}
+        keywords={[authorName, `${authorName} books`, `${authorName} bibliography`, `${authorName} works`, `${authorName} public domain`].filter(Boolean)}
         structuredData={[
           {
             '@context': 'https://schema.org',
@@ -192,6 +192,15 @@ const AuthorDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookCli
               `${authorName} books on BitLibrary`
             ),
           ] : []),
+          {
+            '@context': 'https://schema.org',
+            '@type': 'WebPage',
+            speakable: { '@type': 'SpeakableSpecification', cssSelector: ['h1', 'h2'] },
+          },
+          ...(books.length > 0 ? [createFaqSchema([
+            { question: `Who is ${authorName}?`, answer: `${authorName} is an author with ${books.length} books available on BitLibrary.` },
+            { question: `What books did ${authorName} write?`, answer: `${authorName} wrote books including ${books.slice(0, 3).map((b) => b.title).join(', ')} and more.` },
+          ])] : []),
         ]}
       />
       {/* Navigation Header */}

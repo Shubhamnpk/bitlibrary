@@ -302,3 +302,6 @@ export const formatStorageBytes = (bytes: number) => {
   return `${(bytes / MB).toFixed(2)} MB`;
 };
 import { readStorageItem, removeStorageItem, writeStorageItem } from '@/lib/encrypted-storage';
+
+export const getPdfReaderProgressKey = (bookId: string) =>
+  `pdf-progress:${encodeURIComponent(bookId).slice(0, 160)}`;

@@ -13,7 +13,7 @@ import BookCard from '@/components/BookCard';
 import { BookGridSkeleton } from '@/components/Skeletons';
 import { ArrowLeft, Library, Zap, Info, ChevronRight, LayoutGrid, SlidersHorizontal } from 'lucide-react';
 import Seo from '@/components/Seo';
-import { createItemListSchema, truncate } from '@/lib/seo';
+import { createFaqSchema, createItemListSchema, truncate } from '@/lib/seo';
 import { isReadableSearchBook, mergeUniqueBooks, rankBooks } from '@/lib/searchOptimization';
 
 const CATEGORY_MAX_RESULTS = 120;
@@ -130,13 +130,17 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
           155
         )}
         canonicalPath={`/category/${encodeURIComponent(decodedCategory)}`}
-        keywords={[decodedCategory, `${decodedCategory} books`, `${decodedCategory} ebooks`, `${decodedCategory} public domain`]}
+        keywords={[decodedCategory, `${decodedCategory} books`, `${decodedCategory} ebooks`, `${decodedCategory} public domain`, `${decodedCategory} open library`]}
         structuredData={[
           {
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: `${decodedCategory} books`,
             description: `Open digital library collection for ${decodedCategory} books and archive records.`,
+            isPartOf: {
+              '@type': 'Library',
+              name: 'BitLibrary',
+            },
           },
           ...(books.length > 0 ? [
           createItemListSchema(
@@ -148,6 +152,15 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
             `${decodedCategory} books on BitLibrary`
           ),
           ] : []),
+          {
+            '@context': 'https://schema.org',
+            '@type': 'WebPage',
+            speakable: { '@type': 'SpeakableSpecification', cssSelector: ['h1', 'h2'] },
+          },
+          ...(books.length > 0 ? [createFaqSchema([
+            { question: `What ${decodedCategory} books are available?`, answer: `Browse ${books.length} ${decodedCategory} books, public-domain editions, and open archive records on BitLibrary.` },
+            { question: `Can I read ${decodedCategory} books online?`, answer: `Yes, you can read ${decodedCategory} books online in BitLibrary's built-in reader for free.` },
+          ])] : []),
         ]}
       />
       {/* Navigation Header */}

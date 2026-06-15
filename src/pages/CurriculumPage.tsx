@@ -9,7 +9,7 @@ import { BookCardSkeleton, BookGridSkeleton } from '@/components/Skeletons';
 import Seo from '@/components/Seo';
 import AppSelect from '@/components/AppSelect';
 import { ArrowRight, BookMarked, BookOpen, GraduationCap, Headphones, LayoutGrid, LibraryBig, ListFilter, RotateCcw, Search } from 'lucide-react';
-import { createItemListSchema, truncate } from '@/lib/seo';
+import { createFaqSchema, createItemListSchema, truncate } from '@/lib/seo';
 import { Link } from 'react-router-dom';
 import {
   AudioGradeRows,
@@ -220,6 +220,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
             '@type': 'CollectionPage',
             name: 'Curriculum Books',
             description: 'CDC Nepal and NCERT curriculum books for classes 1 through 12.',
+            isPartOf: { '@type': 'Library', name: 'BitLibrary' },
           },
           ...(allVisibleBooks.length + visibleUngradedBooks.length > 0 ? [
             createItemListSchema(
@@ -231,6 +232,16 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
               'Curriculum books on BitLibrary'
             ),
           ] : []),
+          {
+            '@context': 'https://schema.org',
+            '@type': 'WebPage',
+            speakable: { '@type': 'SpeakableSpecification', cssSelector: ['h1', 'h2'] },
+          },
+          createFaqSchema([
+            { question: 'What are curriculum books?', answer: 'Curriculum books are textbooks and teacher guides published by educational boards like CDC Nepal and NCERT for school students.' },
+            { question: 'Which classes are covered?', answer: 'BitLibrary covers curriculum books for classes 1 through 12 across subjects like Nepali, English, Mathematics, Science, and Social Studies.' },
+            { question: 'Are teacher guides available?', answer: 'Yes, teacher guides and instructional manuals are available alongside textbooks for many grades and subjects.' },
+          ]),
         ]}
       />
 

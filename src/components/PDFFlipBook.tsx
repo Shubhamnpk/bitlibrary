@@ -895,7 +895,6 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const pendingZoomRef = useRef(zoom);
   const zoomFrameRef = useRef<number | null>(null);
   const handledStudyActionRef = useRef<number | null>(null);
-  const skipNextStudyStateWriteRef = useRef(false);
   const loadedTableOfContentsRequestRef = useRef<string | null>(null);
   const pdfSpeechStoppedRef = useRef(false);
   const pdfSpeechRestartingRef = useRef(false);
@@ -1258,18 +1257,12 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   }, [soundEnabled]);
 
   useEffect(() => {
-    skipNextStudyStateWriteRef.current = true;
     setStudyState(readPdfStudyState(pdfUrl));
     setPendingTextSelection(null);
     loadedTableOfContentsRequestRef.current = null;
   }, [pdfUrl]);
 
   useEffect(() => {
-    if (skipNextStudyStateWriteRef.current) {
-      skipNextStudyStateWriteRef.current = false;
-      return;
-    }
-
     writePdfStudyState(pdfUrl, studyState);
   }, [pdfUrl, studyState]);
 
@@ -1314,9 +1307,11 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
     setStudyState((currentState) => {
       const lastPage = Math.floor(currentPage);
-      return currentState.lastPage === lastPage ? currentState : { ...currentState, lastPage };
+      const pc = pageCount > 0 ? pageCount : undefined;
+      if (currentState.lastPage === lastPage && currentState.pageCount === pc) return currentState;
+      return { ...currentState, lastPage, pageCount: pc };
     });
-  }, [currentPage]);
+  }, [currentPage, pageCount]);
 
   useEffect(() => {
     zoomRef.current = zoom;
