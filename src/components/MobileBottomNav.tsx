@@ -4,10 +4,9 @@ import { Link, useLocation } from 'react-router-dom';
 
 interface MobileBottomNavProps {
   hidden: boolean;
-  onProfileClick: () => void;
 }
 
-const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ hidden, onProfileClick }) => {
+const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ hidden }) => {
   const location = useLocation();
   if (hidden) return null;
 
@@ -28,14 +27,13 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ hidden, onProfileClic
       label: 'Saved',
       href: '/mylibrary',
       icon: Bookmark,
-      active: location.pathname === '/mylibrary' && location.hash !== '#profile',
+      active: location.pathname === '/mylibrary',
     },
     {
       label: 'Profile',
-      href: '/mylibrary',
+      href: '/profile',
       icon: User,
-      active: false,
-      action: onProfileClick,
+      active: location.pathname === '/profile',
     },
   ];
 
@@ -45,27 +43,15 @@ const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ hidden, onProfileClic
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
-            item.action ? (
-              <button
-                key={item.label}
-                type="button"
-                onClick={item.action}
-                className="flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-bit-panel/35 px-1.5 py-2 text-[9px] font-bold text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-text"
-              >
-                <Icon size={17} />
-                <span className="truncate">{item.label}</span>
-              </button>
-            ) : (
-              <Link
-                key={item.label}
-                to={item.href}
-                className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1.5 py-2 text-[9px] font-bold transition-all ${item.active ? 'bg-bit-accent text-white shadow-md shadow-bit-accent/20' : 'bg-bit-panel/35 text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
-                aria-current={item.active ? 'page' : undefined}
-              >
-                <Icon size={17} />
-                <span className="truncate">{item.label}</span>
-              </Link>
-            )
+            <Link
+              key={item.label}
+              to={item.href}
+              className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-1.5 py-2 text-[9px] font-bold transition-all ${item.active ? 'bg-bit-accent text-white shadow-md shadow-bit-accent/20' : 'bg-bit-panel/35 text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
+              aria-current={item.active ? 'page' : undefined}
+            >
+              <Icon size={17} />
+              <span className="truncate">{item.label}</span>
+            </Link>
           );
         })}
       </div>

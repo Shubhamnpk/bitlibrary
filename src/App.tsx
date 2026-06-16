@@ -8,6 +8,7 @@ import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight, Arr
 import BookDetails from '@/pages/BookDetails';
 import { BookDetailsSkeleton, BookCardSkeleton } from '@/components/Skeletons';
 import MyLibraryPage from '@/pages/MyLibrary';
+import SettingsPage from '@/pages/profile';
 import LibraryPage from '@/pages/Library';
 import AboutPage from '@/pages/AboutPage';
 import StaticPage from '@/pages/StaticPage';
@@ -36,13 +37,13 @@ import Navbar from '@/components/Navbar';
 import Seo from '@/components/Seo';
 import FloatingScrollButton from '@/components/FloatingScrollButton';
 import MobileBottomNav from '@/components/MobileBottomNav';
-import MobileProfileModal from '@/components/MobileProfileModal';
+
 
 const SEARCH_DEBOUNCE_MS = 400;
 const EXPLORE_CACHE_KEY = 'explore';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
-const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/curriculum/subjects','/mylibrary','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources','/blog','/blog/:slug',];
+const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/curriculum/subjects','/mylibrary','/profile','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources','/blog','/blog/:slug',];
 const HERO_ORBIT_NODES = {
   star: {
     title: 'Archive Star',
@@ -118,7 +119,7 @@ const App: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [isFeaturedLoading, setIsFeaturedLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
+
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const { state: localUserState } = useLocalUserState();
@@ -265,8 +266,8 @@ const App: React.FC = () => {
     [location.pathname]
   );
   const isLibraryRoute = /^\/(?:library|books|browse|mylibrary)(?:\/|$)/.test(location.pathname);
-  const hideFloatingScrollControls = Boolean(isReaderActive || readerLoading || mobileMenuOpen || mobileProfileOpen);
-  const hideMobileBottomNav = Boolean(isReaderActive || readerLoading || mobileMenuOpen || mobileProfileOpen || isNotFoundRoute);
+  const hideFloatingScrollControls = Boolean(isReaderActive || readerLoading || mobileMenuOpen);
+  const hideMobileBottomNav = Boolean(isReaderActive || readerLoading || mobileMenuOpen || isNotFoundRoute);
 
   const handleReadBook = useCallback((book: Book) => {
     recordRecentlyViewedBook(book);
@@ -286,7 +287,7 @@ const App: React.FC = () => {
       if (e.key === 'Escape') {
         closeSearchSurface();
         setMobileMenuOpen(false);
-        setMobileProfileOpen(false);
+
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -586,12 +587,21 @@ const App: React.FC = () => {
                 savedAudiobooks={localUserState.savedAudiobooks}
                 recentSearches={localUserState.recentSearches}
                 recentlyViewed={localUserState.recentlyViewed}
-                profile={localUserState.profile}
-                settings={localUserState.settings}
                 onBookClick={navigateToBook}
                 onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
                 onRead={handleReadBook}
                 onExplore={() => navigate('/')}
+              />
+            </div>
+          } />
+
+          <Route path="/profile" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <SettingsPage
+                profile={localUserState.profile}
+                settings={localUserState.settings}
+                recentSearches={localUserState.recentSearches}
+                onBack={() => navigate(-1)}
               />
             </div>
           } />
@@ -704,12 +714,7 @@ const App: React.FC = () => {
         hidden={hideFloatingScrollControls}
         hideScrollDown={isLibraryRoute}
       />
-      <MobileBottomNav hidden={hideMobileBottomNav} onProfileClick={() => setMobileProfileOpen(true)} />
-      <MobileProfileModal
-        open={mobileProfileOpen}
-        onClose={() => setMobileProfileOpen(false)}
-        localUserState={localUserState}
-      />
+      <MobileBottomNav hidden={hideMobileBottomNav} />
 
       {/* Global PiP Overlay */}
       {readerLoading && !activeBook && <ReaderSkeleton />}
