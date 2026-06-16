@@ -239,7 +239,7 @@
       "title": "Reader comfort and look",
       "area": "Reader",
       "icon": "design",
-      "version": "v0.5.0",
+      "version": "v0.6.0",
       "summary": "The reader should feel crisp, centered, calm, and usable on mobile and desktop, with side-panel tools and bottom controls staying intentional.",
       "subGoals": [
         {
@@ -270,11 +270,11 @@
     },
     {
       "id": "mobile-bottom-nav",
-      "title": "Dedicated mobile navigation",
+      "title": "Mobile navigation and spacing polish",
       "area": "Core",
       "icon": "design",
-      "version": "v0.5.0",
-      "summary": "Mobile readers should get a thumb-friendly bottom navigation and simpler mobile-first paths into search, library, reader, and audio.",
+      "version": "v0.6.0",
+      "summary": "Mobile readers should get thumb-friendly navigation, cleaner spacing, and simpler mobile-first paths into search, library, reader, and audio.",
       "subGoals": [
         {
           "title": "Bottom navigation bar",
@@ -299,7 +299,7 @@
       "title": "Connected book and audio paths",
       "area": "Audio",
       "icon": "audio",
-      "version": "v0.5.0",
+      "version": "v0.6.0",
       "summary": "Books and matching audio should point to each other when they describe the same work or curriculum unit.",
       "subGoals": [
         {
@@ -321,7 +321,7 @@
       "title": "Library portability",
       "area": "Library",
       "icon": "sync",
-      "version": "v0.5.0",
+      "version": "v0.6.0",
       "summary": "Users should be able to keep, move, and recover their local reading and listening data.",
       "subGoals": [
         {
@@ -340,11 +340,11 @@
     },
     {
       "id": "local-profile-management",
-      "title": "Local profile management",
+      "title": "Local account/profile management",
       "area": "Library",
       "icon": "library",
-      "version": "v0.5.0",
-      "summary": "The local reader profile should grow from a simple name into a proper private profile with preferences, identity details, and management tools.",
+      "version": "v0.6.0",
+      "summary": "The local reader profile should grow from a simple name into a proper private account/profile space with preferences, identity details, and management tools.",
       "subGoals": [
         {
           "title": "Edit name and picture",
@@ -366,11 +366,11 @@
     },
     {
       "id": "trust-layer",
-      "title": "Trust and source clarity",
+      "title": "Source quality and usage-right clarity",
       "area": "Trust",
       "icon": "trust",
-      "version": "v0.5.0",
-      "summary": "Every archive-backed item should make source, license, access quality, and readable availability clearer.",
+      "version": "v0.6.0",
+      "summary": "Every archive-backed item should make source quality, usage rights, license signals, access quality, and readable availability clearer.",
       "subGoals": [
         {
           "title": "Show source quality",
@@ -429,6 +429,204 @@
         {
           "title": "Continue reading through PDF pages and two-page spreads",
           "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "reading-progress",
+      "title": "Reading progress indicators",
+      "area": "Reader",
+      "icon": "reader",
+      "version": "v0.6.0",
+      "summary": "Books show circular progress rings on cards and detail pages. Chapter-based (NCERT multi-PDF) and page-based (single PDF) progress are tracked, stored, and displayed.",
+      "subGoals": [
+        {
+          "title": "Circular SVG progress ring on BookCard",
+          "progress": 100
+        },
+        {
+          "title": "Circular SVG progress ring on BookDetails",
+          "progress": 100
+        },
+        {
+          "title": "Chapter-based progress with stored totalChapters",
+          "progress": 100
+        },
+        {
+          "title": "Page-based progress with stored pageCount",
+          "progress": 100
+        },
+        {
+          "title": "Initial page save on PDF open",
+          "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "my-library-ux",
+      "title": "My Library UX improvements",
+      "area": "Library",
+      "icon": "library",
+      "version": "v0.6.0",
+      "summary": "My Library gained a collapsible tools sidebar, drag-scroll Continue Reading with all recent books, progress rings in history, and conditional stats rendering.",
+      "subGoals": [
+        {
+          "title": "Collapsible library tools sidebar",
+          "progress": 100
+        },
+        {
+          "title": "Continue Reading drag-scroll with all recent books",
+          "progress": 100
+        },
+        {
+          "title": "Progress rings in History tab",
+          "progress": 100
+        },
+        {
+          "title": "Conditional Downloads/Impact Score rendering",
+          "progress": 100
+        },
+        {
+          "title": "View-all navigation from Continue Reading to History",
+          "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "seo-blog",
+      "title": "SEO, blog, and Gutenberg audio",
+      "area": "Core",
+      "icon": "foundation",
+      "version": "v0.6.0",
+      "summary": "Sitemap generation, JSON-LD structured data, canonical URLs, meta tags, blog engine with rich posts, and Gutenberg audiobook support.",
+      "subGoals": [
+        {
+          "title": "Sitemap generation script",
+          "progress": 100
+        },
+        {
+          "title": "JSON-LD structured data on all major pages",
+          "progress": 100
+        },
+        {
+          "title": "Canonical URLs and SEO meta tags",
+          "progress": 100
+        },
+        {
+          "title": "Blog engine with post pages and table of contents",
+          "progress": 100
+        },
+        {
+          "title": "Gutenberg audiobook integration",
+          "progress": 100
+        }
+      ]
+    },
+    {
+      "id": "cache-management",
+      "title": "Cache management",
+      "area": "Core",
+      "icon": "sync",
+      "version": "v0.6.0",
+      "summary": "A proper cache system where local data is visible, predictable, and safe to clean up.",
+      "subGoals": [
+        {
+          "title": "Show cache size, age, and source groups",
+          "progress": 100
+        },
+        {
+          "title": "Clear stale API caches without clearing saved library data",
+          "progress": 85
+        },
+        {
+          "title": "Explain what each storage area controls",
+          "progress": 80
+        },
+        {
+          "title": "Add selective cleanup for search, reader, research, and source caches",
+          "progress": 100
+        },
+        {
+          "title": "Protect bookmarks, highlights, saved books, and profile data during cleanup",
+          "progress": 90
+        }
+      ]
+    },
+    {
+      "id": "safe-cache-cleanup",
+      "title": "Safe cache cleanup",
+      "area": "Core",
+      "icon": "sync",
+      "version": "v0.6.0",
+      "summary": "Cache cleanup is selective, understandable, and careful enough to avoid deleting important local library data.",
+      "subGoals": [
+        {
+          "title": "Separate cache cleanup from saved library cleanup",
+          "progress": 100
+        },
+        {
+          "title": "Require confirmation before destructive cleanup",
+          "progress": 100
+        },
+        {
+          "title": "Preview what will be removed",
+          "progress": 100
+        },
+        {
+          "title": "Keep protected reader and profile records safe",
+          "progress": 90
+        }
+      ]
+    },
+    {
+      "id": "ui-polish",
+      "title": "UI polish",
+      "area": "Core",
+      "icon": "design",
+      "version": "v0.6.0",
+      "summary": "The app feels cleaner and more consistent across cards, navigation, reader controls, and library workflows.",
+      "subGoals": [
+        {
+          "title": "Polish empty and loading states",
+          "progress": 40
+        },
+        {
+          "title": "Improve settings and profile surfaces",
+          "progress": 55
+        },
+        {
+          "title": "Tighten labels, spacing, and repeated actions",
+          "progress": 65
+        },
+        {
+          "title": "Reduce visual clutter in dense views",
+          "progress": 60
+        }
+      ]
+    },
+    {
+      "id": "feature-enhancement-pass",
+      "title": "General feature enhancement pass",
+      "area": "Core",
+      "icon": "foundation",
+      "version": "v0.6.0",
+      "summary": "Small improvements from real usage are tracked together so the version improves the whole product, not only one screen.",
+      "subGoals": [
+        {
+          "title": "Collect small workflow bugs and papercuts",
+          "progress": 60
+        },
+        {
+          "title": "Improve source handling where users hit dead ends",
+          "progress": 30
+        },
+        {
+          "title": "Tighten copy, labels, and route-to-route context",
+          "progress": 50
+        },
+        {
+          "title": "Keep build warnings and performance costs visible",
+          "progress": 40
         }
       ]
     },

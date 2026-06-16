@@ -10,11 +10,11 @@ By prioritizing **API Linking** over direct file hosting, we ensure BitLibrary c
 
 ---
 
-## Current Product Progress (v0.5.0 — Active)
+## Current Product Progress (v0.6.0 — Beta)
 
 Live progress tracking is in `src/data/roadmap.json` and visualized on the **Roadmap page** (`/roadmap`). Current milestones:
 
-### ✅ Completed (v0.1.0 – v0.5.0)
+### ✅ Completed (v0.1.0 – v0.6.0)
 
 - **Library foundation (v0.1.0):** Home page, navigation, book cards, reader shell, responsive layout, core visual system.
 - **Book discovery (v0.2.0):** Search, author pages, category pages, book detail routes, Open Library/Gutendex/Google Books/IT Bookstore integrations.
@@ -27,16 +27,20 @@ Live progress tracking is in `src/data/roadmap.json` and visualized on the **Roa
 - **Reader read-aloud (v0.5.0):** Text-to-speech for generated text and PDF pages, continuous PDF page/spread playback, live PDF sentence highlighting, voice/speed/pause, movable desktop audio controls, headphone trigger, smooth speed changes up to 2.5x.
 - **Trust layer — source filtering (v0.5.0):** Hide Internet Archive and Open Library entries without readable PDF/EPUB access — done at 100%.
 - **Inline dictionary & spelling (v0.5.0):** Dictionary results expand inline, English/Nepali correction suggestions, filter controls in result header.
+- **Reading progress (v0.6.0):** Circular SVG progress rings on BookCard and BookDetails. Chapter-based (NCERT multi-PDF) and page-based (single PDF) tracking with stored totalChapters and pageCount.
+- **Cache management (v0.6.0):** IndexedDB storage with per-category reporting, selective cleanup, and local data reset with confirmation.
+- **My Library UX (v0.6.0):** Collapsible tools sidebar, drag-scroll Continue Reading with all recent books, progress rings in history view, conditional stats rendering.
+- **SEO & blog (v0.6.0):** Sitemap generation, JSON-LD structured data, canonical URLs, meta tags across all major pages, blog engine with rich posts.
+- **Gutenberg audio (v0.6.0):** LibriVox audiobooks surfaced alongside Gutenberg texts with chapter-level audio support.
 
-### 🔄 In Progress (v0.5.0)
+### 🔄 In Progress (v0.6.0)
 
-- **YoBook curriculum coverage:** `96%` — Show school books fast, browse by grade/subject, show source provenance per item, full NFE and NCERT content.
 - **Reader comfort:** `92%` — Zoom, focused reading, smoother phone reading, side-panel polish, background presets.
 - **Connected book and audio paths:** `55-78%` — Listen from book pages, match books with their audio.
 - **Trust and source clarity:** `56-76%` — Show source quality and usage rights clearly.
 - **Local profile management:** `18-30%` — Edit name/picture, reading preferences, privacy controls, reset/restore.
 
-### 🟡 Early Stages (v0.5.0)
+### 🟡 Early Stages (v0.6.0)
 
 - **Mobile bottom navigation:** `16-20%` — Thumb-friendly bottom nav bar, quick actions, library/reader shortcuts, comfortable mobile spacing.
 - **Library portability:** `12-26%` — Custom collections, import/export, move bookmarks and highlights.
@@ -78,20 +82,30 @@ Live progress tracking is in `src/data/roadmap.json` and visualized on the **Roa
 - [x] YoBook API integration for curriculum books, chapter PDFs, and chapter-level audio.
 - [x] Research API integrations (arXiv, Semantic Scholar, OpenAlex, Crossref, DataCite, Europe PMC, etc.) behind a toggle.
 
-### 🔄 Phase 3: The "Infinite Reading" Experience — Active
+### ✅ Phase 3: The "Infinite Reading" Experience — Complete
 - [x] PDF viewer handling both local Blob URLs and external HTTPS links (PDF.js via `react-pdf`).
 - [x] Stream Gemini-generated "Preview Chapters" via OpenRouter API.
 - [x] Text reader with read-aloud, highlights, bookmarks, and study tools.
 - [x] Reader side-panel with bookmarks, grouped highlights, background presets, and focus mode.
-- [ ] Add a "Save to My Library" toggle that pins API books to the user's profile (done locally, Convex sync pending).
-- [ ] Smooth mobile reading experience improvements (66% → 100%).
+- [x] Reading progress tracking with circular indicators on cards and detail pages.
+- [x] Chapter-based (NCERT multi-PDF) and page-based (single PDF) progress with stored totals.
 
-### ⬜ Phase 4: Cloudflare R2 & Community Uploads — Not Started
+### 🟡 Phase 4: My Library, Cache & Release Readiness — Active (v0.6.0)
+- [x] Cache management with per-category reporting and selective cleanup.
+- [x] Collapsible library tools sidebar and drag-scroll Continue Reading.
+- [x] Progress rings in History tab and conditional stats rendering.
+- [x] Sitemap generation, JSON-LD structured data, and SEO meta tags.
+- [x] Blog engine with rich posts and table-of-contents navigation.
+- [x] Gutenberg audiobook integration alongside classic texts.
+- [ ] Smooth mobile reading experience improvements (66% → 100%).
+- [ ] Local profile management (edit name/picture, reading preferences).
+
+### ⬜ Phase 5: Cloudflare R2 & Community Uploads — Not Started
 - [ ] Configure **Cloudflare R2** for user contributions.
 - [ ] Build a secure "Upload Book" form with PDF compression.
 - [ ] Implement **Presigned URLs** so users can safely share rare books with the community.
 
-### 🟡 Phase 5: AI-Driven "Library Assistant" — Partially Started
+### 🟡 Phase 6: AI-Driven "Library Assistant" — Partially Started
 - [x] OpenRouter/Gemini integration for chapter summaries and book descriptions.
 - [ ] Allow users to ask: "Find me high-quality free books on Quantum computing."
 - [ ] Gemini will search all APIs and present the best three results with one-click "Borrow" options.
@@ -116,14 +130,18 @@ Live progress tracking is in `src/data/roadmap.json` and visualized on the **Roa
 - **API Linking (Primary):** Use for 99% of books. No storage cost. Scaling is infinite.
 - **R2 Storage (Secondary):** Reserved for "Original Works" or rare PDFs not found in public APIs. 10GB limit. (Not yet implemented.)
 
-## 📦 Current Release: v0.5.0
+## 📦 Current Release: v0.6.0 (Beta)
 
-The latest release is **v0.5.0** — "Reader study tools and smarter search." Key improvements:
-- Reader study tools: bookmarks, grouped highlights, highlight colors, focus mode, smoother PDF controls
-- Search improvements: debounce, minimum character threshold, pagination, safer URL sync
-- YoBook curriculum content: stronger priority across search, curriculum, and audiobook routes
-- Reader read-aloud: full TTS with live PDF sentence highlighting, continuous page playback, movable controls
-- Inline dictionary and spelling corrections (English + Nepali)
-- Voice search support
+The latest release is **v0.6.0-beta** — "Reading progress, cache system, and library UX." Key improvements:
+- Reading progress indicators — circular SVG rings on BookCard and BookDetails with chapter/page completion percentages
+- Chapter-based (NCERT multi-PDF) and page-based (single PDF) progress tracking with stored totals
+- Continue Reading section shows all recently viewed books with drag-scroll and view-all navigation
+- My Library tools collapsed into a slide-in sidebar drawer with cache reporting and selective cleanup
+- History tab now shows progress rings on books with saved reading data
+- Sitemap generation, JSON-LD structured data, and SEO meta tags across all pages
+- Blog engine with full post pages and table-of-contents navigation
+- Gutenberg audiobook support alongside classic texts
+- Cache management with per-category storage reporting and safe cleanup
+- Conditional Downloads/Impact Score rendering on BookDetails
 
 See `/releases` and `src/data/roadmap.json` for the complete version history and upcoming goals.

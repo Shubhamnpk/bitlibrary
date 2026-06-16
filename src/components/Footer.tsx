@@ -7,7 +7,7 @@ interface FooterProps {
   isReaderActive: boolean;
 }
 
-const FOOTER_BUILD_LABEL = 'v0.5.0 . Build 2026.06.08 . oss';
+const FOOTER_BUILD_LABEL = 'v0.6.0-dev . Build 2026.06.08 . oss';
 
 const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
   if (isReaderActive) return null;
@@ -72,6 +72,7 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
               <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Protocol</h4>
               <ul className="space-y-4 text-bit-muted">
                 <li><Link to="/about" className="hover:text-bit-accent transition-all">ABOUT BITLIBRARY</Link></li>
+                <li><Link to="/blog" className="hover:text-bit-accent transition-all">BLOG & GUIDES</Link></li>
                 <li><Link to="/releases" className="hover:text-bit-accent transition-all">RELEASE HISTORY</Link></li>
                 <li><Link to="/roadmap" className="hover:text-bit-accent transition-all">ROADMAP</Link></li>
                 <li><Link to="/dictionary" className="hover:text-bit-accent transition-all">DICTIONARY</Link></li>

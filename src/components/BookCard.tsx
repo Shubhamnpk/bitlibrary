@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Book } from '@/types/index';
 import { BookOpen, Bookmark, BarChart, Files, Download } from 'lucide-react';
 import { toggleSavedBook, useLocalUserState } from '@/lib/local-user';
+import { readReaderEntry, getPdfReaderProgressKey } from '@/lib/storage-manager';
+import { isPdfLikeUrl } from '@/lib/pdf';
+import { getStudyId } from '@/lib/pdf-reader-storage';
 import { HighlightedText } from './HighlightedText';
 import { formatCompactAuthors, getBookAuthors } from '@/lib/authors';
 import { getAccessMode } from '@/lib/access';
@@ -15,6 +18,7 @@ interface BookCardProps {
   onAuthorClick?: (name: string) => void;
   variant?: 'compact' | 'full';
   searchQuery?: string;
+  showProgress?: boolean;
 }
 
 const researchCoverThemes = [
@@ -73,10 +77,26 @@ const BookCard: React.FC<BookCardProps> = ({
   onAuthorClick, 
   variant = 'full',
   searchQuery,
+  showProgress,
 }) => {
   const navigate = useNavigate();
   const { state } = useLocalUserState();
   const isSaved = state.savedBooks.some((entry) => entry.id === book.id);
+  const savedProgress = showProgress ? readReaderEntry<{ chapterIndex?: number; totalChapters?: number }>(getPdfReaderProgressKey(book.id)) : null;
+  const hasChapterProgress = typeof savedProgress?.chapterIndex === 'number';
+  const chapterIndex = hasChapterProgress ? (savedProgress!.chapterIndex ?? 0) : 0;
+  const totalChapters = savedProgress?.totalChapters || (showProgress ? (book.chapterPdfUrls?.length || 0) : 0);
+  const pdfUrl = showProgress && (chapterIndex === 0) ? (book.chapterPdfUrls?.[0]?.pdfUrl || (isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl : null)) : null;
+  const pageStudy = pdfUrl ? (() => {
+    const storage = readReaderEntry<{ studies?: Record<string, { lastPage?: number; pageCount?: number }> }>('pdf');
+    const s = storage?.studies?.[getStudyId(pdfUrl)];
+    return s ? { lastPage: s.lastPage ?? null, pageCount: s.pageCount ?? null } : null;
+  })() : null;
+
+  const progressCurrent = hasChapterProgress ? chapterIndex : (pageStudy?.lastPage ?? 0);
+  const progressTotal = hasChapterProgress ? totalChapters : (pageStudy?.pageCount || book.pages || 0);
+  const hasProgress = showProgress && (hasChapterProgress || (pageStudy?.lastPage ?? 0) > 0);
+  const progressLabel = hasChapterProgress ? 'ch' : 'p';
   const questionPaperCount = book.questionPaperCount || book.question_papers?.length || 0;
   const isQuestionPaperCollection = questionPaperCount > 0;
   const accessMode = getAccessMode(book);
@@ -265,6 +285,24 @@ const BookCard: React.FC<BookCardProps> = ({
             </button>
           </div>
 
+          {hasProgress && (
+            <div className="absolute bottom-2 right-2 z-30 flex items-center justify-center">
+              <svg viewBox="0 0 46 46" className="h-12 w-12 -rotate-90">
+                <circle cx="23" cy="23" r="19" fill="rgba(0,0,0,0.6)" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
+                {progressTotal > 0 && (
+                  <circle cx="23" cy="23" r="19" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"
+                    className="text-bit-accent"
+                    strokeDasharray={119.38}
+                    strokeDashoffset={119.38 * (1 - Math.min(progressCurrent / progressTotal, 1))} />
+                )}
+              </svg>
+              <span className="absolute text-[9px] font-bold font-mono leading-none text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]">
+                {progressTotal > 0
+                  ? `${Math.round((progressCurrent / progressTotal) * 100)}%`
+                  : `${progressLabel}.${progressCurrent}`}
+              </span>
+            </div>
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-bit-panel/60 via-transparent to-transparent opacity-60 pointer-events-none" />
         </div>
 

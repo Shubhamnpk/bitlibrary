@@ -5,11 +5,12 @@ import { fetchAudiobookById, fetchFeaturedAudiobooks, searchAudiobooks } from '@
 import AudiobookCard from '@/components/AudiobookCard';
 import AppSelect from '@/components/AppSelect';
 import Seo from '@/components/Seo';
-import { ArrowLeft, Calendar, Download, ExternalLink, Gauge, Headphones, Heart, Library, ListMusic, Pause, Play, Radio, RotateCcw, RotateCw, ShieldCheck, SkipBack, SkipForward } from 'lucide-react';
+import { ArrowLeft, Calendar, Download, ExternalLink, Gauge, Headphones, Heart, Library, ListMusic, Pause, Play, Radio, RotateCcw, RotateCw, Share2, ShieldCheck, SkipBack, SkipForward, Zap } from 'lucide-react';
 import { createBreadcrumbSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 import { toggleSavedAudiobook as toggleLocalSavedAudiobook, useLocalUserState } from '@/lib/local-user';
+import { readReaderEntry, writeReaderEntry } from '@/lib/storage-manager';
 
-const PROGRESS_KEY_PREFIX = 'bitlibrary-audiobook-progress';
+const PROGRESS_KEY_PREFIX = 'audiobook-progress';
 const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 1.75, 2];
 const SKIP_SECONDS = 15;
 const DESCRIPTION_PREVIEW_LENGTH = 150;
@@ -62,11 +63,11 @@ const AudiobookDetails: React.FC = () => {
 
         if (result && typeof window !== 'undefined') {
           try {
-            const progress = JSON.parse(window.localStorage.getItem(getProgressKey(result.id)) || 'null') as {
+            const progress = readReaderEntry<{
               trackId?: string;
               currentTime?: number;
               playbackRate?: number;
-            } | null;
+            }>(getProgressKey(result.id));
             const savedTrack = result.tracks.find((track) => track.id === progress?.trackId);
             if (savedTrack) {
               nextTrack = savedTrack;
@@ -177,24 +178,24 @@ const AudiobookDetails: React.FC = () => {
   };
   const persistProgress = (time: number) => {
     if (!audiobook || !activeTrack || typeof window === 'undefined') return;
-    window.localStorage.setItem(getProgressKey(audiobook.id), JSON.stringify({
+    writeReaderEntry(getProgressKey(audiobook.id), {
       trackId: activeTrack.id,
       currentTime: time,
       playbackRate,
       updatedAt: Date.now(),
-    }));
+    });
   };
   const selectTrack = (track: AudiobookTrack) => {
     setResumeNotice('');
     setPendingSeekTime(0);
     setActiveTrack(track);
     if (audiobook && typeof window !== 'undefined') {
-      window.localStorage.setItem(getProgressKey(audiobook.id), JSON.stringify({
+      writeReaderEntry(getProgressKey(audiobook.id), {
         trackId: track.id,
         currentTime: 0,
         playbackRate,
         updatedAt: Date.now(),
-      }));
+      });
     }
   };
   const changeTrack = (direction: -1 | 1) => {
@@ -335,19 +336,73 @@ const AudiobookDetails: React.FC = () => {
           Back
         </button>
 
-        <button
-          type="button"
-          onClick={toggleSavedAudiobook}
-          className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.2em] shadow-sm transition-all ${
-            isSaved
-              ? 'border-bit-accent bg-bit-accent text-white shadow-bit-accent/20'
-              : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:border-bit-accent/30 hover:text-bit-accent'
-          }`}
-          aria-label={isSaved ? 'Remove audiobook from saved' : 'Save audiobook'}
-        >
-          <Heart size={14} className={isSaved ? 'fill-current' : ''} />
-          {isSaved ? 'Saved' : 'Save Audio'}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={async () => {
+              const shareUrl = `${window.location.origin}/audiobook/${audiobook?.id}`;
+              const shareTitle = `${audiobook?.title} by ${audiobook?.author || 'Unknown Author'} | BitLibrary Audiobook`;
+              const shareText = `Listen to "${audiobook?.title}" by ${audiobook?.author || 'Unknown Author'} on BitLibrary`;
+
+              if (navigator.share) {
+                try {
+                  await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
+                } catch (err) {
+                  if ((err as DOMException).name !== 'AbortError') {
+                    console.error('Share failed:', err);
+                  }
+                }
+              } else {
+                try {
+                  await navigator.clipboard.writeText(shareUrl);
+                  const btn = document.activeElement as HTMLButtonElement | null;
+                  if (btn) {
+                    const originalInner = btn.innerHTML;
+                    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                    btn.classList.add('text-green-400');
+                    setTimeout(() => {
+                      btn.innerHTML = originalInner;
+                      btn.classList.remove('text-green-400');
+                    }, 2000);
+                  }
+                } catch (err) {
+                  console.error('Clipboard copy failed:', err);
+                }
+              }
+            }}
+            className="inline-flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/30 px-5 py-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-muted shadow-sm transition-all hover:border-bit-accent/30 hover:text-bit-accent"
+            aria-label="Share audiobook"
+          >
+            <Share2 size={14} />
+            Share
+          </button>
+          <button
+            type="button"
+            onClick={() => setDescriptionExpanded((value) => !value)}
+            className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.2em] shadow-sm transition-all ${
+              descriptionExpanded
+                ? 'border-bit-accent bg-bit-accent/10 text-bit-accent'
+                : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:border-bit-accent/30 hover:text-bit-accent'
+            }`}
+            aria-label={descriptionExpanded ? 'Collapse description' : 'Expand description'}
+          >
+            <Zap size={14} className={descriptionExpanded ? 'text-bit-accent' : ''} />
+            Summary
+          </button>
+          <button
+            type="button"
+            onClick={toggleSavedAudiobook}
+            className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.2em] shadow-sm transition-all ${
+              isSaved
+                ? 'border-bit-accent bg-bit-accent text-white shadow-bit-accent/20'
+                : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:border-bit-accent/30 hover:text-bit-accent'
+            }`}
+            aria-label={isSaved ? 'Remove audiobook from saved' : 'Save audiobook'}
+          >
+            <Heart size={14} className={isSaved ? 'fill-current' : ''} />
+            {isSaved ? 'Saved' : 'Save Audio'}
+          </button>
+        </div>
       </div>
 
       <article className="grid min-w-0 gap-8 lg:grid-cols-[minmax(14rem,19rem)_1fr] xl:grid-cols-[minmax(15rem,21rem)_1fr]">

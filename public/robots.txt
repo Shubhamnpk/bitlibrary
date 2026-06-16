@@ -1,7 +1,22 @@
 User-agent: *
 Allow: /
+Allow: /library
+Allow: /books
+Allow: /browse
+Allow: /search
+Allow: /audiobooks
+Allow: /audiobook/
+Allow: /book/
+Allow: /author/
+Allow: /category/
+Allow: /curriculum
+Allow: /curriculum/
+Allow: /about
+Allow: /dictionary
+Allow: /sources
+Allow: /releases
+Allow: /roadmap
 Disallow: /mylibrary
-Disallow: /search
 Disallow: /terms
 
 Sitemap: https://bitlibrary.bitnepal.net/sitemap.xml

@@ -211,20 +211,27 @@ const Navbar: React.FC<NavbarProps> = ({
 
             {showSearchSurface && (
               <div className="absolute left-0 right-0 top-[calc(100%+0.75rem)] rounded-3xl border border-bit-border bg-bit-panel/95 backdrop-blur-2xl shadow-2xl shadow-bit-bg/40 overflow-hidden">
-                <div className="px-5 py-4 border-b border-bit-border/40 flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent">Search Control</p>
-                    <p className="text-sm text-bit-muted mt-1">
-                      {voiceSearchError
-                        ? voiceSearchError
-                        : trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
-                        ? `Press Enter to open results for "${trimmedSearchQuery}".`
-                        : `Type at least ${SEARCH_MIN_QUERY_LENGTH} characters to start searching.`}
-                    </p>
+                <div className="px-5 py-4 border-b border-bit-border/40 space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-bit-accent">Search Control</p>
+                      <p className="text-sm text-bit-muted mt-1">
+                        {voiceSearchError
+                          ? voiceSearchError
+                          : trimmedSearchQuery.length >= SEARCH_MIN_QUERY_LENGTH
+                          ? `Press Enter to open results for "${trimmedSearchQuery}".`
+                          : `Type at least ${SEARCH_MIN_QUERY_LENGTH} characters to start searching.`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/50 px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted">
+                      <Command size={12} />
+                      /
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/50 px-3 py-1.5 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted">
-                    <Command size={12} />
-                    /
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-bit-muted/40 border border-bit-border/30 rounded-full px-3 py-1.5">
+                      Modes — coming soon
+                    </span>
                   </div>
                 </div>
 
@@ -365,6 +372,15 @@ const Navbar: React.FC<NavbarProps> = ({
                       <History size={16} className="text-bit-accent" />
                       Search history
                     </Link>
+                    <Link
+                      to="/profile"
+                      role="menuitem"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-bit-muted transition-all hover:bg-bit-bg/50 hover:text-bit-text"
+                    >
+                      <Settings size={16} className="text-bit-accent" />
+                      Profile
+                    </Link>
                   </div>
 
                   <div className="flex items-center justify-between gap-3 border-t border-bit-border/50 px-4 py-3">
@@ -475,6 +491,10 @@ const Navbar: React.FC<NavbarProps> = ({
                 <Link to="/mylibrary" className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-sm transition-all ${activeTab('/mylibrary') ? 'border-bit-accent/40 bg-bit-accent/10 text-bit-text' : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:text-bit-text hover:border-bit-accent/30'}`}>
                   <BookOpenText size={16} />
                   My Library
+                </Link>
+                <Link to="/profile" className="flex items-center gap-3 rounded-xl border border-bit-border bg-bit-panel/30 px-3 py-2 text-sm text-bit-muted hover:text-bit-text hover:border-bit-accent/30 transition-all">
+                  <Settings size={16} />
+                  Profile
                 </Link>
                 <Link to="/about" className="flex items-center gap-3 rounded-xl border border-bit-border bg-bit-panel/30 px-3 py-2 text-sm text-bit-muted hover:text-bit-text hover:border-bit-accent/30 transition-all">
                   <Info size={16} />

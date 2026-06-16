@@ -84,21 +84,23 @@ const addOption = (
   options: DownloadOption[],
   seen: Set<string>,
   title: string,
-  url: string | undefined,
+  url: unknown,
   format: ResourceFormat,
   label?: string,
   provider?: string,
 ) => {
-  if (!url) return;
-  const key = url.toLowerCase();
+  if (typeof url !== 'string' || !url.trim()) return;
+  const cleanUrl = url.trim();
+  if (!/^https?:\/\//i.test(cleanUrl)) return;
+  const key = cleanUrl.toLowerCase();
   if (seen.has(key)) return;
   seen.add(key);
 
-  const resolvedFormat = format === 'unknown' ? inferDownloadFormat(url, label) : format;
+  const resolvedFormat = format === 'unknown' ? inferDownloadFormat(cleanUrl, label) : format;
   options.push({
     id: `${resolvedFormat}:${key}`,
-    url,
-    href: getDownloadProxyUrl(url, title, resolvedFormat),
+    url: cleanUrl,
+    href: getDownloadProxyUrl(cleanUrl, title, resolvedFormat),
     label: optionLabel(resolvedFormat, label, provider),
     format: resolvedFormat,
     provider,

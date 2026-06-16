@@ -14,6 +14,7 @@ import { readPdfBackgroundPreset, readPdfHighlightColor } from '@/lib/pdf-reader
 import { saveBook } from '@/lib/local-user';
 import { fetchYoBookGradeAudio, getYoBookAudioSubjectForBook } from '@/services/bookService';
 import { getPreferredSpeechVoiceURI, getSpeechSegments, getSpeechWordAtBoundary, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
+import { readReaderEntry, writeReaderEntry } from '@/lib/storage-manager';
 
 interface ReaderProps {
   book: Book;
@@ -22,13 +23,14 @@ interface ReaderProps {
   onToggleMinimize?: (minimized: boolean) => void;
 }
 
-const getPdfReaderProgressKey = (bookId: string) => `bitlibrary-pdf-reader-progress-v1:${encodeURIComponent(bookId).slice(0, 160)}`;
+const getPdfReaderProgressKey = (bookId: string) => `pdf-progress:${encodeURIComponent(bookId).slice(0, 160)}`;
 const FRAME_BLOCKED_HOSTS = new Set([
   'dropbox.com',
 ]);
 
 const isTextLikeReaderUrl = (url: string) => /\.(?:txt|xml)(?:$|[?#])/i.test(url) || /fulltextxml/i.test(url) || /[?&](?:format|type)=(?:txt|text|xml)(?:&|$)/i.test(url);
 const isHtmlLikeReaderUrl = (url: string) => /\.x?html?(?:$|[?#])/i.test(url) || /[?&](?:format|type)=(?:html?)(?:&|$)/i.test(url);
+const isArchiveEmbedReaderUrl = (url: string) => /^https:\/\/(?:www\.)?archive\.org\/embed\/[^/?#]+/i.test(url);
 const isEpubLikeReaderUrl = (url: string) => /\.epub(?:$|[?#])/i.test(url);
 const isBlockedFrameUrl = (url: string) => {
   try {
@@ -55,6 +57,7 @@ const isSupportedDirectReaderUrl = (url?: string) => (
 
 const shouldUseReaderProxy = (url: string, resource?: ResourceLink) => {
   if (!/^https?:\/\//i.test(url)) return false;
+  if (isArchiveEmbedReaderUrl(url)) return false;
   if (resource?.format && ['html', 'text', 'xml'].includes(resource.format)) return true;
   return isHtmlLikeReaderUrl(url) || isTextLikeReaderUrl(url);
 };
@@ -342,23 +345,40 @@ const canEmbedExternalUrl = (url: string, isPdfReader: boolean) => {
   return !isBlockedFrameUrl(url);
 };
 
+const LEGACY_PDF_PROGRESS_PREFIX = 'bitlibrary-pdf-reader-progress-v1:';
+
 const readSavedPdfChapterIndex = (bookId: string, chapterCount: number) => {
   if (typeof window === 'undefined' || chapterCount < 2) return 0;
 
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(getPdfReaderProgressKey(bookId)) || 'null') as { chapterIndex?: number } | null;
-    const chapterIndex = typeof parsed?.chapterIndex === 'number' && Number.isFinite(parsed.chapterIndex) ? Math.floor(parsed.chapterIndex) : 0;
-    return Math.min(chapterCount - 1, Math.max(0, chapterIndex));
+    const parsed = readReaderEntry<{ chapterIndex?: number }>(getPdfReaderProgressKey(bookId));
+    if (parsed?.chapterIndex !== undefined) {
+      const chapterIndex = typeof parsed.chapterIndex === 'number' && Number.isFinite(parsed.chapterIndex) ? Math.floor(parsed.chapterIndex) : 0;
+      return Math.min(chapterCount - 1, Math.max(0, chapterIndex));
+    }
+
+    // Legacy fallback: migrate from raw localStorage key
+    const legacyRaw = window.localStorage.getItem(`${LEGACY_PDF_PROGRESS_PREFIX}${bookId}`);
+    if (legacyRaw) {
+      const legacy = JSON.parse(legacyRaw) as { chapterIndex?: number };
+      const chapterIndex = typeof legacy?.chapterIndex === 'number' && Number.isFinite(legacy.chapterIndex) ? Math.floor(legacy.chapterIndex) : 0;
+      const clamped = Math.min(chapterCount - 1, Math.max(0, chapterIndex));
+      writeReaderEntry(getPdfReaderProgressKey(bookId), { chapterIndex: clamped, totalChapters: chapterCount, updatedAt: Date.now() });
+      window.localStorage.removeItem(`${LEGACY_PDF_PROGRESS_PREFIX}${bookId}`);
+      return clamped;
+    }
+
+    return 0;
   } catch {
     return 0;
   }
 };
 
-const writeSavedPdfChapterIndex = (bookId: string, chapterIndex: number) => {
+const writeSavedPdfChapterIndex = (bookId: string, chapterIndex: number, totalChapters?: number) => {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.setItem(getPdfReaderProgressKey(bookId), JSON.stringify({ chapterIndex }));
+    writeReaderEntry(getPdfReaderProgressKey(bookId), { chapterIndex, totalChapters, updatedAt: Date.now() });
   } catch {
     // Reader progress is helpful, but storage failures should not block reading.
   }
@@ -1103,7 +1123,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
   useEffect(() => {
     if (pdfChapters.length < 2) return;
-    writeSavedPdfChapterIndex(book.id, selectedPdfChapterIndex);
+    writeSavedPdfChapterIndex(book.id, selectedPdfChapterIndex, pdfChapters.length);
   }, [book.id, pdfChapters.length, selectedPdfChapterIndex]);
 
   useEffect(() => {
@@ -1263,7 +1283,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       >
         <div className="relative w-full h-full overflow-hidden">
           {book.coverUrl ? (
-            <img src={book.coverUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-700" alt="" />
+            <img src={book.coverUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-700" alt={book.title} />
           ) : (
             <div className={`w-full h-full bg-gradient-to-br ${book.coverGradient || 'from-bit-accent/10 to-transparent'} flex items-center justify-center p-6 text-center`}>
               <p className="text-bit-muted font-display font-bold text-xs uppercase tracking-widest leading-relaxed">{book.title}</p>

@@ -7,8 +7,9 @@ import Reader, { ReaderSkeleton } from '@/components/Reader';
 import { Search, Library, Zap, Command, Menu, X, Github, Disc, ChevronRight, ArrowUpRight, Clock3, House, BookOpenText, Info } from 'lucide-react';
 import BookDetails from '@/pages/BookDetails';
 import { BookDetailsSkeleton, BookCardSkeleton } from '@/components/Skeletons';
+import MyLibraryPage from '@/pages/MyLibrary';
+import SettingsPage from '@/pages/profile';
 import LibraryPage from '@/pages/Library';
-import BrowseBooks from '@/pages/BrowseBooks';
 import AboutPage from '@/pages/AboutPage';
 import StaticPage from '@/pages/StaticPage';
 import AuthorDetails from '@/pages/AuthorDetails';
@@ -24,22 +25,25 @@ import CurriculumPage from '@/pages/CurriculumPage';
 import CurriculumSubjectsPage from '@/pages/CurriculumSubjectsPage';
 import DictionaryPage from '@/pages/DictionaryPage';
 import SourcesPage from '@/pages/SourcesPage';
+import BlogPage from '@/pages/BlogPage';
+import BlogPostPage from '@/pages/BlogPostPage';
 import { recordRecentSearch, recordRecentlyViewedBook, useLocalUserState } from '@/lib/local-user';
+import { readCacheEntry, writeCacheEntry } from '@/lib/storage-manager';
 
-import { Routes, Route, useNavigate, useLocation, useSearchParams, Link, useParams, matchPath } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation, useSearchParams, Link, useParams, matchPath } from 'react-router-dom';
 
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import Seo from '@/components/Seo';
 import FloatingScrollButton from '@/components/FloatingScrollButton';
 import MobileBottomNav from '@/components/MobileBottomNav';
-import MobileProfileModal from '@/components/MobileProfileModal';
+
 
 const SEARCH_DEBOUNCE_MS = 400;
-const EXPLORE_CACHE_KEY = 'bitlibrary-explore-cache-v1';
+const EXPLORE_CACHE_KEY = 'explore';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
-const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/curriculum/subjects','/mylibrary','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources',];
+const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/curriculum/subjects','/mylibrary','/profile','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources','/blog','/blog/:slug',];
 const HERO_ORBIT_NODES = {
   star: {
     title: 'Archive Star',
@@ -78,16 +82,8 @@ const readExploreCache = (): ExploreCachePayload | null => {
   if (typeof window === 'undefined') return null;
 
   try {
-    const raw = window.localStorage.getItem(EXPLORE_CACHE_KEY);
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as ExploreCachePayload;
-    if (!parsed?.timestamp || Date.now() - parsed.timestamp > EXPLORE_CACHE_TTL) {
-      window.localStorage.removeItem(EXPLORE_CACHE_KEY);
-      return null;
-    }
-
-    return parsed;
+    const parsed = readCacheEntry<Omit<ExploreCachePayload, 'timestamp'>>('page', EXPLORE_CACHE_KEY, EXPLORE_CACHE_TTL);
+    return parsed ? { ...parsed, timestamp: Date.now() } : null;
   } catch {
     return null;
   }
@@ -97,13 +93,7 @@ const writeExploreCache = (payload: Omit<ExploreCachePayload, 'timestamp'>) => {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.setItem(
-      EXPLORE_CACHE_KEY,
-      JSON.stringify({
-        ...payload,
-        timestamp: Date.now(),
-      })
-    );
+    writeCacheEntry('page', EXPLORE_CACHE_KEY, payload, EXPLORE_CACHE_TTL);
   } catch {
     // Ignore storage failures and continue with network-backed state.
   }
@@ -129,8 +119,9 @@ const App: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [isFeaturedLoading, setIsFeaturedLoading] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [mobileProfileOpen, setMobileProfileOpen] = useState(false);
+
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+
   const { state: localUserState } = useLocalUserState();
 
   // Persistent Global Reader State
@@ -275,8 +266,8 @@ const App: React.FC = () => {
     [location.pathname]
   );
   const isLibraryRoute = /^\/(?:library|books|browse|mylibrary)(?:\/|$)/.test(location.pathname);
-  const hideFloatingScrollControls = Boolean(isReaderActive || readerLoading || mobileMenuOpen || mobileProfileOpen);
-  const hideMobileBottomNav = Boolean(isReaderActive || readerLoading || mobileMenuOpen || mobileProfileOpen || isNotFoundRoute);
+  const hideFloatingScrollControls = Boolean(isReaderActive || readerLoading || mobileMenuOpen);
+  const hideMobileBottomNav = Boolean(isReaderActive || readerLoading || mobileMenuOpen || isNotFoundRoute);
 
   const handleReadBook = useCallback((book: Book) => {
     recordRecentlyViewedBook(book);
@@ -296,7 +287,7 @@ const App: React.FC = () => {
       if (e.key === 'Escape') {
         closeSearchSurface();
         setMobileMenuOpen(false);
-        setMobileProfileOpen(false);
+
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -562,9 +553,11 @@ const App: React.FC = () => {
           } />
 
           {/* Discovery / Library Registry */}
-          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
-          <Route path="/books/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
-          <Route path="/browse/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><BrowseBooks onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/library/:categoryId?" element={<div className="max-w-7xl mx-auto px-4 sm:px-6"><LibraryPage onBookClick={navigateToBook} onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)} onRead={handleReadBook} /></div>} />
+          <Route path="/books" element={<Navigate to="/library" replace />} />
+          <Route path="/books/:categoryId" element={<BooksRedirect />} />
+          <Route path="/browse" element={<Navigate to="/library" replace />} />
+          <Route path="/browse/:categoryId" element={<BrowseRedirect />} />
 
           <Route path="/curriculum" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -588,18 +581,27 @@ const App: React.FC = () => {
           {/* Personal Bookshelf */}
           <Route path="/mylibrary" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
-              <LibraryPage
+              <MyLibraryPage
                 borrowedBooks={borrowedBooks}
                 savedBooks={localUserState.savedBooks}
                 savedAudiobooks={localUserState.savedAudiobooks}
                 recentSearches={localUserState.recentSearches}
                 recentlyViewed={localUserState.recentlyViewed}
-                profile={localUserState.profile}
-                settings={localUserState.settings}
                 onBookClick={navigateToBook}
                 onAudiobookClick={(audiobook) => navigate(`/audiobook/${audiobook.id}`)}
                 onRead={handleReadBook}
                 onExplore={() => navigate('/')}
+              />
+            </div>
+          } />
+
+          <Route path="/profile" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <SettingsPage
+                profile={localUserState.profile}
+                settings={localUserState.settings}
+                recentSearches={localUserState.recentSearches}
+                onBack={() => navigate(-1)}
               />
             </div>
           } />
@@ -697,6 +699,8 @@ const App: React.FC = () => {
           <Route path="/roadmap" element={<RoadmapPage onBack={() => navigate('/')} />} />
           <Route path="/dictionary" element={<DictionaryPage onBack={() => navigate('/')} />} />
           <Route path="/sources" element={<SourcesPage onBack={() => navigate('/')} />} />
+          <Route path="/blog" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8"><BlogPage /></div>} />
+          <Route path="/blog/:slug" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8"><BlogPostPage /></div>} />
           <Route path="*" element={<NotFound />} />
 
         </Routes>
@@ -710,12 +714,7 @@ const App: React.FC = () => {
         hidden={hideFloatingScrollControls}
         hideScrollDown={isLibraryRoute}
       />
-      <MobileBottomNav hidden={hideMobileBottomNav} onProfileClick={() => setMobileProfileOpen(true)} />
-      <MobileProfileModal
-        open={mobileProfileOpen}
-        onClose={() => setMobileProfileOpen(false)}
-        localUserState={localUserState}
-      />
+      <MobileBottomNav hidden={hideMobileBottomNav} />
 
       {/* Global PiP Overlay */}
       {readerLoading && !activeBook && <ReaderSkeleton />}
@@ -782,6 +781,16 @@ const ReaderRoute: React.FC<{ books: Book[] }> = ({ books }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   return <div className="hidden">Triggering Neural Sector {id}...</div>;
+};
+
+const BooksRedirect = () => {
+  const { categoryId } = useParams();
+  return <Navigate to={`/library/${categoryId || ''}`} replace />;
+};
+
+const BrowseRedirect = () => {
+  const { categoryId } = useParams();
+  return <Navigate to={`/library/${categoryId || ''}`} replace />;
 };
 
 export default App;

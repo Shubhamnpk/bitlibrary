@@ -21,9 +21,10 @@ import {
   searchYoBookBooksSmart,
 } from '@/lib/searchOptimization';
 import { getSpeechRecognitionConstructor, isSpeechRecognitionContextAllowed, requestMicrophoneForSpeech } from '@/lib/speech';
+import { readCacheEntry, writeCacheEntry } from '@/lib/storage-manager';
 
 export const SEARCH_MIN_QUERY_LENGTH = 2;
-const SEARCH_CACHE_KEY = 'bitlibrary-search-cache-v5';
+const SEARCH_CACHE_KEY = 'search';
 const SEARCH_CACHE_TTL = 15 * 60 * 1000;
 const SEARCH_CACHE_MAX_ENTRIES = 20;
 const SEARCH_MAX_RESULTS = 100;
@@ -54,10 +55,7 @@ const readSearchCacheState = (): Record<string, SearchCacheEntry> => {
   if (typeof window === 'undefined') return {};
 
   try {
-    const raw = window.localStorage.getItem(SEARCH_CACHE_KEY);
-    if (!raw) return {};
-
-    return JSON.parse(raw) as Record<string, SearchCacheEntry>;
+    return readCacheEntry<Record<string, SearchCacheEntry>>('page', SEARCH_CACHE_KEY, SEARCH_CACHE_TTL) || {};
   } catch {
     return {};
   }
@@ -80,7 +78,7 @@ const readSearchCache = (query: string, includeResearch: boolean): Book[] | null
 
   try {
     const cache = pruneSearchCache(readSearchCacheState());
-    window.localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(cache));
+    writeCacheEntry('page', SEARCH_CACHE_KEY, cache, SEARCH_CACHE_TTL);
     const entry = cache[getSearchCacheQueryKey(query, includeResearch)];
     if (!entry) return null;
     return entry.results || null;
@@ -99,7 +97,7 @@ const writeSearchCache = (query: string, includeResearch: boolean, results: Book
       timestamp: Date.now(),
     };
     const nextCache = pruneSearchCache(current);
-    window.localStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify(nextCache));
+    writeCacheEntry('page', SEARCH_CACHE_KEY, nextCache, SEARCH_CACHE_TTL);
   } catch {
     // Ignore storage failures; network search still works.
   }

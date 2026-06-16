@@ -4,7 +4,9 @@ import { Audiobook } from '@/types/index';
 import {
   AUDIOBOOK_CATEGORIES,
   fetchAudiobooksByGenre,
+  fetchInternetArchiveAudiobooks,
   fetchPopularAudiobooks,
+  fetchProjectGutenbergAudiobooks,
   fetchYoBookAudiobooks,
   getAudiobookCategoryById,
   searchAudiobooks,
@@ -31,6 +33,8 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
   const selectedCategory = getAudiobookCategoryById(categoryId);
   const isCategoryPage = Boolean(categoryId);
   const [yoBookAudiobooks, setYoBookAudiobooks] = useState<Audiobook[]>([]);
+  const [gutenbergAudiobooks, setGutenbergAudiobooks] = useState<Audiobook[]>([]);
+  const [archiveAudiobooks, setArchiveAudiobooks] = useState<Audiobook[]>([]);
   const [featuredAudiobooks, setFeaturedAudiobooks] = useState<Audiobook[]>([]);
   const [categoryRows, setCategoryRows] = useState<CategoryRows>({});
   const [categoryAudiobooks, setCategoryAudiobooks] = useState<Audiobook[]>([]);
@@ -53,6 +57,8 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
 
     if (selectedCategory) {
       setYoBookAudiobooks([]);
+      setGutenbergAudiobooks([]);
+      setArchiveAudiobooks([]);
       fetchAudiobooksByGenre(selectedCategory.genre, currentCategoryLimit)
         .then((items) => {
           if (active) setCategoryAudiobooks(items);
@@ -70,14 +76,20 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
 
     Promise.allSettled([
       fetchYoBookAudiobooks(AUDIOBOOK_ROW_LIMIT),
+      fetchProjectGutenbergAudiobooks(AUDIOBOOK_ROW_LIMIT),
+      fetchInternetArchiveAudiobooks(AUDIOBOOK_ROW_LIMIT),
       fetchPopularAudiobooks(AUDIOBOOK_ROW_LIMIT),
       ...AUDIOBOOK_CATEGORIES.map((category) => fetchAudiobooksByGenre(category.genre, AUDIOBOOK_ROW_LIMIT)),
     ])
-      .then(([yoBookResult, featuredResult, ...rowResults]) => {
+      .then(([yoBookResult, gutenbergResult, archiveResult, featuredResult, ...rowResults]) => {
         if (!active) return;
         const yoBookItems = yoBookResult.status === 'fulfilled' ? yoBookResult.value : [];
+        const gutenbergItems = gutenbergResult.status === 'fulfilled' ? gutenbergResult.value : [];
+        const archiveItems = archiveResult.status === 'fulfilled' ? archiveResult.value : [];
         const featuredItems = featuredResult.status === 'fulfilled' ? featuredResult.value : [];
         setYoBookAudiobooks(yoBookItems);
+        setGutenbergAudiobooks(gutenbergItems);
+        setArchiveAudiobooks(archiveItems);
         setFeaturedAudiobooks(featuredItems);
         const nextRows = AUDIOBOOK_CATEGORIES.reduce<CategoryRows>((rows, category, index) => {
           const result = rowResults[index];
@@ -123,7 +135,7 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
 
   const schemaItems = isCategoryPage
     ? categoryAudiobooks
-    : [...yoBookAudiobooks, ...featuredAudiobooks, ...Object.values(categoryRows).flat()];
+    : [...yoBookAudiobooks, ...gutenbergAudiobooks, ...archiveAudiobooks, ...featuredAudiobooks, ...Object.values(categoryRows).flat()];
   const schema = useMemo(
     () => createItemListSchema(
       schemaItems.slice(0, 24).map((item) => ({
@@ -248,6 +260,20 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
             title="Popular listening"
             description="Well-known classics and public-domain recordings people return to often."
             audiobooks={featuredAudiobooks}
+            loading={loading}
+            onAudiobookClick={onAudiobookClick}
+          />
+          <AudiobookShelf
+            title="Project Gutenberg audio"
+            description="Public-domain Gutenberg audio books with direct MP3 and Ogg tracks."
+            audiobooks={gutenbergAudiobooks}
+            loading={loading}
+            onAudiobookClick={onAudiobookClick}
+          />
+          <AudiobookShelf
+            title="Internet Archive playable audio"
+            description="Archive audio records filtered to only items with playable MP3 or Ogg files."
+            audiobooks={archiveAudiobooks}
             loading={loading}
             onAudiobookClick={onAudiobookClick}
           />

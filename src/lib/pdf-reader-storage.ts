@@ -1,3 +1,5 @@
+import { readReaderEntry, writeReaderEntry } from '@/lib/storage-manager';
+
 export type PdfBackgroundPresetId = 'default' | 'wood' | 'paper' | 'sage' | 'night';
 export type PdfHighlightColorId = 'yellow' | 'mint' | 'sky' | 'rose' | 'violet';
 
@@ -19,6 +21,7 @@ export interface PdfTextHighlight {
 
 export interface PdfStudyState {
   lastPage?: number;
+  pageCount?: number;
   bookmarks: number[];
   highlights: number[];
   notes: Record<string, string>;
@@ -34,14 +37,8 @@ interface PdfReaderStorage {
   studies: Record<string, PdfStudyState>;
 }
 
-const PDF_READER_STORAGE_KEY = 'bitlibrary-pdf-reader-storage-v1';
+const PDF_READER_ENTRY_KEY = 'pdf';
 const MAX_PDF_STUDY_RECORDS = 40;
-
-const LEGACY_BACKGROUND_STORAGE_KEY = 'bitlibrary-pdf-background-v1';
-const LEGACY_HIGHLIGHT_COLOR_STORAGE_KEY = 'bitlibrary-pdf-highlight-color-v1';
-const LEGACY_STUDY_STORAGE_PREFIX_V1 = 'bitlibrary-pdf-study-v1:';
-const LEGACY_STUDY_STORAGE_PREFIX_V2 = 'bitlibrary-pdf-study-v2:';
-const LEGACY_STUDY_INDEX_STORAGE_KEY = 'bitlibrary-pdf-study-index-v2';
 
 const PDF_BACKGROUND_PRESET_IDS: PdfBackgroundPresetId[] = ['default', 'wood', 'paper', 'sage', 'night'];
 const PDF_HIGHLIGHT_COLOR_IDS: PdfHighlightColorId[] = ['yellow', 'mint', 'sky', 'rose', 'violet'];
@@ -74,9 +71,13 @@ const compactStudyState = (state: Partial<PdfStudyState> | null | undefined): Pd
   const parsedLastPage = typeof state?.lastPage === 'number' && Number.isFinite(state.lastPage) && state.lastPage > 0
     ? Math.floor(state.lastPage)
     : undefined;
+  const parsedPageCount = typeof state?.pageCount === 'number' && Number.isFinite(state.pageCount) && state.pageCount > 0
+    ? Math.floor(state.pageCount)
+    : undefined;
 
   return {
     lastPage: parsedLastPage,
+    pageCount: parsedPageCount,
     bookmarks: Array.isArray(state?.bookmarks) ? state.bookmarks.filter(Number.isFinite) : [],
     highlights: Array.isArray(state?.highlights) ? state.highlights.filter(Number.isFinite) : [],
     notes: state?.notes && typeof state.notes === 'object' ? state.notes as Record<string, string> : {},
@@ -90,46 +91,15 @@ const compactStudyState = (state: Partial<PdfStudyState> | null | undefined): Pd
   };
 };
 
-const getStudyId = (pdfUrl: string) => {
+const LEGACY_STORAGE_KEY = 'bitlibrary-pdf-reader-storage-v1';
+
+export const getStudyId = (pdfUrl: string) => {
   let hash = 0;
   for (let index = 0; index < pdfUrl.length; index += 1) {
     hash = Math.imul(31, hash) + pdfUrl.charCodeAt(index) | 0;
   }
 
   return `${(hash >>> 0).toString(36)}:${encodeURIComponent(pdfUrl).slice(0, 80)}`;
-};
-
-const getLegacyV1StudyKey = (pdfUrl: string) => `${LEGACY_STUDY_STORAGE_PREFIX_V1}${encodeURIComponent(pdfUrl).slice(0, 180)}`;
-const getLegacyV2StudyKey = (pdfUrl: string) => `${LEGACY_STUDY_STORAGE_PREFIX_V2}${getStudyId(pdfUrl)}`;
-
-const readJson = <T>(key: string): T | null => {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) as T : null;
-  } catch {
-    return null;
-  }
-};
-
-const removeLegacyPdfReaderKeys = () => {
-  try {
-    const removableKeys = [
-      LEGACY_BACKGROUND_STORAGE_KEY,
-      LEGACY_HIGHLIGHT_COLOR_STORAGE_KEY,
-      LEGACY_STUDY_INDEX_STORAGE_KEY,
-    ];
-
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-      if (key?.startsWith(LEGACY_STUDY_STORAGE_PREFIX_V1) || key?.startsWith(LEGACY_STUDY_STORAGE_PREFIX_V2)) {
-        removableKeys.push(key);
-      }
-    }
-
-    removableKeys.forEach((key) => window.localStorage.removeItem(key));
-  } catch {
-    // Legacy cleanup should never block the reader.
-  }
 };
 
 const pruneStorage = (storage: PdfReaderStorage, activeStudyId?: string): PdfReaderStorage => {
@@ -149,8 +119,46 @@ const pruneStorage = (storage: PdfReaderStorage, activeStudyId?: string): PdfRea
   };
 };
 
+const migrateFromLegacy = (): PdfReaderStorage | null => {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!raw) return null;
+    const legacy = JSON.parse(raw) as Partial<PdfReaderStorage>;
+    const storage = defaultStorage();
+
+    if (legacy.preferences) {
+      storage.preferences.backgroundPreset = isPdfBackgroundPresetId(legacy.preferences.backgroundPreset)
+        ? legacy.preferences.backgroundPreset
+        : storage.preferences.backgroundPreset;
+      storage.preferences.highlightColor = isPdfHighlightColorId(legacy.preferences.highlightColor)
+        ? legacy.preferences.highlightColor
+        : storage.preferences.highlightColor;
+    }
+
+    if (legacy.studies && typeof legacy.studies === 'object') {
+      storage.studies = Object.fromEntries(
+        Object.entries(legacy.studies).map(([studyId, state]) => [studyId, compactStudyState(state)]),
+      );
+    }
+
+    if (Array.isArray(legacy.studyIndex)) {
+      storage.studyIndex = legacy.studyIndex.filter((studyId): studyId is string => (
+        typeof studyId === 'string' && Boolean(storage.studies[studyId])
+      ));
+    }
+
+    const result = pruneStorage(storage);
+    writeReaderEntry(PDF_READER_ENTRY_KEY, result);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return result;
+  } catch {
+    return null;
+  }
+};
+
 const readStorage = (): PdfReaderStorage => {
-  const parsed = readJson<Partial<PdfReaderStorage>>(PDF_READER_STORAGE_KEY);
+  const parsed = readReaderEntry<Partial<PdfReaderStorage>>(PDF_READER_ENTRY_KEY) ?? migrateFromLegacy();
   const storage = defaultStorage();
 
   if (parsed?.preferences) {
@@ -160,11 +168,6 @@ const readStorage = (): PdfReaderStorage => {
     storage.preferences.highlightColor = isPdfHighlightColorId(parsed.preferences.highlightColor)
       ? parsed.preferences.highlightColor
       : storage.preferences.highlightColor;
-  } else {
-    const legacyBackground = window.localStorage.getItem(LEGACY_BACKGROUND_STORAGE_KEY);
-    const legacyHighlightColor = window.localStorage.getItem(LEGACY_HIGHLIGHT_COLOR_STORAGE_KEY);
-    storage.preferences.backgroundPreset = isPdfBackgroundPresetId(legacyBackground) ? legacyBackground : storage.preferences.backgroundPreset;
-    storage.preferences.highlightColor = isPdfHighlightColorId(legacyHighlightColor) ? legacyHighlightColor : storage.preferences.highlightColor;
   }
 
   if (parsed?.studies && typeof parsed.studies === 'object') {
@@ -182,18 +185,14 @@ const readStorage = (): PdfReaderStorage => {
   return pruneStorage(storage);
 };
 
+
 const writeStorage = (storage: PdfReaderStorage) => {
   try {
-    window.localStorage.setItem(PDF_READER_STORAGE_KEY, JSON.stringify(pruneStorage(storage)));
-    removeLegacyPdfReaderKeys();
+    writeReaderEntry(PDF_READER_ENTRY_KEY, pruneStorage(storage));
   } catch {
     // Local study tools stay optional when browser storage is unavailable.
   }
 };
-
-const readLegacyStudyState = (pdfUrl: string) => (
-  compactStudyState(readJson<Partial<PdfStudyState>>(getLegacyV2StudyKey(pdfUrl)) || readJson<Partial<PdfStudyState>>(getLegacyV1StudyKey(pdfUrl)))
-);
 
 export const readPdfBackgroundPreset = (): PdfBackgroundPresetId => {
   if (typeof window === 'undefined') return 'default';
@@ -236,7 +235,7 @@ export const readPdfStudyState = (pdfUrl: string): PdfStudyState => {
 
   const studyId = getStudyId(pdfUrl);
   const storage = readStorage();
-  const studyState = storage.studies[studyId] || readLegacyStudyState(pdfUrl);
+  const studyState = storage.studies[studyId] || emptyStudyState();
 
   writeStorage(pruneStorage({
     ...storage,
