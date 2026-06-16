@@ -78,7 +78,7 @@ const readSearchCache = (query: string, includeResearch: boolean): Book[] | null
 
   try {
     const cache = pruneSearchCache(readSearchCacheState());
-    writeCacheEntry('page', SEARCH_CACHE_KEY, cache);
+    writeCacheEntry('page', SEARCH_CACHE_KEY, cache, SEARCH_CACHE_TTL);
     const entry = cache[getSearchCacheQueryKey(query, includeResearch)];
     if (!entry) return null;
     return entry.results || null;
@@ -97,7 +97,7 @@ const writeSearchCache = (query: string, includeResearch: boolean, results: Book
       timestamp: Date.now(),
     };
     const nextCache = pruneSearchCache(current);
-    writeCacheEntry('page', SEARCH_CACHE_KEY, nextCache);
+    writeCacheEntry('page', SEARCH_CACHE_KEY, nextCache, SEARCH_CACHE_TTL);
   } catch {
     // Ignore storage failures; network search still works.
   }

@@ -63,7 +63,7 @@ const writeResearchCache = (query: string, results: Book[]) => {
         .sort((a, b) => b[1].timestamp - a[1].timestamp)
         .slice(0, 16)
     );
-    writeCacheEntry('page', RESEARCH_CACHE_KEY, fresh);
+    writeCacheEntry('page', RESEARCH_CACHE_KEY, fresh, RESEARCH_CACHE_TTL);
   } catch {
     // Network results still render when local storage is unavailable.
   }

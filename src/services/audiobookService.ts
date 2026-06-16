@@ -150,7 +150,7 @@ const setCached = (key: string, data: unknown) => {
   if (typeof window === 'undefined') return;
 
   try {
-    writeCacheEntry('api', getStorageKey(key), data);
+    writeCacheEntry('api', getStorageKey(key), data, CACHE_TTL);
   } catch {
     // Keep the in-memory cache when persistent storage is full or blocked.
   }
@@ -762,9 +762,16 @@ export const fetchAudiobookById = async (id: string): Promise<Audiobook | null> 
   if (id.startsWith(GUTENBERG_AUDIO_ID_PREFIX)) {
     const gutenbergId = id.replace(GUTENBERG_AUDIO_ID_PREFIX, '').split('-')[0];
     const seed = PROJECT_GUTENBERG_AUDIO_CATALOG.find((item) => item.id === gutenbergId);
-    if (!seed) return null;
-    const payload = await fetchProjectGutenbergAudioPayload(seed.id);
-    return payload ? mapProjectGutenbergAudioToAudiobook(seed, payload) : null;
+    const payload = await fetchProjectGutenbergAudioPayload(gutenbergId);
+    if (!payload) return null;
+    if (seed) return mapProjectGutenbergAudioToAudiobook(seed, payload);
+    return mapProjectGutenbergAudioToAudiobook({
+      id: gutenbergId,
+      title: payload.title || `Project Gutenberg #${gutenbergId}`,
+      author: 'Project Gutenberg',
+      language: 'en',
+      genres: ['Public Domain', 'Audiobook'],
+    }, payload);
   }
 
   if (id.startsWith(INTERNET_ARCHIVE_AUDIO_ID_PREFIX)) {

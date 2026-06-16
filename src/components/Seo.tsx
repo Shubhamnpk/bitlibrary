@@ -391,7 +391,7 @@ const Seo = (props: SeoProps) => {
     const canonicalPath = seo.canonicalPath || location.pathname;
     const canonical = toAbsoluteUrl(canonicalPath);
     const image = toAbsoluteUrl(seo.image || '/assets/bitlibrary-og.png');
-    const keywords = Array.from(new Set([...(seo.keywords || []), ...GEO_KEYWORDS]));
+    const keywords = Array.from(new Set([...(seo.keywords || DEFAULT_KEYWORDS), ...GEO_KEYWORDS]));
     const locale = seo.locale || DEFAULT_LOCALE;
 
     const robots = seo.noCrawl

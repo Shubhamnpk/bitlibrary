@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowRight, Calendar, Clock, BookOpen, Search, Tag, TrendingUp, Sparkles, BookMarked } from 'lucide-react';
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, createItemListSchema } from '@/lib/seo';
@@ -8,7 +8,8 @@ import blogPosts from '@/content/blog.json';
 const ALL_TAGS = Array.from(new Set(blogPosts.flatMap((p) => p.tags))).sort();
 
 const BlogPage: React.FC = () => {
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const [activeTag, setActiveTag] = useState<string | null>(searchParams.get('tag') || null);
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredPosts = useMemo(() => {

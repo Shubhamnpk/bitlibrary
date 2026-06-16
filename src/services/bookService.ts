@@ -52,7 +52,7 @@ const setInCache = (key: string, data: any) => {
   if (typeof window === 'undefined') return;
 
   try {
-    writeCacheEntry('api', getStorageKey(key), data);
+    writeCacheEntry('api', getStorageKey(key), data, CACHE_TTL);
   } catch {
     // Keep the in-memory cache when persistent storage is full or blocked.
   }

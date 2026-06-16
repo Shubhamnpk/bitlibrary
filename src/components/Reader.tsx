@@ -345,13 +345,30 @@ const canEmbedExternalUrl = (url: string, isPdfReader: boolean) => {
   return !isBlockedFrameUrl(url);
 };
 
+const LEGACY_PDF_PROGRESS_PREFIX = 'bitlibrary-pdf-reader-progress-v1:';
+
 const readSavedPdfChapterIndex = (bookId: string, chapterCount: number) => {
   if (typeof window === 'undefined' || chapterCount < 2) return 0;
 
   try {
     const parsed = readReaderEntry<{ chapterIndex?: number }>(getPdfReaderProgressKey(bookId));
-    const chapterIndex = typeof parsed?.chapterIndex === 'number' && Number.isFinite(parsed.chapterIndex) ? Math.floor(parsed.chapterIndex) : 0;
-    return Math.min(chapterCount - 1, Math.max(0, chapterIndex));
+    if (parsed?.chapterIndex !== undefined) {
+      const chapterIndex = typeof parsed.chapterIndex === 'number' && Number.isFinite(parsed.chapterIndex) ? Math.floor(parsed.chapterIndex) : 0;
+      return Math.min(chapterCount - 1, Math.max(0, chapterIndex));
+    }
+
+    // Legacy fallback: migrate from raw localStorage key
+    const legacyRaw = window.localStorage.getItem(`${LEGACY_PDF_PROGRESS_PREFIX}${bookId}`);
+    if (legacyRaw) {
+      const legacy = JSON.parse(legacyRaw) as { chapterIndex?: number };
+      const chapterIndex = typeof legacy?.chapterIndex === 'number' && Number.isFinite(legacy.chapterIndex) ? Math.floor(legacy.chapterIndex) : 0;
+      const clamped = Math.min(chapterCount - 1, Math.max(0, chapterIndex));
+      writeReaderEntry(getPdfReaderProgressKey(bookId), { chapterIndex: clamped, totalChapters: chapterCount, updatedAt: Date.now() });
+      window.localStorage.removeItem(`${LEGACY_PDF_PROGRESS_PREFIX}${bookId}`);
+      return clamped;
+    }
+
+    return 0;
   } catch {
     return 0;
   }

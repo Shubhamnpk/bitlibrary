@@ -83,19 +83,20 @@ const BookCard: React.FC<BookCardProps> = ({
   const { state } = useLocalUserState();
   const isSaved = state.savedBooks.some((entry) => entry.id === book.id);
   const savedProgress = showProgress ? readReaderEntry<{ chapterIndex?: number; totalChapters?: number }>(getPdfReaderProgressKey(book.id)) : null;
-  const chapterIndex = savedProgress?.chapterIndex ?? 0;
+  const hasChapterProgress = typeof savedProgress?.chapterIndex === 'number';
+  const chapterIndex = hasChapterProgress ? (savedProgress!.chapterIndex ?? 0) : 0;
   const totalChapters = savedProgress?.totalChapters || (showProgress ? (book.chapterPdfUrls?.length || 0) : 0);
-  const pdfUrl = showProgress && chapterIndex === 0 ? (book.chapterPdfUrls?.[0]?.pdfUrl || (isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl : null)) : null;
+  const pdfUrl = showProgress && (chapterIndex === 0) ? (book.chapterPdfUrls?.[0]?.pdfUrl || (isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl : null)) : null;
   const pageStudy = pdfUrl ? (() => {
     const storage = readReaderEntry<{ studies?: Record<string, { lastPage?: number; pageCount?: number }> }>('pdf');
     const s = storage?.studies?.[getStudyId(pdfUrl)];
     return s ? { lastPage: s.lastPage ?? null, pageCount: s.pageCount ?? null } : null;
   })() : null;
 
-  const progressCurrent = chapterIndex > 0 ? chapterIndex : (pageStudy?.lastPage ?? 0);
-  const progressTotal = chapterIndex > 0 ? totalChapters : (pageStudy?.pageCount || book.pages || 0);
-  const hasProgress = showProgress && progressCurrent > 0;
-  const progressLabel = chapterIndex > 0 ? 'ch' : 'p';
+  const progressCurrent = hasChapterProgress ? chapterIndex : (pageStudy?.lastPage ?? 0);
+  const progressTotal = hasChapterProgress ? totalChapters : (pageStudy?.pageCount || book.pages || 0);
+  const hasProgress = showProgress && (hasChapterProgress || (pageStudy?.lastPage ?? 0) > 0);
+  const progressLabel = hasChapterProgress ? 'ch' : 'p';
   const questionPaperCount = book.questionPaperCount || book.question_papers?.length || 0;
   const isQuestionPaperCollection = questionPaperCount > 0;
   const accessMode = getAccessMode(book);

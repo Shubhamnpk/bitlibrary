@@ -31,12 +31,16 @@ export default async function handler(request: IncomingMessage, response: Server
 
   try {
     const pageUrl = `https://www.gutenberg.org/ebooks/${id}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
     const upstream = await fetch(pageUrl, {
+      signal: controller.signal,
       headers: {
         accept: 'text/html,*/*',
         'user-agent': 'BitLibrary/0.6.0 (Project Gutenberg audio discovery; https://github.com/Shubhamnpk/bitlibrary)',
       },
     });
+    clearTimeout(timer);
 
     if (!upstream.ok) {
       sendJson(response, upstream.status, { error: 'Project Gutenberg page was not reachable.' });
@@ -65,7 +69,9 @@ export default async function handler(request: IncomingMessage, response: Server
       pageUrl,
       tracks,
     });
-  } catch {
-    sendJson(response, 502, { error: 'Project Gutenberg audio proxy failed.' });
+  } catch (error) {
+    sendJson(response, error instanceof DOMException && error.name === 'AbortError' ? 504 : 502, {
+      error: 'Project Gutenberg audio proxy failed.',
+    });
   }
 }

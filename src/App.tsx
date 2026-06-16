@@ -92,7 +92,7 @@ const writeExploreCache = (payload: Omit<ExploreCachePayload, 'timestamp'>) => {
   if (typeof window === 'undefined') return;
 
   try {
-    writeCacheEntry('page', EXPLORE_CACHE_KEY, payload);
+    writeCacheEntry('page', EXPLORE_CACHE_KEY, payload, EXPLORE_CACHE_TTL);
   } catch {
     // Ignore storage failures and continue with network-backed state.
   }

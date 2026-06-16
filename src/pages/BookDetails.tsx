@@ -908,7 +908,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                 let current = 0, total = 0, label = '';
 
                 const ch = readReaderEntry<{ chapterIndex?: number; totalChapters?: number }>(getPdfReaderProgressKey(book.id));
-                if (ch?.chapterIndex) {
+                if (typeof ch?.chapterIndex === 'number') {
                   current = ch.chapterIndex;
                   total = ch.totalChapters || book.chapterPdfUrls?.length || 0;
                   label = 'Chapter';

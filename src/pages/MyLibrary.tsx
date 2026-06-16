@@ -61,7 +61,7 @@ const MyLibrary: React.FC<MyLibraryProps> = ({
       .map((book) => {
         if (!book?.id) return null;
         const chp = readReaderEntry<{ chapterIndex?: number }>(getPdfReaderProgressKey(book.id));
-        if (chp?.chapterIndex) return { book, chapterIndex: chp.chapterIndex, label: 'ch' as const };
+        if (typeof chp?.chapterIndex === 'number') return { book, chapterIndex: chp.chapterIndex, label: 'ch' as const };
         const pdfUrl = book.chapterPdfUrls?.[0]?.pdfUrl || (isPdfLikeUrl(book.downloadUrl) ? book.downloadUrl : null);
         if (pdfUrl) {
           const s = readReaderEntry<{ studies?: Record<string, { lastPage?: number }> }>('pdf');
@@ -70,7 +70,7 @@ const MyLibrary: React.FC<MyLibraryProps> = ({
         }
         return { book, chapterIndex: 0, label: '' as const };
       })
-      .filter((entry): entry is { book: Book; chapterIndex: number; label: string } => entry !== null)
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
       .slice(0, 6);
   }, [recentlyViewed]);
 

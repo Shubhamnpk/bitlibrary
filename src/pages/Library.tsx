@@ -80,7 +80,7 @@ const writeCachePayload = (key: string, payload: object) => {
    if (typeof window === 'undefined') return;
 
    try {
-      writeCacheEntry('page', key, payload);
+      writeCacheEntry('page', key, payload, BROWSE_CACHE_TTL);
    } catch {
       // Ignore storage failures; page-level state still works.
    }
@@ -142,7 +142,6 @@ const loadBooksForShelf = async (category: string): Promise<Book[]> => {
 
    const fallbackBooks = fallbackPool.slice(0, SHELF_ITEM_LIMIT);
 
-   writeCachePayload(getShelfCacheKey(category), { books: fallbackBooks });
    return fallbackBooks;
 };
 

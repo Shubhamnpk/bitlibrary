@@ -213,14 +213,21 @@ const decryptString = async (storageKey: string, value: string) => {
   }
 };
 
+const writeGenerations = new Map<string, number>();
+
 const persistEncryptedValue = (key: string, value: string) => {
   decryptedValues.set(key, value);
+  const generation = (writeGenerations.get(key) || 0) + 1;
+  writeGenerations.set(key, generation);
+  const currentGeneration = () => writeGenerations.get(key);
   void encryptString(key, value)
     .then((encryptedValue) => {
+      if (currentGeneration() !== generation) return;
       if (encryptedValue) window.localStorage.setItem(key, encryptedValue);
       else window.localStorage.removeItem(key);
     })
     .catch(() => {
+      if (currentGeneration() !== generation) return;
       // Managed storage must not fall back to readable localStorage.
       window.localStorage.removeItem(key);
     });
@@ -262,5 +269,6 @@ export const writeStorageItem = (key: string, value: string) => {
 export const removeStorageItem = (key: string) => {
   if (typeof window === 'undefined') return;
   decryptedValues.delete(key);
+  writeGenerations.set(key, (writeGenerations.get(key) || 0) + 1);
   window.localStorage.removeItem(key);
 };

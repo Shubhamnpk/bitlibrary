@@ -91,6 +91,7 @@ const addOption = (
 ) => {
   if (typeof url !== 'string' || !url.trim()) return;
   const cleanUrl = url.trim();
+  if (!/^https?:\/\//i.test(cleanUrl)) return;
   const key = cleanUrl.toLowerCase();
   if (seen.has(key)) return;
   seen.add(key);

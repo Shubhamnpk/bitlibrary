@@ -27,6 +27,16 @@ const STATIC_PAGES = [
   { path: '/dictionary', priority: '0.7', changefreq: 'monthly' },
   { path: '/sources', priority: '0.7', changefreq: 'monthly' },
   { path: '/research', priority: '0.7', changefreq: 'weekly' },
+  { path: '/blog', priority: '0.8', changefreq: 'weekly' },
+];
+
+const BLOG_SLUGS = [
+  'what-is-public-domain-books-guide',
+  'nepal-education-curriculum-cdc-textbooks',
+  'free-audiobooks-online-librivox-guide',
+  'open-digital-library-vs-traditional-library',
+  'how-to-read-books-online-free',
+  'nepali-literature-books-authors-guide',
 ];
 
 const LAST_MOD = new Date().toISOString().split('T')[0];
@@ -42,6 +52,15 @@ const buildSitemap = (): string => {
     xml += `    <lastmod>${LAST_MOD}</lastmod>\n`;
     xml += `    <changefreq>${page.changefreq}</changefreq>\n`;
     xml += `    <priority>${page.priority}</priority>\n`;
+    xml += '  </url>\n';
+  });
+
+  BLOG_SLUGS.forEach((slug) => {
+    xml += '  <url>\n';
+    xml += `    <loc>${SITE_URL}/blog/${slug}</loc>\n`;
+    xml += `    <lastmod>${LAST_MOD}</lastmod>\n`;
+    xml += '    <changefreq>monthly</changefreq>\n';
+    xml += '    <priority>0.7</priority>\n';
     xml += '  </url>\n';
   });
 

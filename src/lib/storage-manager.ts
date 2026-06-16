@@ -23,6 +23,7 @@ export interface StorageSummary {
 interface CacheEntry<T = unknown> {
   data: T;
   timestamp: number;
+  ttlMs?: number;
 }
 
 type CacheBucket = Record<string, CacheEntry>;
@@ -133,9 +134,9 @@ export const readCacheEntry = <T>(scope: CacheScope, key: string, ttlMs: number)
   return entry.data;
 };
 
-export const writeCacheEntry = (scope: CacheScope, key: string, data: unknown) => {
+export const writeCacheEntry = (scope: CacheScope, key: string, data: unknown, ttlMs?: number) => {
   const bucket = readCacheBucket(scope);
-  bucket[key] = { data, timestamp: Date.now() };
+  bucket[key] = { data, timestamp: Date.now(), ttlMs };
   writeCacheBucket(scope, bucket);
   enforceCacheBudget();
 };
@@ -220,8 +221,26 @@ export const getStorageReport = (): StorageEntryReport[] => {
     const value = window.localStorage.getItem(key);
     if (value === null) continue;
 
-    const updatedAt = readTimestamp(value);
-    const ttlMs = base.ttlMs;
+    let updatedAt = readTimestamp(value);
+    let ttlMs = base.ttlMs;
+
+    if (updatedAt === undefined && (base.category === 'api-cache' || base.category === 'page-cache')) {
+      try {
+        const bucket = JSON.parse(value) as CacheBucket;
+        const bucketEntries = Object.values(bucket);
+        if (bucketEntries.length > 0) {
+          let latestTs = 0;
+          let minTtl: number | undefined;
+          for (const entry of bucketEntries) {
+            if (entry.timestamp > latestTs) latestTs = entry.timestamp;
+            if (entry.ttlMs !== undefined) minTtl = minTtl === undefined ? entry.ttlMs : Math.min(minTtl, entry.ttlMs);
+          }
+          updatedAt = latestTs || undefined;
+          ttlMs = minTtl;
+        }
+      } catch {}
+    }
+
     entries.push({
       ...base,
       bytes: getStorageByteSize(key, value),
@@ -283,10 +302,19 @@ export const clearStorageCategory = (category: StorageCategory) => {
 };
 
 export const clearStaleCaches = () => {
-  const keys = getStorageReport()
-    .filter((entry) => entry.stale && !entry.protected && ['api-cache', 'page-cache'].includes(entry.category))
-    .map((entry) => entry.key);
-  return removeKeys(keys);
+  if (!isBrowserStorageAvailable()) return 0;
+  let removed = 0;
+  for (const scope of ['api', 'page'] as CacheScope[]) {
+    const bucket = readCacheBucket(scope);
+    const staleKeys = Object.keys(bucket).filter((key) => (
+      isEntryStale(bucket[key].timestamp, bucket[key].ttlMs)
+    ));
+    if (staleKeys.length === 0) continue;
+    staleKeys.forEach((key) => delete bucket[key]);
+    writeCacheBucket(scope, bucket);
+    removed += staleKeys.length;
+  }
+  return removed;
 };
 
 export const clearRecoverableCaches = () => {

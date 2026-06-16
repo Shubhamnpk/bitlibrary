@@ -343,11 +343,13 @@
 
 .prose-bit h2 {
   @apply text-2xl md:text-3xl font-display font-bold text-bit-text mb-6 mt-14 tracking-tight;
+
   scroll-margin-top: 6rem;
 }
 
 .prose-bit h3 {
   @apply text-xl font-display font-bold text-bit-text mb-4 mt-10 tracking-tight;
+
   scroll-margin-top: 6rem;
 }
 

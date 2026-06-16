@@ -91,6 +91,8 @@ const compactStudyState = (state: Partial<PdfStudyState> | null | undefined): Pd
   };
 };
 
+const LEGACY_STORAGE_KEY = 'bitlibrary-pdf-reader-storage-v1';
+
 export const getStudyId = (pdfUrl: string) => {
   let hash = 0;
   for (let index = 0; index < pdfUrl.length; index += 1) {
@@ -117,8 +119,46 @@ const pruneStorage = (storage: PdfReaderStorage, activeStudyId?: string): PdfRea
   };
 };
 
+const migrateFromLegacy = (): PdfReaderStorage | null => {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!raw) return null;
+    const legacy = JSON.parse(raw) as Partial<PdfReaderStorage>;
+    const storage = defaultStorage();
+
+    if (legacy.preferences) {
+      storage.preferences.backgroundPreset = isPdfBackgroundPresetId(legacy.preferences.backgroundPreset)
+        ? legacy.preferences.backgroundPreset
+        : storage.preferences.backgroundPreset;
+      storage.preferences.highlightColor = isPdfHighlightColorId(legacy.preferences.highlightColor)
+        ? legacy.preferences.highlightColor
+        : storage.preferences.highlightColor;
+    }
+
+    if (legacy.studies && typeof legacy.studies === 'object') {
+      storage.studies = Object.fromEntries(
+        Object.entries(legacy.studies).map(([studyId, state]) => [studyId, compactStudyState(state)]),
+      );
+    }
+
+    if (Array.isArray(legacy.studyIndex)) {
+      storage.studyIndex = legacy.studyIndex.filter((studyId): studyId is string => (
+        typeof studyId === 'string' && Boolean(storage.studies[studyId])
+      ));
+    }
+
+    const result = pruneStorage(storage);
+    writeReaderEntry(PDF_READER_ENTRY_KEY, result);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return result;
+  } catch {
+    return null;
+  }
+};
+
 const readStorage = (): PdfReaderStorage => {
-  const parsed = readReaderEntry<Partial<PdfReaderStorage>>(PDF_READER_ENTRY_KEY);
+  const parsed = readReaderEntry<Partial<PdfReaderStorage>>(PDF_READER_ENTRY_KEY) ?? migrateFromLegacy();
   const storage = defaultStorage();
 
   if (parsed?.preferences) {
@@ -144,6 +184,7 @@ const readStorage = (): PdfReaderStorage => {
 
   return pruneStorage(storage);
 };
+
 
 const writeStorage = (storage: PdfReaderStorage) => {
   try {
