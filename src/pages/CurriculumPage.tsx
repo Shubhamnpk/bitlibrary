@@ -8,7 +8,7 @@ import AudiobookCard from '@/components/AudiobookCard';
 import { BookCardSkeleton, BookGridSkeleton } from '@/components/Skeletons';
 import Seo from '@/components/Seo';
 import AppSelect from '@/components/AppSelect';
-import { ArrowRight, BookMarked, BookOpen, GraduationCap, Headphones, LayoutGrid, LibraryBig, ListFilter, RotateCcw, Search } from 'lucide-react';
+import { ArrowRight, BookMarked, BookOpen, ChevronLeft, ChevronRight, GraduationCap, Headphones, LayoutGrid, LibraryBig, ListFilter, RotateCcw, Search } from 'lucide-react';
 import { createFaqSchema, createItemListSchema, truncate } from '@/lib/seo';
 import { Link } from 'react-router-dom';
 import {
@@ -28,6 +28,7 @@ import {
   modeLabels,
   regionLabels,
 } from '@/lib/curriculum';
+import MobileCurriculumFilters from '@/components/MobileCurriculumFilters';
 
 interface CurriculumPageProps {
   onBookClick: (book: Book) => void;
@@ -51,6 +52,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
   const [loading, setLoading] = useState(true);
   const [guidesStatus, setGuidesStatus] = useState<LazyLoadStatus>('idle');
   const [audioStatus, setAudioStatus] = useState<LazyLoadStatus>('idle');
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -144,27 +146,25 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
     }));
   }, [audioRows, curriculumRegion, gradeRows, guideRows, resourceMode, selectedGrade, selectedSubject]);
 
-  const allVisibleBooks = useMemo(() => (
-    visibleRows.flatMap((row) => row.books)
-  ), [visibleRows]);
-  const allVisibleGuides = useMemo(() => (
-    visibleRows.flatMap((row) => row.guides)
-  ), [visibleRows]);
-  const allVisibleAudiobooks = useMemo(() => (
-    visibleRows.flatMap((row) => row.audiobooks)
-  ), [visibleRows]);
-  const visibleUngradedBooks = useMemo(() => (
-    selectedGrade === 'all' ? filterBooks(ungradedBooks, selectedSubject, resourceMode, curriculumRegion) : []
-  ), [curriculumRegion, resourceMode, selectedGrade, selectedSubject, ungradedBooks]);
-  const visibleUngradedGuides = useMemo(() => (
-    selectedGrade === 'all' ? filterGuides(ungradedGuides, selectedSubject, resourceMode, curriculumRegion) : []
-  ), [curriculumRegion, resourceMode, selectedGrade, selectedSubject, ungradedGuides]);
-  const curriculumSubjects = useMemo(() => {
-    return getAvailableCurriculumSubjects(gradeRows, ungradedBooks, guideRows, ungradedGuides, curriculumAudiobooks, curriculumRegion);
-  }, [curriculumAudiobooks, curriculumRegion, gradeRows, guideRows, ungradedBooks, ungradedGuides]);
-  const visibleCurriculumAudiobooks = useMemo(() => (
-    selectedGrade === 'all' ? filterAudiobooks(curriculumAudiobooks, selectedSubject, resourceMode, curriculumRegion) : []
-  ), [curriculumAudiobooks, curriculumRegion, resourceMode, selectedGrade, selectedSubject]);
+  const curriculumSubjects = useMemo(() => (
+    getAvailableCurriculumSubjects(gradeRows, ungradedBooks, guideRows, ungradedGuides, curriculumAudiobooks, curriculumRegion)
+  ), [curriculumAudiobooks, curriculumRegion, gradeRows, guideRows, ungradedBooks, ungradedGuides]);
+
+  const {
+    allVisibleBooks,
+    allVisibleGuides,
+    allVisibleAudiobooks,
+    visibleUngradedBooks,
+    visibleUngradedGuides,
+    visibleCurriculumAudiobooks,
+  } = useMemo(() => ({
+    allVisibleBooks: visibleRows.flatMap((row) => row.books),
+    allVisibleGuides: visibleRows.flatMap((row) => row.guides),
+    allVisibleAudiobooks: visibleRows.flatMap((row) => row.audiobooks),
+    visibleUngradedBooks: selectedGrade === 'all' ? filterBooks(ungradedBooks, selectedSubject, resourceMode, curriculumRegion) : [],
+    visibleUngradedGuides: selectedGrade === 'all' ? filterGuides(ungradedGuides, selectedSubject, resourceMode, curriculumRegion) : [],
+    visibleCurriculumAudiobooks: selectedGrade === 'all' ? filterAudiobooks(curriculumAudiobooks, selectedSubject, resourceMode, curriculumRegion) : [],
+  }), [curriculumAudiobooks, curriculumRegion, resourceMode, selectedGrade, selectedSubject, ungradedBooks, ungradedGuides, visibleRows]);
 
   const hasActiveFilters = curriculumRegion !== 'all' || selectedGrade !== 'all' || selectedSubject !== 'all' || resourceMode !== 'textbooks';
   const activeCategory = `${regionLabels[curriculumRegion]} curriculum / ${selectedGrade === 'all' ? 'All grades' : `Grade ${selectedGrade}`}`;
@@ -197,15 +197,31 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
     setResourceMode('textbooks');
   };
 
-  const scrollToShelf = (targetId: string) => {
-    if (selectedGrade !== 'all') {
-      setSelectedGrade('all');
-    }
-
-    window.setTimeout(() => {
-      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 60);
+  const scrollRow = (id: string, dir: 'left' | 'right') => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const amount = el.clientWidth * 0.75;
+    el.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' });
   };
+
+  const ScrollArrows = ({ id }: { id: string }) => (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => scrollRow(id, 'left')}
+        className="flex h-7 w-7 items-center justify-center rounded-lg border border-bit-border text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-text"
+      >
+        <ChevronLeft size={15} />
+      </button>
+      <button
+        type="button"
+        onClick={() => scrollRow(id, 'right')}
+        className="flex h-7 w-7 items-center justify-center rounded-lg border border-bit-border text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-text"
+      >
+        <ChevronRight size={15} />
+      </button>
+    </div>
+  );
 
   return (
     <div className="animate-fade-in pb-20">
@@ -246,31 +262,44 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
       />
 
       <section className="mb-8 border-b border-bit-border pb-8">
-        <div className="mb-5 flex items-center gap-2 text-bit-accent">
+        <div className="mb-5 hidden items-center gap-2 text-bit-accent sm:flex">
           <GraduationCap size={18} />
           <p className="text-[10px] font-mono font-bold uppercase tracking-[0.24em]">Curriculum</p>
         </div>
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-4xl font-display font-bold tracking-tight text-bit-text sm:text-5xl">Curriculum Library</h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-bit-muted">
+            <h1 className="text-3xl font-display font-bold tracking-tight text-bit-text sm:text-5xl">Curriculum Library</h1>
+            <p className="mt-4 hidden max-w-2xl text-sm leading-7 text-bit-muted sm:block">
               Browse CDC Nepal and NCERT school books grade by grade, with quick filters only when you need to narrow the shelf.
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
-              <LibraryBig size={15} className="text-bit-accent" />
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-bit-muted sm:px-4 sm:py-3 sm:text-xs">
+              <LibraryBig size={13} className="text-bit-accent sm:size-[15px]" />
               {loading ? '...' : availableCount} resources
             </span>
-            <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
+            <button
+              type="button"
+              onClick={() => setMobileFiltersOpen(true)}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-bit-border bg-bit-panel/20 px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-text transition-all hover:border-bit-accent/50 lg:hidden"
+            >
+              <ListFilter size={14} />
+              Filters
+              {hasActiveFilters && (
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-bit-accent text-[7px] font-bold text-white">
+                  {[curriculumRegion !== 'all', selectedGrade !== 'all', selectedSubject !== 'all', resourceMode !== 'textbooks'].filter(Boolean).length}
+                </span>
+              )}
+            </button>
+            <span className="hidden sm:inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
               <Headphones size={15} className="text-bit-accent" />
               {loading ? '...' : audioCountLabel} audio
             </span>
-            <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
+            <span className="hidden sm:inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
               <BookMarked size={15} className="text-bit-accent" />
               {loading ? '...' : guideCountLabel} guides
             </span>
-            <span className="inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
+            <span className="hidden sm:inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/25 px-4 py-3 text-xs font-mono uppercase tracking-widest text-bit-muted">
               <LayoutGrid size={15} className="text-bit-accent" />
               Grades 1-12
             </span>
@@ -286,12 +315,12 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
                 { value: 'nepal', label: 'Nepal' },
                 { value: 'ncert', label: 'NCERT' },
               ]}
-              className="px-4 text-xs font-mono uppercase tracking-widest"
-              selectClassName="font-bold uppercase tracking-widest"
+              className="hidden sm:inline-flex"
+              selectClassName="px-4 text-xs font-mono uppercase tracking-widest font-bold uppercase tracking-widest"
             />
             <Link
               to="/curriculum/subjects"
-              className="inline-flex items-center gap-2 rounded-lg border border-bit-accent/40 bg-bit-accent/10 px-4 py-3 text-xs font-mono font-bold uppercase tracking-widest text-bit-accent transition-all hover:bg-bit-accent hover:text-white"
+              className="hidden sm:inline-flex items-center gap-2 rounded-lg border border-bit-accent/40 bg-bit-accent/10 px-4 py-3 text-xs font-mono font-bold uppercase tracking-widest text-bit-accent transition-all hover:bg-bit-accent hover:text-white"
             >
               Browse subjects
               <ArrowRight size={14} />
@@ -300,7 +329,37 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
         </div>
       </section>
 
-      <section className="mb-10 border-y border-bit-border bg-bit-bg/95 py-3 backdrop-blur-xl">
+      {/* Mobile grade quick-select */}
+      <div className="mb-5 grid grid-cols-7 gap-2 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setSelectedGrade('all')}
+          className={`rounded-lg border py-2 text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${
+            selectedGrade === 'all'
+              ? 'border-bit-accent bg-bit-accent text-white shadow-sm shadow-bit-accent/20'
+              : 'border-bit-border bg-bit-panel/20 text-bit-muted hover:border-bit-accent/40 hover:text-bit-text'
+          }`}
+        >
+          All
+        </button>
+        {CURRICULUM_GRADES.map((grade) => (
+          <button
+            key={grade}
+            type="button"
+            onClick={() => setSelectedGrade(grade)}
+            className={`rounded-lg border py-2 text-sm font-mono font-bold transition-all ${
+              selectedGrade === grade
+                ? 'border-bit-accent bg-bit-accent text-white shadow-sm shadow-bit-accent/20'
+                : 'border-bit-border bg-bit-panel/20 text-bit-muted hover:border-bit-accent/40 hover:text-bit-text'
+            }`}
+          >
+            {grade}
+          </button>
+        ))}
+      </div>
+
+      {/* Desktop filter bar */}
+      <section className="mb-10 hidden border-y border-bit-border bg-bit-bg/95 py-3 backdrop-blur-xl lg:block">
         <div className="flex flex-nowrap items-center gap-3 overflow-x-auto whitespace-nowrap pb-1">
           <div className="flex shrink-0 items-center gap-2 text-bit-accent">
             <ListFilter size={16} />
@@ -316,7 +375,8 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
                 { value: 'all', label: 'All subjects' },
                 ...curriculumSubjects.map((subject) => ({ value: subject, label: subject })),
               ]}
-              className="w-56 bg-bit-panel/20"
+              className="w-56"
+              selectClassName="bg-bit-panel/20"
               size="sm"
             />
 
@@ -373,44 +433,9 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
         </div>
       </section>
 
-      <nav className="mb-10 flex items-center gap-2 overflow-x-auto border-b border-bit-border pb-4" aria-label="Jump to curriculum grade">
-        <span className="shrink-0 text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-muted">Jump</span>
-        {CURRICULUM_GRADES.map((grade) => (
-          <button
-            key={grade}
-            type="button"
-            onClick={() => scrollToShelf(`curriculum-grade-${grade}`)}
-            className="inline-flex h-8 shrink-0 items-center rounded-full border border-bit-border bg-bit-panel/20 px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/50 hover:text-bit-text"
-          >
-            {grade}
-          </button>
-        ))}
-        {(visibleUngradedBooks.length > 0 || visibleUngradedGuides.length > 0) && (
-          <button
-            type="button"
-            onClick={() => scrollToShelf('curriculum-others')}
-            className="inline-flex h-8 shrink-0 items-center rounded-full border border-bit-accent/40 bg-bit-accent/10 px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent transition-all hover:bg-bit-accent hover:text-white"
-          >
-            Others
-          </button>
-        )}
-      </nav>
+
 
       <section>
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">{activeCategory}</p>
-            <h2 className="mt-2 text-3xl font-display font-bold tracking-tight text-bit-text">
-              {hasActiveFilters ? 'Filtered curriculum books' : 'Browse by grade'}
-            </h2>
-          </div>
-          <p className="text-xs font-mono uppercase tracking-widest text-bit-muted">
-            {loading
-              ? 'Loading textbooks'
-              : `${visibleResourceCount} visible${supplementalLoading ? ' / loading more' : ''}`}
-          </p>
-        </div>
-
         {loading ? (
           selectedGrade === 'all' ? (
             <div className="space-y-10">
@@ -436,15 +461,11 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
           <div className="space-y-12">
             {visibleCurriculumAudiobooks.length > 0 && (
               <div className="border-b border-bit-border/60 pb-10">
-                <div className="mb-5 flex items-end justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-muted">
-                      {visibleCurriculumAudiobooks.length} audio resources
-                    </p>
-                    <h3 className="mt-1 text-2xl font-display font-bold tracking-tight text-bit-text">Curriculum audiobooks</h3>
-                  </div>
+                <div className="mb-5 flex items-center justify-between gap-4">
+                  <h3 className="text-2xl font-display font-bold tracking-tight text-bit-text">Curriculum audiobooks</h3>
+                  <ScrollArrows id="scroll-audio" />
                 </div>
-                <div className="flex snap-x gap-4 overflow-x-auto pb-4">
+                <div id="scroll-audio" className="flex snap-x gap-4 overflow-x-auto scrollbar-hide pb-4">
                   {visibleCurriculumAudiobooks.map((audiobook, index) => (
                     <div
                       key={audiobook.id}
@@ -464,30 +485,31 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
             )}
             {visibleRows.filter((row) => row.books.length > 0 || row.guides.length > 0 || row.audiobooks.length > 0).map((row) => (
               <div key={row.grade} id={`curriculum-grade-${row.grade}`} className="scroll-mt-32 border-b border-bit-border/60 pb-10 last:border-b-0">
-                <div className="mb-5 flex items-end justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-muted">
-                      {row.books.length + row.guides.length + row.audiobooks.length} of {row.total || row.books.length + row.guides.length + row.audiobooks.length} resources
-                    </p>
-                    <h3 className="mt-1 text-2xl font-display font-bold tracking-tight text-bit-text">Grade {row.grade}</h3>
-                  </div>
+                <div className="mb-5 flex items-center justify-between gap-4">
+                  <h3 className="text-2xl font-display font-bold tracking-tight text-bit-text">Grade {row.grade}</h3>
                   {selectedGrade === 'all' && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedGrade(row.grade)}
-                      className="shrink-0 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent hover:text-bit-text"
-                    >
-                      View all
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <ScrollArrows id={`scroll-books-${row.grade}`} />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGrade(row.grade)}
+                        className="shrink-0 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent hover:text-bit-text"
+                      >
+                        View all
+                      </button>
+                    </div>
                   )}
                 </div>
                 {row.guides.length > 0 && (
                   <div className="mb-7">
-                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
-                      <BookMarked size={15} />
-                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Guides</p>
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-bit-accent">
+                        <BookMarked size={15} />
+                        <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Guides</p>
+                      </div>
+                      {selectedGrade === 'all' && <ScrollArrows id={`scroll-guides-${row.grade}`} />}
                     </div>
-                    <div className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
+                    <div id={selectedGrade === 'all' ? `scroll-guides-${row.grade}` : undefined} className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto scrollbar-hide pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
                       {row.guides.slice(0, selectedGrade === 'all' ? 4 : undefined).map((guide, index) => (
                         <div
                           key={guide.id}
@@ -506,7 +528,7 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
                   </div>
                 )}
                 {(row.books.length > 0 || row.audiobooks.length > 0) && (
-                <div className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
+                <div id={selectedGrade === 'all' ? `scroll-books-${row.grade}` : undefined} className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto scrollbar-hide pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
                   {row.books.slice(0, selectedGrade === 'all' ? 8 : undefined).map((book, index) => (
                     <div
                       key={book.id}
@@ -537,21 +559,19 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
             {(visibleUngradedBooks.length > 0 || visibleUngradedGuides.length > 0) && (
               <div id="curriculum-others" className="scroll-mt-32 border-b border-bit-border/60 pb-10 last:border-b-0">
                 <div className="mb-5 flex items-end justify-between gap-4">
-                  <div>
-                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-muted">
-                      {visibleUngradedBooks.length + visibleUngradedGuides.length} resources without a single grade
-                    </p>
-                    <h3 className="mt-1 text-2xl font-display font-bold tracking-tight text-bit-text">Others</h3>
-                  </div>
+                  <h3 className="text-2xl font-display font-bold tracking-tight text-bit-text">Others</h3>
                 </div>
 
                 {visibleUngradedBooks.length > 0 && (
                   <div className="mb-7">
-                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
-                      <BookOpen size={15} />
-                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Books</p>
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-bit-accent">
+                        <BookOpen size={15} />
+                        <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Books</p>
+                      </div>
+                      {selectedGrade === 'all' && <ScrollArrows id="scroll-others-books" />}
                     </div>
-                    <div className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
+                    <div id={selectedGrade === 'all' ? 'scroll-others-books' : undefined} className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto scrollbar-hide pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
                       {visibleUngradedBooks.slice(0, selectedGrade === 'all' ? 12 : undefined).map((book, index) => (
                         <div
                           key={book.id}
@@ -567,11 +587,14 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
 
                 {visibleUngradedGuides.length > 0 && (
                   <div>
-                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
-                      <BookMarked size={15} />
-                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Guides</p>
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-bit-accent">
+                        <BookMarked size={15} />
+                        <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Guides</p>
+                      </div>
+                      {selectedGrade === 'all' && <ScrollArrows id="scroll-others-guides" />}
                     </div>
-                    <div className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
+                    <div id={selectedGrade === 'all' ? 'scroll-others-guides' : undefined} className={selectedGrade === 'all' ? 'flex snap-x gap-4 overflow-x-auto scrollbar-hide pb-4' : 'grid grid-cols-2 gap-x-3 gap-y-6 md:grid-cols-3 md:gap-x-6 lg:grid-cols-4 xl:grid-cols-5'}>
                       {visibleUngradedGuides.slice(0, selectedGrade === 'all' ? 12 : undefined).map((guide, index) => (
                         <div
                           key={guide.id}
@@ -609,6 +632,22 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
           </div>
         )}
       </section>
+
+      <MobileCurriculumFilters
+        open={mobileFiltersOpen}
+        onClose={() => setMobileFiltersOpen(false)}
+        curriculumRegion={curriculumRegion}
+        setCurriculumRegion={setCurriculumRegion}
+        selectedSubject={selectedSubject}
+        setSelectedSubject={setSelectedSubject}
+        resourceMode={resourceMode}
+        setResourceMode={setResourceMode}
+        selectedGrade={selectedGrade}
+        setSelectedGrade={setSelectedGrade}
+        curriculumSubjects={curriculumSubjects}
+        hasActiveFilters={hasActiveFilters}
+        onReset={resetFilters}
+      />
     </div>
   );
 };

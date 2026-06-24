@@ -200,23 +200,23 @@ const CurriculumShelf: React.FC<{
    if (!isLoading && shelfBooks.length === 0) return null;
 
    return (
-      <section className="mb-14 space-y-6 border-b border-bit-border pb-12">
-         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div>
+      <section className="mb-6 space-y-3 border-b border-bit-border pb-6 md:mb-14 md:space-y-6 md:pb-12">
+         <div className="flex flex-row items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
                <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Education</p>
-               <h2 className="mt-1 text-2xl font-display font-bold tracking-tight text-bit-text sm:mt-2 sm:text-3xl">Nepali curriculum books</h2>
-               <p className="mt-2 hidden max-w-2xl text-sm leading-7 text-bit-muted sm:block">
-                  A focused row for CDC Nepal and CEHRD books. Browse the full class-wise collection in Curriculum.
-               </p>
+               <h2 className="mt-1 hidden text-xl font-display font-bold tracking-tight text-bit-text md:mt-2 md:block md:text-3xl">Nepali curriculum books</h2>
             </div>
             <button
                type="button"
                onClick={onViewAll}
-               className="inline-flex w-fit items-center gap-2 rounded-full border border-bit-border bg-bit-panel/40 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent"
+               className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-bit-border bg-bit-panel/40 px-3 py-1.5 text-[9px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent md:px-4 md:py-2 md:text-[10px] md:gap-2"
             >
-               View curriculum <ArrowRight size={14} />
+               View curriculum <ArrowRight size={12} className="md:size-[14px]" />
             </button>
          </div>
+         <p className="hidden max-w-2xl text-sm leading-7 text-bit-muted sm:block">
+            A focused row for CDC Nepal and CEHRD books. Browse the full class-wise collection in Curriculum.
+         </p>
 
          {isLoading ? (
             <div className="flex gap-4 overflow-hidden">
@@ -225,7 +225,7 @@ const CurriculumShelf: React.FC<{
                ))}
             </div>
          ) : (
-            <div className="flex snap-x gap-4 overflow-x-auto pb-4">
+            <div className="flex snap-x gap-4 overflow-x-auto scrollbar-hide pb-2 md:pb-4">
                {shelfBooks.map((book) => (
                   <div key={book.id} className="w-40 shrink-0 snap-start sm:w-44 lg:w-48">
                      <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} />
@@ -267,10 +267,7 @@ const BookCategoryShelf: React.FC<BookCategoryShelfProps> = ({ category, onBookC
    return (
       <section>
          <div className="mb-4 flex items-center justify-between gap-4">
-            <div>
-               <h3 className="text-xl font-display font-bold text-bit-text">{category}</h3>
-               <p className="mt-1 line-clamp-1 text-xs text-bit-muted">Open books and archive records for {category.toLowerCase()}.</p>
-            </div>
+            <h3 className="text-lg font-display font-bold text-bit-text md:text-xl">{category}</h3>
             <button type="button" onClick={() => onViewAll(category)} className="shrink-0 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent hover:text-bit-text">
                View all
             </button>
@@ -283,7 +280,7 @@ const BookCategoryShelf: React.FC<BookCategoryShelfProps> = ({ category, onBookC
                ))}
             </div>
          ) : (
-            <div className="flex snap-x gap-4 overflow-x-auto pb-4">
+            <div className="flex snap-x gap-4 overflow-x-auto scrollbar-hide pb-2 md:pb-4">
                {shelfBooks.map((book) => (
                   <div key={book.id} className="w-40 shrink-0 snap-start sm:w-44 lg:w-48">
                      <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} />
@@ -554,25 +551,25 @@ const Library: React.FC<LibraryProps> = ({ onBookClick, onAudiobookClick, onRead
             </p>
          </div>
 
-         {/* Filter Bar */}
-         <div className="flex flex-col md:flex-row items-center gap-6 mb-12 border-b border-bit-border pb-8">
-            <div className="flex flex-wrap gap-2 flex-1">
-               <button
-                  onClick={() => navigate('/browse')}
-                  className={`px-4 py-2 rounded-full border text-xs font-mono transition-all ${selectedCategory === 'All' ? 'bg-bit-accent border-bit-accent text-white font-bold shadow-lg shadow-bit-accent/20' : 'border-bit-border text-bit-muted hover:border-bit-accent/30'}`}
-               >
-                  ALL
-               </button>
-               {CATEGORIES.slice(0, 8).map(cat => (
-                  <button
-                     key={cat}
-                     onClick={() => navigate(`/browse/${encodeURIComponent(cat)}`)}
-                     className={`px-4 py-2 rounded-full border text-xs font-mono transition-all ${selectedCategory === cat ? 'bg-bit-accent border-bit-accent text-white font-bold shadow-lg shadow-bit-accent/20' : 'border-bit-border text-bit-muted hover:border-bit-accent/30'}`}
-                  >
-                     {cat.toUpperCase()}
-                  </button>
-               ))}
-            </div>
+          {/* Filter Bar */}
+          <div className="flex flex-col gap-4 mb-10 border-b border-bit-border pb-7 md:flex-row md:items-center md:gap-6 md:mb-12 md:pb-8">
+             <div className="flex gap-2 overflow-x-auto scrollbar-hide flex-nowrap md:flex-wrap pb-1 md:pb-0">
+                <button
+                   onClick={() => navigate('/browse')}
+                   className={`shrink-0 px-3 py-1.5 md:px-4 md:py-2 rounded-full border text-[10px] md:text-xs font-mono transition-all ${selectedCategory === 'All' ? 'bg-bit-accent border-bit-accent text-white font-bold shadow-sm shadow-bit-accent/20 md:shadow-lg' : 'border-bit-border text-bit-muted hover:border-bit-accent/30'}`}
+                >
+                   ALL
+                </button>
+                {CATEGORIES.slice(0, 8).map(cat => (
+                   <button
+                      key={cat}
+                      onClick={() => navigate(`/browse/${encodeURIComponent(cat)}`)}
+                      className={`shrink-0 px-3 py-1.5 md:px-4 md:py-2 rounded-full border text-[10px] md:text-xs font-mono transition-all ${selectedCategory === cat ? 'bg-bit-accent border-bit-accent text-white font-bold shadow-sm shadow-bit-accent/20 md:shadow-lg' : 'border-bit-border text-bit-muted hover:border-bit-accent/30'}`}
+                   >
+                      {cat.toUpperCase()}
+                   </button>
+                ))}
+             </div>
 
             {!shouldShowShelves && (
             <div className="flex items-center gap-4">
@@ -606,23 +603,23 @@ const Library: React.FC<LibraryProps> = ({ onBookClick, onAudiobookClick, onRead
          )}
 
          {shouldShowShelves && (
-            <section className="mb-14 space-y-10 border-b border-bit-border pb-12">
-               <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                  <div>
-                     <div className="mb-3 flex items-center gap-2 text-bit-accent">
-                        <Headphones size={18} />
-                        <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Audiobooks</p>
-                     </div>
-                     <h2 className="text-3xl font-display font-bold tracking-tight text-bit-text">Start listening</h2>
-                  </div>
-                  <button
-                     type="button"
-                     onClick={() => navigate('/audiobooks')}
-                     className="inline-flex w-fit items-center gap-2 rounded-full border border-bit-border bg-bit-panel/40 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent"
-                  >
-                     View all audiobooks <ArrowRight size={14} />
-                  </button>
-               </div>
+             <section className="mb-6 space-y-3 border-b border-bit-border pb-6 md:mb-14 md:space-y-10 md:pb-12">
+         <div className="flex flex-row items-center justify-between gap-3">
+                   <div className="flex items-center gap-2 md:block">
+                      <div className="flex items-center gap-2 text-bit-accent md:mb-3">
+                         <Headphones size={15} className="md:size-[18px]" />
+                         <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Audiobooks</p>
+                      </div>
+                      <h2 className="hidden text-xl font-display font-bold tracking-tight text-bit-text md:mt-1 md:block md:text-3xl">Start listening</h2>
+                   </div>
+                   <button
+                      type="button"
+                      onClick={() => navigate('/audiobooks')}
+                      className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-bit-border bg-bit-panel/40 px-3 py-1.5 text-[9px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent md:px-4 md:py-2 md:text-[10px] md:gap-2"
+                   >
+                      View all audiobooks <ArrowRight size={12} className="md:size-[14px]" />
+                   </button>
+                </div>
 
                {featuredAudiobooks.length === 0 ? (
                   <div className="flex gap-4 overflow-hidden">
@@ -631,7 +628,7 @@ const Library: React.FC<LibraryProps> = ({ onBookClick, onAudiobookClick, onRead
                      ))}
                   </div>
                ) : featuredAudiobooks.length > 0 && (
-                  <div className="flex snap-x gap-4 overflow-x-auto pb-4">
+                  <div className="flex snap-x gap-4 overflow-x-auto scrollbar-hide pb-2 md:pb-4">
                      {featuredAudiobooks.map((audiobook) => (
                         <div key={audiobook.id} className="w-40 shrink-0 snap-start sm:w-44 lg:w-48">
                            <AudiobookCard variant="compact" audiobook={audiobook} onClick={onAudiobookClick} />
@@ -642,15 +639,15 @@ const Library: React.FC<LibraryProps> = ({ onBookClick, onAudiobookClick, onRead
             </section>
          )}
 
-         {shouldShowShelves && (
-            <section className="space-y-12">
-               <div className="hidden md:block">
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Books</p>
-                  <h2 className="mt-2 text-3xl font-display font-bold tracking-tight text-bit-text">Browse by category</h2>
-               </div>
+          {shouldShowShelves && (
+             <section className="space-y-8 md:space-y-12">
+                 <div className="md:block">
+                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">Books</p>
+                    <h2 className="mt-1 hidden text-xl font-display font-bold tracking-tight text-bit-text md:mt-2 md:block md:text-3xl">Browse by category</h2>
+                 </div>
 
-               <div className="space-y-12">
-                     {CATEGORIES.slice(0, visibleShelfCount).map((category) => (
+                <div className="space-y-8 md:space-y-12">
+                      {CATEGORIES.slice(0, visibleShelfCount).map((category) => (
                         <BookCategoryShelf
                            key={category}
                            category={category}
@@ -659,8 +656,8 @@ const Library: React.FC<LibraryProps> = ({ onBookClick, onAudiobookClick, onRead
                            onViewAll={(nextCategory) => navigate(`/browse/${encodeURIComponent(nextCategory)}`)}
                         />
                      ))}
-                     {visibleShelfCount < CATEGORIES.length && (
-                        <div ref={shelfObserverRef} className="flex flex-col items-center gap-4 py-8">
+                      {visibleShelfCount < CATEGORIES.length && (
+                         <div ref={shelfObserverRef} className="flex flex-col items-center gap-3 py-5 md:py-8">
                            {loadingMoreShelves ? (
                               <div className="flex gap-4 overflow-hidden">
                                  {Array.from({ length: SHELF_ITEM_LIMIT }).map((_, index) => (

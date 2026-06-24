@@ -194,7 +194,7 @@ const BookCard: React.FC<BookCardProps> = ({
                     <div className={`mb-3 inline-flex max-w-full rounded-full px-2.5 py-1 font-mono text-[8px] font-bold uppercase tracking-widest ${researchTheme.chip}`}>
                       <span className="truncate">{researchType}</span>
                     </div>
-                    <h3 className="mb-3 line-clamp-5 font-display text-[1.05rem] font-bold leading-tight text-bit-text">
+                    <h3 className="mb-3 line-clamp-5 font-display text-[1.05rem] font-bold leading-tight text-bit-text" title={book.title}>
                       <HighlightedText text={book.title} query={searchQuery} />
                     </h3>
                     <div className="flex items-end justify-between gap-3 border-t border-white/10 pt-3">
@@ -218,7 +218,7 @@ const BookCard: React.FC<BookCardProps> = ({
                   }}
                 />
                 <div className="absolute bottom-4 left-4 right-4">
-                  <h3 className="font-display font-bold text-lg leading-tight text-bit-text mb-1 line-clamp-3">
+                  <h3 className="font-display font-bold text-lg leading-tight text-bit-text mb-1 line-clamp-3" title={book.title}>
                      <HighlightedText text={book.title} query={searchQuery} />
                   </h3>
                   <p className="text-[10px] text-bit-muted/40 font-mono tracking-widest uppercase">
@@ -310,7 +310,7 @@ const BookCard: React.FC<BookCardProps> = ({
         <div className={`${variant === 'compact' ? 'min-h-[5.75rem] p-3.5' : 'p-5'} flex flex-col flex-1`}>
           <div className="flex flex-col h-full">
             <div className={variant === 'full' ? 'mb-4' : ''}>
-              <h3 className={`font-display font-bold text-bit-text leading-tight group-hover:text-bit-accent transition-colors mb-1 ${variant === 'full' ? 'text-base min-h-[2.5rem] line-clamp-2' : 'text-sm line-clamp-1'}`}>
+              <h3 className={`font-display font-bold text-bit-text leading-tight group-hover:text-bit-accent transition-colors mb-1 ${variant === 'full' ? 'text-base min-h-[2.5rem] line-clamp-2' : 'text-sm line-clamp-1'}`} title={book.title}>
                 <HighlightedText text={book.title} query={searchQuery} />
               </h3>
               <button 

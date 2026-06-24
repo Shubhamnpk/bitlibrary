@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Book, ChapterAudio, ResourceLink } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap, GripVertical, Headphones, Play, Pause, Volume2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Minimize2, Palette, PanelRight, Trash2, Type, Zap, GripVertical, Headphones, Play, Pause, Volume2, PictureInPicture } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PDFFlipBook, { type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
 import AppSelect from './AppSelect';
@@ -1295,7 +1295,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             <div className="p-2.5 bg-bit-panel/60 backdrop-blur-md rounded-full text-bit-text border border-bit-border">
               <Maximize2 size={20} />
             </div>
-            <p className="text-[9px] text-bit-text font-mono uppercase tracking-[0.2em] font-bold">RESTORE_SESSION</p>
+            <p className="text-[9px] text-bit-text font-mono uppercase tracking-[0.2em] font-bold">Open</p>
           </div>
 
           <div className="absolute top-2 right-2 flex gap-2 z-30">
@@ -1347,8 +1347,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 value: entry.url,
                 label: `${entry.format.toUpperCase()}${entry.provider ? ` · ${entry.provider}` : ''}${index === 0 ? ' · best' : ''}`,
               }))}
-              className="hidden max-w-72 bg-bit-panel/50 shadow-sm md:inline-flex"
-              selectClassName="max-w-52"
+              className="hidden max-w-72 md:inline-flex"
+              selectClassName="bg-bit-panel/50 shadow-sm max-w-52"
               ariaLabel="Select reading format"
             />
           )}
@@ -1361,8 +1361,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 value: String(index),
                 label: entry.title,
               }))}
-              className="hidden max-w-64 bg-bit-panel/50 shadow-sm md:inline-flex"
-              selectClassName="max-w-44"
+              className="hidden max-w-64 md:inline-flex"
+              selectClassName="bg-bit-panel/50 shadow-sm max-w-44"
               ariaLabel="Select PDF chapter"
             />
           )}
@@ -1417,7 +1417,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               className="rounded-lg p-2.5 text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-accent sm:p-3 group"
               title="Minimize stream (PiP)"
             >
-              <Layout size={17} className="group-hover:scale-110 sm:size-[18px]" />
+              <PictureInPicture size={17} className="group-hover:scale-110 sm:size-[18px]" />
             </button>
             <button
               onClick={enterFocusMode}
@@ -2080,8 +2080,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                             label: `${voice.name}${voice.lang ? ` (${voice.lang})` : ''}`,
                           })),
                         ]}
-                        className="w-full bg-bit-bg/40"
-                        selectClassName="max-w-[12rem]"
+                        className="w-full"
+                        selectClassName="bg-bit-bg/40 max-w-[12rem]"
                         ariaLabel="Select read aloud voice"
                       />
 

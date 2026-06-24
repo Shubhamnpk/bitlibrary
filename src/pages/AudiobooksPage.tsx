@@ -13,7 +13,7 @@ import {
 } from '@/services/audiobookService';
 import AudiobookCard from '@/components/AudiobookCard';
 import Seo from '@/components/Seo';
-import { ArrowLeft, ArrowRight, Disc, Search } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Disc, Search, X } from 'lucide-react';
 import { createItemListSchema } from '@/lib/seo';
 
 interface AudiobooksPageProps {
@@ -163,23 +163,23 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
         structuredData={[schema]}
       />
 
-      <header className="mb-8 border-b border-bit-border pb-7">
+      <header className="mb-6 border-b border-bit-border pb-6 md:mb-8 md:pb-7">
         {isCategoryPage && (
-          <Link to="/audiobooks" className="mb-5 inline-flex items-center gap-2 text-xs font-semibold text-bit-muted transition-colors hover:text-bit-accent">
+          <Link to="/audiobooks" className="mb-4 inline-flex items-center gap-2 text-xs font-semibold text-bit-muted transition-colors hover:text-bit-accent md:mb-5">
             <ArrowLeft size={14} />
             All audiobook categories
           </Link>
         )}
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-5">
           <div>
             <p className="text-[10px] font-mono font-bold uppercase tracking-[0.24em] text-bit-accent">
               {selectedCategory ? 'Category' : 'Listen by category'}
             </p>
-            <h1 className="mt-2 text-3xl font-display font-bold text-bit-text md:text-4xl">{pageTitle}</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-bit-muted">{pageDescription}</p>
+            <h1 className="mt-2 text-2xl font-display font-bold text-bit-text md:text-4xl">{pageTitle}</h1>
+            <p className="mt-3 hidden max-w-2xl text-sm leading-7 text-bit-muted sm:block">{pageDescription}</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="w-full rounded-2xl border border-bit-border bg-bit-panel/35 p-3 lg:max-w-md">
+          <form onSubmit={handleSubmit} className="w-full rounded-2xl border border-bit-border bg-bit-panel/35 p-2.5 lg:max-w-md md:p-3">
             <div className="flex gap-2">
               <input
                 value={query}
@@ -196,8 +196,8 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
       </header>
 
       {hasSearched && (
-        <section className="mb-10">
-          <div className="mb-5 flex items-center justify-between gap-4">
+        <section className="mb-8 md:mb-10">
+          <div className="mb-4 flex items-center justify-between gap-4 md:mb-5">
             <div>
               <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-accent">Search results</p>
               <h2 className="mt-2 text-2xl font-display font-bold text-bit-text">{query.trim()}</h2>
@@ -209,9 +209,10 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
                 setHasSearched(false);
                 setQuery('');
               }}
-              className="text-xs font-semibold text-bit-muted transition-colors hover:text-bit-accent"
+              className="text-bit-muted transition-colors hover:text-bit-accent"
+              aria-label="Clear search results"
             >
-              Clear
+              <X size={16} />
             </button>
           </div>
           {searching ? (
@@ -219,7 +220,7 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
           ) : searchResults.length > 0 ? (
             <AudiobookGrid audiobooks={searchResults} onAudiobookClick={onAudiobookClick} />
           ) : (
-            <div className="rounded-2xl border border-dashed border-bit-border bg-bit-panel/25 p-8 text-sm leading-7 text-bit-muted">
+            <div className="rounded-2xl border border-dashed border-bit-border bg-bit-panel/25 p-6 text-sm leading-6 text-bit-muted md:p-8 md:leading-7">
               No audiobooks found for that search. Try a title, author, or category name.
             </div>
           )}
@@ -234,7 +235,7 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
             <>
               <AudiobookGrid audiobooks={categoryAudiobooks} onAudiobookClick={onAudiobookClick} />
               {currentCategoryLimit < AUDIOBOOK_CATEGORY_MAX_LIMIT && (
-                <div className="mt-10 flex justify-center">
+                <div className="mt-6 flex justify-center md:mt-10">
                   <button
                     type="button"
                     onClick={handleLoadMoreCategoryAudiobooks}
@@ -254,7 +255,7 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
           )}
         </section>
       ) : (
-        <section className="space-y-12">
+        <section className="space-y-8 md:space-y-12">
           <CategoryQuickLinks />
           <AudiobookShelf
             title="Popular listening"
@@ -303,8 +304,8 @@ const AudiobooksPage: React.FC<AudiobooksPageProps> = ({ onAudiobookClick }) => 
 
 const CategoryQuickLinks = () => (
   <section>
-    <p className="mb-3 text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-accent">Browse categories</p>
-    <div className="flex gap-2 overflow-x-auto pb-2">
+    <p className="mb-2 text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-accent md:mb-3">Browse categories</p>
+    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
       {AUDIOBOOK_CATEGORIES.map((category) => (
         <Link
           key={category.id}
@@ -329,15 +330,15 @@ interface AudiobookShelfProps {
 
 const AudiobookShelf: React.FC<AudiobookShelfProps> = ({ title, description, audiobooks, loading, viewAllHref, onAudiobookClick }) => (
   <section>
-    <div className="mb-5 flex items-end justify-between gap-4">
-      <div>
-        <h2 className="text-2xl font-display font-bold text-bit-text">{title}</h2>
-        <p className="mt-2 text-sm leading-6 text-bit-muted">{description}</p>
+    <div className="mb-4 flex items-center justify-between gap-3 md:mb-5 md:items-end md:gap-4">
+      <div className="min-w-0 flex-1">
+        <h2 className="text-lg font-display font-bold text-bit-text md:text-2xl">{title}</h2>
+        <p className="mt-1 hidden text-sm leading-6 text-bit-muted sm:block md:mt-2">{description}</p>
       </div>
       {viewAllHref && (
-        <Link to={viewAllHref} className="inline-flex shrink-0 items-center gap-2 text-xs font-semibold text-bit-accent transition-colors hover:text-bit-text">
+        <Link to={viewAllHref} className="shrink-0 inline-flex items-center gap-1.5 text-[10px] font-semibold text-bit-accent transition-colors hover:text-bit-text md:gap-2 md:text-xs">
           View all
-          <ArrowRight size={14} />
+          <ArrowRight size={12} className="md:size-[14px]" />
         </Link>
       )}
     </div>
