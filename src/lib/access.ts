@@ -1,40 +1,5 @@
 import type { Book, ResourceLink } from '@/types/index';
-
-const isPdfLikeUrl = (url?: string) => (
-  Boolean(url)
-  && (
-    /\.pdf(?:$|[?#])/i.test(url || '')
-    || /\/pdf\/?$/i.test(url || '')
-    || /\/api\/getpdf(?:$|[?#])/i.test(url || '')
-    || /[?&](?:format|type|ext)=pdf(?:&|$)/i.test(url || '')
-  )
-);
-
-const isTextLikeUrl = (url?: string) => (
-  Boolean(url)
-  && (
-    /\.(?:txt|xml)(?:$|[?#])/i.test(url || '')
-    || /fulltextxml/i.test(url || '')
-    || /[?&](?:format|type|ext)=(?:txt|text|xml)(?:&|$)/i.test(url || '')
-  )
-);
-
-const isHtmlLikeUrl = (url?: string) => (
-  Boolean(url)
-  && (
-    /\.x?html?(?:$|[?#])/i.test(url || '')
-    || /[?&](?:format|type|ext)=html?(?:&|$)/i.test(url || '')
-    || /^https:\/\/archive\.org\/embed\/[^/?#]+/i.test(url || '')
-  )
-);
-
-const isReadableResource = (link: ResourceLink) => (
-  !['source', 'doi', 'metadata', 'landing'].includes(link.relation || '')
-  && (
-    link.format === 'pdf'
-    || ((link.format === 'html' || link.format === 'text' || link.format === 'xml') && link.embeddable !== false)
-  )
-);
+import { isPdfLikeUrl, isTextLikeUrl, isHtmlLikeUrl, isReadableResource } from '@/lib/url-utils';
 
 const isDownloadableResource = (link: ResourceLink) => (
   link.downloadable !== false

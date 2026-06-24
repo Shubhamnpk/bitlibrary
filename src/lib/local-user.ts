@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Audiobook, Book, LocalUserState, ThemeMode } from '@/types/index';
 import { readStorageItem, removeStorageItem, writeStorageItem } from '@/lib/encrypted-storage';
 import { notifyStorageReportChanged } from '@/lib/storage-manager';
+import { dedupeBooks } from '@/lib/url-utils';
 
 const USER_STATE_KEY = 'bitlibrary-user-state-v1';
 const LEGACY_SAVED_AUDIOBOOKS_KEY = 'bitlibrary-saved-audiobooks-v1';
@@ -28,15 +29,6 @@ const defaultUserState: LocalUserState = {
   savedAudiobooks: [],
   recentSearches: [],
   recentlyViewed: [],
-};
-
-const dedupeBooks = (books: Book[]) => {
-  const seen = new Set<string>();
-  return books.filter((book) => {
-    if (!book?.id || seen.has(book.id)) return false;
-    seen.add(book.id);
-    return true;
-  });
 };
 
 const dedupeAudiobooks = (audiobooks: Audiobook[]) => {

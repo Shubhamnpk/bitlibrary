@@ -6,7 +6,8 @@ import ReactMarkdown from 'react-markdown';
 import PDFFlipBook, { type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
 import AppSelect from './AppSelect';
 import DownloadSplitButton from './DownloadSplitButton';
-import { getPdfProxyUrl, getReaderProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
+import { getPdfProxyUrl, getReaderProxyUrl } from '@/lib/pdf';
+import { isPdfLikeUrl, isTextLikeUrl, isHtmlLikeUrl, isEpubLikeUrl, isArchiveEmbedUrl, isReadableResource } from '@/lib/url-utils';
 import { getBookDownloadOptions } from '@/lib/downloads';
 import { getAccessMode } from '@/lib/access';
 import { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS } from '@/lib/pdf-reader-presets';
@@ -28,10 +29,7 @@ const FRAME_BLOCKED_HOSTS = new Set([
   'dropbox.com',
 ]);
 
-const isTextLikeReaderUrl = (url: string) => /\.(?:txt|xml)(?:$|[?#])/i.test(url) || /fulltextxml/i.test(url) || /[?&](?:format|type)=(?:txt|text|xml)(?:&|$)/i.test(url);
-const isHtmlLikeReaderUrl = (url: string) => /\.x?html?(?:$|[?#])/i.test(url) || /[?&](?:format|type)=(?:html?)(?:&|$)/i.test(url);
-const isArchiveEmbedReaderUrl = (url: string) => /^https:\/\/(?:www\.)?archive\.org\/embed\/[^/?#]+/i.test(url);
-const isEpubLikeReaderUrl = (url: string) => /\.epub(?:$|[?#])/i.test(url);
+
 const isBlockedFrameUrl = (url: string) => {
   try {
     return FRAME_BLOCKED_HOSTS.has(new URL(url).hostname.toLowerCase());
@@ -40,26 +38,22 @@ const isBlockedFrameUrl = (url: string) => {
   }
 };
 
-const isReadableResourceLink = (link: ResourceLink) => (
-  ['pdf', 'text', 'xml', 'epub', 'html'].includes(link.format)
-  && !['source', 'doi', 'metadata'].includes(link.relation || '')
-  && (link.format !== 'html' || link.embeddable !== false)
-);
+
 
 const isSupportedDirectReaderUrl = (url?: string) => (
   Boolean(url)
   && (
     isPdfLikeUrl(url)
-    || isTextLikeReaderUrl(url || '')
-    || isEpubLikeReaderUrl(url || '')
+    || isTextLikeUrl(url || '')
+    || isEpubLikeUrl(url || '')
   )
 );
 
 const shouldUseReaderProxy = (url: string, resource?: ResourceLink) => {
   if (!/^https?:\/\//i.test(url)) return false;
-  if (isArchiveEmbedReaderUrl(url)) return false;
+  if (isArchiveEmbedUrl(url)) return false;
   if (resource?.format && ['html', 'text', 'xml'].includes(resource.format)) return true;
-  return isHtmlLikeReaderUrl(url) || isTextLikeReaderUrl(url);
+  return isHtmlLikeUrl(url) || isTextLikeUrl(url);
 };
 
 const normalizeReaderText = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -71,30 +65,7 @@ const getReaderMatchTokens = (value: string) => (
 );
 
 const READER_SPEECH_CANDIDATE_SELECTOR = [
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'p',
-  'li',
-  'dt',
-  'dd',
-  'caption',
-  'figcaption',
-  'blockquote',
-  'summary',
-  'pre',
-  'td',
-  'th',
-  'aside',
-  '.label',
-  '.meta',
-  '.keywords',
-  'aside > strong',
-  '[role="heading"]',
-  '[data-reader-speech-candidate]',
+  'h1','h2','h3','h4','h5','h6','p','li','dt','dd','caption','figcaption','blockquote','summary','pre','td','th','aside','.label','.meta','.keywords','[role="heading"]','[data-reader-speech-candidate]',
 ].join(',');
 
 const getExternalSpeechCandidates = (root: ParentNode) => {
@@ -301,15 +272,15 @@ const wrapReaderSpeechWord = (root: HTMLElement, word: string, documentRef: Docu
 };
 
 const getReaderResource = (resources: ResourceLink[]) => (
-  resources.find((link) => isReadableResourceLink(link) && link.format === 'html' && link.embeddable !== false)
-  || resources.find((link) => isReadableResourceLink(link) && link.format === 'pdf')
-  || resources.find((link) => isReadableResourceLink(link) && ['text', 'xml'].includes(link.format) && link.embeddable !== false)
-  || resources.find((link) => isReadableResourceLink(link) && link.format === 'epub')
+  resources.find((link) => isReadableResource(link) && link.format === 'html' && link.embeddable !== false)
+  || resources.find((link) => isReadableResource(link) && link.format === 'pdf')
+  || resources.find((link) => isReadableResource(link) && ['text', 'xml'].includes(link.format) && link.embeddable !== false)
+  || resources.find((link) => isReadableResource(link) && link.format === 'epub')
 );
 
 const getSortedReadableResources = (resources: ResourceLink[]) => {
   const readable = resources
-    .filter(isReadableResourceLink)
+    .filter(isReadableResource)
     .filter((link, index, links) => links.findIndex((candidate) => candidate.url === link.url) === index);
   const isCrossref = readable.some((link) => link.provider === 'Crossref');
   const isPubMed = readable.some((link) => /PubMed Central|BioC/i.test(link.provider || ''));
@@ -339,8 +310,8 @@ const getReadableResourceLabel = (entry: ResourceLink) => {
 const canEmbedExternalUrl = (url: string, isPdfReader: boolean) => {
   if (!url) return false;
   if (isPdfReader) return true;
-  if (isEpubLikeReaderUrl(url)) return false;
-  if (isTextLikeReaderUrl(url)) return true;
+  if (isEpubLikeUrl(url)) return false;
+  if (isTextLikeUrl(url)) return true;
 
   return !isBlockedFrameUrl(url);
 };

@@ -1,4 +1,5 @@
 import type { Book, ResourceFormat, ResourceLink } from '@/types/index';
+import { clickDownloadLink } from '@/lib/url-utils';
 
 export interface DownloadOption {
   id: string;
@@ -53,13 +54,15 @@ export const getDownloadProxyUrl = (url: string, title: string, format: Resource
 };
 
 export const downloadResource = (option: DownloadOption) => {
-  const link = document.createElement('a');
-  link.href = option.href;
-  link.download = '';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  clickDownloadLink(option.href);
 };
+
+const isDownloadableResource = (link: ResourceLink) => (
+  link.downloadable !== false
+  && (link.relation !== 'reader' || link.format === 'pdf')
+  && !['source', 'doi', 'metadata', 'landing'].includes(link.relation || '')
+  && link.format !== 'source'
+);
 
 export const inferDownloadFormat = (url = '', label = ''): ResourceFormat => {
   const signature = `${url} ${label}`.toLowerCase();
@@ -107,12 +110,7 @@ const addOption = (
   });
 };
 
-const isDownloadableResource = (link: ResourceLink) => (
-  link.downloadable !== false
-  && (link.relation !== 'reader' || link.format === 'pdf')
-  && !['source', 'doi', 'metadata', 'landing'].includes(link.relation || '')
-  && link.format !== 'source'
-);
+
 
 export const getBookDownloadOptions = (book: Book): DownloadOption[] => {
   const options: DownloadOption[] = [];

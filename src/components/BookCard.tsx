@@ -4,7 +4,7 @@ import { Book } from '@/types/index';
 import { BookOpen, Bookmark, BarChart, Files, Download } from 'lucide-react';
 import { toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import { readReaderEntry, getPdfReaderProgressKey } from '@/lib/storage-manager';
-import { isPdfLikeUrl } from '@/lib/pdf';
+import { isPdfLikeUrl } from '@/lib/url-utils';
 import { getStudyId } from '@/lib/pdf-reader-storage';
 import { HighlightedText } from './HighlightedText';
 import { formatCompactAuthors, getBookAuthors } from '@/lib/authors';
@@ -70,7 +70,7 @@ const RESEARCH_SOURCES = new Set([
   'YoBook Research',
 ]);
 
-const BookCard: React.FC<BookCardProps> = ({ 
+const BookCard = React.memo<BookCardProps>(({ 
   book, 
   onClick, 
   onRead, 
@@ -353,6 +353,6 @@ const BookCard: React.FC<BookCardProps> = ({
       </div>
     </div>
   );
-};
+});
 
 export default BookCard;

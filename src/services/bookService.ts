@@ -3,6 +3,7 @@ import { INITIAL_BOOKS } from '@/constants';
 import type { ResourceFormat, ResourceLink } from '@/types/index';
 import { ChapterAudio, ChapterPdf } from '@/types/index';
 import { readCacheEntry, readCacheSnapshot, writeCacheEntry } from '@/lib/storage-manager';
+import { isPdfLikeUrl } from '@/lib/url-utils';
 
 const GUTENDEX_BASE = 'https://gutendex.com/books';
 const GOOGLE_BOOKS_BASE = 'https://www.googleapis.com/books/v1/volumes';
@@ -186,13 +187,7 @@ const getAbsoluteYoBookAssetUrl = (url?: string | null): string | undefined => {
   return url;
 };
 
-const isPdfLikeResourceUrl = (url?: string): boolean => (
-  Boolean(url)
-  && (
-    /\.pdf(?:$|[?#])/i.test(url || '')
-    || /[?&]ext=pdf(?:&|$)/i.test(url || '')
-  )
-);
+
 
 const getNcertChapterPdfUrlsFromZipUrl = (zipUrl?: string): ChapterPdf[] => {
   if (!zipUrl || !/^https:\/\/ncert\.nic\.in\/textbook\/pdf\/[\w-]+dd\.zip$/i.test(zipUrl)) return [];
@@ -1595,7 +1590,7 @@ const mapYoBookToBook = (item: any): Book => {
         title: toText(chapter?.title, 'Chapter'),
         pdfUrl: getAbsoluteYoBookAssetUrl(chapter?.pdfUrl) || '',
       }))
-      .filter((chapter: { title: string; pdfUrl: string }) => isPdfLikeResourceUrl(chapter.pdfUrl))
+      .filter((chapter: { title: string; pdfUrl: string }) => isPdfLikeUrl(chapter.pdfUrl))
     : derivedNcertChapterPdfUrls;
   const chapterPdfUrl = chapterPdfUrls[0]?.pdfUrl;
   const coverUrl = getAbsoluteYoBookAssetUrl(item.coverUrl || item.localCoverUrl);
@@ -1621,12 +1616,12 @@ const mapYoBookToBook = (item: any): Book => {
     'Pustakalaya',
     ...keywords,
   ].filter((value, index, list): value is string => Boolean(value) && list.indexOf(value as string) === index);
-  const pdfReadUrl = isPdfLikeResourceUrl(readUrl) ? readUrl : undefined;
+  const pdfReadUrl = isPdfLikeUrl(readUrl) ? readUrl : undefined;
   const primaryResourceUrl = isQuestionPaperCollection ? undefined : (pdfUrl || directDownloadUrl || chapterPdfUrl || audioUrl || readUrl || sourceUrl);
   const downloadResourceUrl = isQuestionPaperCollection ? undefined : (directDownloadUrl || pdfUrl || pdfReadUrl);
   const resourceLinks = isQuestionPaperCollection ? [] : buildResearchResourceLinks([
     { url: pdfUrl, type: 'application/pdf', label: 'PDF', provider: sourceLabel, relation: 'download' },
-    { url: directDownloadUrl, type: isPdfLikeResourceUrl(directDownloadUrl) ? 'application/pdf' : undefined, label: 'Download', provider: sourceLabel, relation: 'download' },
+    { url: directDownloadUrl, type: isPdfLikeUrl(directDownloadUrl) ? 'application/pdf' : undefined, label: 'Download', provider: sourceLabel, relation: 'download' },
     { url: pdfReadUrl, type: 'application/pdf', label: 'Reader PDF', provider: sourceLabel, relation: 'download' },
     ...chapterPdfUrls.map((chapter: ChapterPdf) => ({ url: chapter.pdfUrl, type: 'application/pdf', label: chapter.title, provider: sourceLabel, relation: 'download' as const })),
     { url: zipUrl, label: 'Package', provider: sourceLabel, relation: 'download' },

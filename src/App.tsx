@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Book, ViewState } from '@/types/index';
+import { Book } from '@/types/index';
 import { INITIAL_BOOKS, CATEGORIES } from '@/constants';
 import { fetchBooksFromGutendex, fetchBookById } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
@@ -759,12 +759,6 @@ const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string, book?: Bo
       breadcrumbPath={breadcrumbPath}
     />
   );
-};
-
-const ReaderRoute: React.FC<{ books: Book[] }> = ({ books }) => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  return <div className="hidden">Triggering Neural Sector {id}...</div>;
 };
 
 const BooksRedirect = () => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Book, ChapterAudio, QuestionPaper, ViewState } from '@/types/index';
+import { Book, ChapterAudio, QuestionPaper } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
 import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronLeft, ChevronRight, Share, Info, Maximize2, Library, Bookmark, ExternalLink, Headphones, X, Download } from 'lucide-react';
@@ -8,7 +8,7 @@ import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
 import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import { readReaderEntry, getPdfReaderProgressKey } from '@/lib/storage-manager';
-import { isPdfLikeUrl } from '@/lib/pdf';
+import { isPdfLikeUrl } from '@/lib/url-utils';
 import { getStudyId } from '@/lib/pdf-reader-storage';
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, createFaqSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
@@ -667,6 +667,11 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                     </h3>
                     {!questionPaperCollection && (
                       <div className="flex items-center gap-2">
+                        {canReadInApp && (
+                          <button onClick={() => onRead()} className="hidden sm:inline-flex items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6">
+                            <BookOpen size={16} /> read
+                          </button>
+                        )}
                         {hasDownloadOptions && <DownloadSplitButton options={downloadOptions} />}
                         <button
                           onClick={async () => {
@@ -688,7 +693,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                       </div>
                     )}
                   </div>
-                  {(gutenbergAudioId || canReadInApp) && (
+                  {gutenbergAudioId && (
                     <div className="flex flex-wrap items-center gap-3">
                       {gutenbergAudioId && (
                         <Link
@@ -697,11 +702,6 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                         >
                           <Headphones size={16} /> audio
                         </Link>
-                      )}
-                      {canReadInApp && (
-                        <button onClick={() => onRead()} className="hidden sm:inline-flex items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6">
-                          <BookOpen size={16} /> read
-                        </button>
                       )}
                     </div>
                   )}

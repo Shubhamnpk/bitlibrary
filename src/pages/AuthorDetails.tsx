@@ -15,6 +15,7 @@ import { ArrowLeft, User, Calendar, Zap, Info, Library } from 'lucide-react';
 import Seo from '@/components/Seo';
 import { createFaqSchema, createItemListSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 import { isReadableSearchBook } from '@/lib/searchOptimization';
+import { dedupeBooks } from '@/lib/url-utils';
 
 const AUTHOR_PROVIDER_TIMEOUT_MS = 5500;
 
@@ -52,10 +53,6 @@ const bookMatchesAuthor = (book: Book, authorName: string) => {
     aliases.some((alias) => alias && (author.includes(alias) || alias.includes(author)))
   ));
 };
-
-const dedupeBooks = (books: Book[]) => books.filter((book, index, list) => (
-  index === list.findIndex((entry) => entry.id === book.id)
-));
 
 const getSourcePriority = (book: Book) => {
   if (book.source === 'YoBook') return 0;

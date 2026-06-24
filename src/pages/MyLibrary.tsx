@@ -5,7 +5,7 @@ import BookCard from '@/components/BookCard';
 import AudiobookCard from '@/components/AudiobookCard';
 import { ArrowRight, Bookmark, Clock, Headphones, History, Library as LibraryIcon, Play, Search, User } from 'lucide-react';
 import { getPdfReaderProgressKey, readReaderEntry } from '@/lib/storage-manager';
-import { isPdfLikeUrl } from '@/lib/pdf';
+import { isPdfLikeUrl } from '@/lib/url-utils';
 import { getStudyId } from '@/lib/pdf-reader-storage';
 
 interface MyLibraryProps {

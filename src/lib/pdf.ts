@@ -1,15 +1,5 @@
 import type { Book } from '@/types/index';
-
-export const isPdfLikeUrl = (url?: string): boolean => (
-  Boolean(url)
-  && (
-    /\.pdf(?:$|[?#])/i.test(url || '')
-    || /\/pdf\/?$/i.test(url || '')
-    || /\/api\/getpdf(?:$|[?#])/i.test(url || '')
-    || /[?&]ext=pdf(?:&|$)/i.test(url || '')
-    || /[?&](?:format|type)=pdf(?:&|$)/i.test(url || '')
-  )
-);
+import { isPdfLikeUrl, clickDownloadLink } from '@/lib/url-utils';
 
 export const getPdfProxyUrl = (url: string): string => {
   if (!/^https?:\/\//i.test(url)) return url;
@@ -47,17 +37,8 @@ const getSafePdfFilename = (title: string) => {
   return /\.pdf$/i.test(safeTitle) ? safeTitle : `${safeTitle}.pdf`;
 };
 
-const clickDownloadLink = (href: string, title: string): void => {
-  const link = document.createElement('a');
-  link.href = href;
-  link.download = getSafePdfFilename(title);
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-};
-
 export const downloadPdfViaProxy = (sourceUrl: string, title: string): void => {
-  clickDownloadLink(getPdfProxyDownloadUrl(sourceUrl, title), title);
+  clickDownloadLink(getPdfProxyDownloadUrl(sourceUrl, title), getSafePdfFilename(title));
 };
 
 const downloadPdfFromBrowser = async (sourceUrl: string, title: string): Promise<void> => {
@@ -66,7 +47,7 @@ const downloadPdfFromBrowser = async (sourceUrl: string, title: string): Promise
 
   const blob = await response.blob();
   const objectUrl = URL.createObjectURL(blob);
-  clickDownloadLink(objectUrl, title);
+  clickDownloadLink(objectUrl, getSafePdfFilename(title));
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 };
 

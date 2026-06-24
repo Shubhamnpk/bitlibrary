@@ -108,17 +108,6 @@ export interface Audiobook {
   source: 'LibriVox' | 'Internet Archive' | 'Project Gutenberg' | 'YoBook';
 }
 
-export enum ViewState {
-  HOME = 'HOME',
-  SEARCH = 'SEARCH',
-  READER = 'READER',
-  LIBRARY = 'LIBRARY',
-  DETAILS = 'DETAILS',
-  BOOKS = 'BOOKS',
-  TERMS = 'TERMS',
-  ABOUT = 'ABOUT'
-}
-
 export interface SearchFilters {
   category?: string;
   minYear?: number;

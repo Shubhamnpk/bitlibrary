@@ -11,6 +11,7 @@ import { ArrowRight, BookOpen, Disc, Headphones, LayoutGrid, List } from 'lucide
 import Seo from '@/components/Seo';
 import { createItemListSchema, truncate } from '@/lib/seo';
 import { readCacheEntry, writeCacheEntry } from '@/lib/storage-manager';
+import { dedupeBooks } from '@/lib/url-utils';
 
 const SHELF_ITEM_LIMIT = 6;
 const INITIAL_VISIBLE_CATEGORY_ROWS = 3;
@@ -85,10 +86,6 @@ const writeCachePayload = (key: string, payload: object) => {
       // Ignore storage failures; page-level state still works.
    }
 };
-
-const dedupeBooks = (books: Book[]) => books.filter((book, index, list) => (
-   Boolean(book?.id) && list.findIndex((entry) => entry.id === book.id) === index
-));
 
 const mergeBooksBySourcePriority = (...collections: Book[][]) => dedupeBooks(collections.flat());
 

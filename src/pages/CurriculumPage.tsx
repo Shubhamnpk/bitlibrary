@@ -10,6 +10,7 @@ import Seo from '@/components/Seo';
 import AppSelect from '@/components/AppSelect';
 import { ArrowRight, BookMarked, BookOpen, ChevronLeft, ChevronRight, GraduationCap, Headphones, LayoutGrid, LibraryBig, ListFilter, RotateCcw, Search } from 'lucide-react';
 import { createFaqSchema, createItemListSchema, truncate } from '@/lib/seo';
+import { dedupeBooks } from '@/lib/url-utils';
 import { Link } from 'react-router-dom';
 import {
   AudioGradeRows,
@@ -17,7 +18,6 @@ import {
   GradeRows,
   ResourceMode,
   dedupeAudiobooks,
-  dedupeBooks,
   emptyAudioRows,
   emptyRows,
   filterAudiobooks,
