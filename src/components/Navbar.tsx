@@ -327,7 +327,7 @@ const Navbar: React.FC<NavbarProps> = ({
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{displayName}</p>
-                        <p className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted">Local reader profile</p>
+                        <p className="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted">book lover</p>
                       </div>
                     </div>
                   </div>

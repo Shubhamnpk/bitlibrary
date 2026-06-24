@@ -81,6 +81,7 @@ const BookCard = React.memo<BookCardProps>(({
 }) => {
   const navigate = useNavigate();
   const { state } = useLocalUserState();
+  const [showOverlay, setShowOverlay] = React.useState(false);
   const isSaved = state.savedBooks.some((entry) => entry.id === book.id);
   const savedProgress = showProgress ? readReaderEntry<{ chapterIndex?: number; totalChapters?: number }>(getPdfReaderProgressKey(book.id)) : null;
   const hasChapterProgress = typeof savedProgress?.chapterIndex === 'number';
@@ -141,7 +142,11 @@ const BookCard = React.memo<BookCardProps>(({
 
   return (
     <div
-      onClick={() => onClick(book)}
+      onClick={() => {
+        const isHoverDevice = window.matchMedia('(hover: hover)').matches;
+        if (isHoverDevice) { onClick(book); return; }
+        if (showOverlay) { onClick(book); } else { setShowOverlay(true); }
+      }}
       className={`group relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-bit-border bg-bit-panel/30 hover:bg-bit-panel/50 transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:border-bit-accent/30 ${variant === 'compact' ? 'p-0' : 'shadow-sm'}`}
     >
       <div className={`absolute inset-0 bg-gradient-to-br ${bgGradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
@@ -257,7 +262,7 @@ const BookCard = React.memo<BookCardProps>(({
           )}
 
           {/* Cinematic Overlay & Action HUD Stack */}
-          <div className="absolute inset-0 bg-bit-panel/90 opacity-0 group-hover:opacity-100 backdrop-blur-[6px] transition-all duration-500 flex flex-col items-center justify-center p-6 gap-3 z-20">
+          <div className={`absolute inset-0 bg-bit-panel/90 backdrop-blur-[6px] transition-all duration-500 flex flex-col items-center justify-center p-6 gap-3 z-20 ${showOverlay ? 'opacity-100' : 'opacity-0 md:group-hover:opacity-100'}`}>
             {onRead && accessMode === 'read' && (
               <button
                 onClick={(e) => { e.stopPropagation(); onRead(book); }}
@@ -278,10 +283,10 @@ const BookCard = React.memo<BookCardProps>(({
             )}
             <button
               onClick={(e) => { e.stopPropagation(); onClick(book); }}
-              className="w-full py-3 bg-bit-panel/50 text-bit-text rounded-xl border border-bit-border flex items-center justify-center gap-3 transform translate-y-4 group-hover:translate-y-0 transition-all duration-500 hover:bg-bit-panel/80 hover:border-bit-accent/30 hover:scale-105 active:scale-95"
+              className="w-full py-3 bg-bit-panel/50 text-bit-text rounded-xl border border-bit-border flex items-center justify-center gap-2.5 transform translate-y-4 group-hover:translate-y-0 transition-all duration-500 hover:bg-bit-panel/80 hover:border-bit-accent/30 hover:scale-105 active:scale-95"
             >
-              <BarChart size={18} className="rotate-90" />
-              <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-bit-muted">View Details</span>
+              <BarChart size={15} className="rotate-90" />
+              <span className="text-[10px] font-mono font-bold tracking-[0.12em] uppercase text-bit-muted">View Details</span>
             </button>
           </div>
 

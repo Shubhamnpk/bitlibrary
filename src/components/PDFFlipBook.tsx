@@ -646,7 +646,9 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
     if (!textSelectionEnabled) return;
     if (!event.isPrimary) return;
     selectionStartRef.current = { x: event.clientX, y: event.clientY };
-    clearTextLayerSelection();
+    if (event.pointerType !== 'touch') {
+      clearTextLayerSelection();
+    }
   };
 
   const handleTextPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -654,7 +656,9 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
     const start = selectionStartRef.current;
     selectionStartRef.current = null;
 
-    if (start) {
+    const isTouch = event.pointerType === 'touch';
+
+    if (!isTouch && start) {
       const dragDistance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
       if (dragDistance < 4) {
         clearTextLayerSelection();
@@ -731,6 +735,9 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
               style={{
                 '--bit-pdf-selection-color': getHighlightOverlay(currentHighlightColor),
                 pointerEvents: textSelectionEnabled ? undefined : 'none',
+                touchAction: textSelectionEnabled ? 'auto' : undefined,
+                userSelect: textSelectionEnabled ? 'text' : undefined,
+                WebkitUserSelect: textSelectionEnabled ? 'text' : undefined,
               } as React.CSSProperties}
               onPointerDown={handleTextPointerDown}
               onPointerUp={handleTextPointerUp}
@@ -859,6 +866,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       : getDimensions(window.innerWidth, Math.max(420, window.innerHeight - 120))
   ));
   const [loading, setLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: 0 });
+  const [showDetailedProgress, setShowDetailedProgress] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [zoom, setZoom] = useState(() => getDefaultZoom());
@@ -1544,6 +1553,10 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       wasmUrl: PDFJS_WASM_URL,
     });
 
+    task.onProgress = (progress: { loaded: number; total: number }) => {
+      if (!cancelled) setLoadProgress({ loaded: progress.loaded, total: progress.total });
+    };
+
     task.promise
       .then((loadedDocument) => {
         if (cancelled) {
@@ -1567,6 +1580,12 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       void task.destroy();
     };
   }, [pdfUrl, preferFullDocumentLoad, proxiedPdfUrl]);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timer = window.setTimeout(() => setShowDetailedProgress(true), 3000);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
 
   useEffect(() => {
     if (!document || currentPage <= document.numPages) return;
@@ -1963,11 +1982,29 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
   if (loading) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-5 bg-bit-bg text-center">
-        <Loader2 className="animate-spin text-bit-accent" size={44} />
-        <div>
-          <p className="text-[10px] font-mono font-bold uppercase tracking-[0.28em] text-bit-accent">Preparing Turn.js Book</p>
-          <p className="mt-2 text-sm text-bit-muted">Loading the PDF pages.</p>
+      <div className="flex h-full w-full flex-col items-center justify-center gap-6 bg-bit-bg text-center px-8">
+        <Loader2 className="animate-spin text-bit-accent" size={40} />
+        <div className="w-full max-w-xs space-y-4">
+          <p className="text-[10px] font-mono font-bold uppercase tracking-[0.28em] text-bit-accent">
+            Loading PDF
+          </p>
+          {showDetailedProgress && loadProgress.total > 0 ? (
+            <div className="space-y-2 animate-fade-in">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-bit-panel/30">
+                <div
+                  className="h-full rounded-full bg-bit-accent transition-all duration-300 ease-out"
+                  style={{ width: `${Math.min(100, Math.round((loadProgress.loaded / loadProgress.total) * 100))}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-mono text-bit-muted/80">
+                <span>{loadProgress.loaded < 1024 ? `${loadProgress.loaded} B` : loadProgress.loaded < 1048576 ? `${(loadProgress.loaded / 1024).toFixed(1)} KB` : `${(loadProgress.loaded / 1048576).toFixed(1)} MB`}</span>
+                <span className="text-bit-accent/80">{Math.min(100, Math.round((loadProgress.loaded / loadProgress.total) * 100))}%</span>
+                <span>{loadProgress.total < 1024 ? `${loadProgress.total} B` : loadProgress.total < 1048576 ? `${(loadProgress.total / 1024).toFixed(1)} KB` : `${(loadProgress.total / 1048576).toFixed(1)} MB`}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-bit-muted">Loading PDF pages…</p>
+          )}
         </div>
       </div>
     );
@@ -2001,7 +2038,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       <div
         ref={shellRef}
         data-pdf-reader-shell
-        className={`scrollbar-hide relative flex min-h-0 flex-1 touch-none overscroll-contain ${isZoomed ? 'items-start justify-start overflow-auto' : 'items-center justify-center overflow-hidden'} px-4 py-6 md:px-10 md:py-8`}
+        className={`scrollbar-hide relative flex min-h-0 flex-1 overscroll-contain ${textSelectionModeEnabled ? '' : 'touch-none'} ${isZoomed ? 'items-start justify-start overflow-auto' : 'items-center justify-center overflow-hidden'} px-4 py-6 md:px-10 md:py-8`}
       >
         <button
           type="button"
@@ -2137,7 +2174,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       {pendingTextSelection && (
         <div
           className="fixed z-[10080] flex max-w-[min(24rem,calc(100vw-1.5rem))] items-center gap-1 rounded-full border border-bit-border bg-bit-panel/95 p-1.5 text-bit-text shadow-2xl shadow-black/35 backdrop-blur-xl"
-          style={{ left: pendingTextSelection.popover.x, top: pendingTextSelection.popover.y }}
+          style={{ left: pendingTextSelection.popover.x, top: Math.max(12, window.innerWidth < 760 ? pendingTextSelection.popover.y - 12 : pendingTextSelection.popover.y) }}
           data-pdf-selection-popover
           onMouseDown={(event) => event.preventDefault()}
           role="toolbar"
@@ -2150,25 +2187,25 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                 const { popover: _popover, ...highlight } = pendingTextSelection;
                 addTextHighlight(highlight);
               }}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-950 transition-all hover:scale-105"
+              className="inline-flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full text-zinc-950 transition-all hover:scale-105 active:scale-95"
               style={{ backgroundColor: PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === highlightColor)?.swatch || PDF_HIGHLIGHT_COLOR_PRESETS[0].swatch }}
               aria-label="Highlight selected text"
               title="Highlight selected text"
             >
-              <Highlighter size={15} />
+              <Highlighter size={18} className="md:size-[15px]" />
             </button>
             <button
               type="button"
               onClick={() => setSelectionColorMenuOpen((open) => !open)}
-              className="inline-flex h-8 w-6 items-center justify-center rounded-full text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-text"
+              className="inline-flex h-10 w-8 md:h-8 md:w-6 items-center justify-center rounded-full text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-text"
               aria-label="Choose highlight color"
               aria-expanded={selectionColorMenuOpen}
               title="Choose highlight color"
             >
-              <ChevronDown size={14} className={`transition-transform ${selectionColorMenuOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown size={16} className={`md:size-[14px] transition-transform ${selectionColorMenuOpen ? 'rotate-180' : ''}`} />
             </button>
             {selectionColorMenuOpen && (
-              <div className="absolute left-0 top-10 flex w-max max-w-[min(16rem,calc(100vw-1.5rem))] flex-wrap gap-1.5 rounded-full border border-bit-border bg-bit-panel/95 p-1.5 shadow-2xl shadow-black/35 backdrop-blur-xl">
+              <div className="absolute left-0 top-12 md:top-10 flex w-max max-w-[min(16rem,calc(100vw-1.5rem))] flex-wrap gap-1.5 rounded-full border border-bit-border bg-bit-panel/95 p-1.5 shadow-2xl shadow-black/35 backdrop-blur-xl">
                 {PDF_HIGHLIGHT_COLOR_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
@@ -2177,7 +2214,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                       setHighlightColor(preset.id);
                       setSelectionColorMenuOpen(false);
                     }}
-                    className={`h-6 w-6 rounded-full border transition-all ${highlightColor === preset.id ? 'border-white ring-2 ring-bit-accent/45' : 'border-white/35 hover:border-white'}`}
+                    className={`h-8 w-8 md:h-6 md:w-6 rounded-full border transition-all ${highlightColor === preset.id ? 'border-white ring-2 ring-bit-accent/45' : 'border-white/35 hover:border-white'}`}
                     style={{ backgroundColor: preset.swatch }}
                     aria-label={`Use ${preset.label} highlight color`}
                     aria-pressed={highlightColor === preset.id}
@@ -2191,26 +2228,26 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
             <button
               type="button"
               onClick={() => removeTextHighlights(pendingSelectionHighlightIds)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-red-200 transition-all hover:bg-red-500/15 hover:text-red-100"
+              className="inline-flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full text-red-200 transition-all hover:bg-red-500/15 hover:text-red-100 active:scale-95"
               aria-label="Remove highlight from selection"
               title="Remove highlight from selection"
             >
-              <Eraser size={15} />
+              <Eraser size={18} className="md:size-[15px]" />
             </button>
           )}
           <button
             type="button"
             onClick={() => readSelectedPdfText(pendingTextSelection.text)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-bit-accent transition-all hover:bg-bit-accent/12 hover:text-bit-text"
+            className="inline-flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full text-bit-accent transition-all hover:bg-bit-accent/12 hover:text-bit-text active:scale-95"
             aria-label="Read selected text"
             title="Read selected text"
           >
-            <Headphones size={15} />
+            <Headphones size={18} className="md:size-[15px]" />
           </button>
           <button
             type="button"
             onClick={() => clearPendingPdfSelection(true)}
-            className="inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:bg-bit-bg/80 hover:text-bit-text"
+            className="inline-flex h-10 min-w-10 md:h-8 md:min-w-8 items-center justify-center rounded-full px-2.5 md:px-2 text-[11px] md:text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:bg-bit-bg/80 hover:text-bit-text active:scale-95"
             aria-label="Close selection actions"
             title="Close"
           >
@@ -2220,8 +2257,9 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       )}
 
       {pdfSpeechStatus !== 'idle' && (
+        <>
         <div
-          className={`pointer-events-auto fixed z-[10060] hidden items-center gap-2 rounded-full border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/25 backdrop-blur-xl md:flex ${pdfSpeechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`pointer-events-auto fixed z-[10060] items-center gap-2 rounded-full border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/25 backdrop-blur-xl ${pdfSpeechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'} hidden md:flex`}
           style={pdfSpeechPillPosition ? { left: pdfSpeechPillPosition.x, top: pdfSpeechPillPosition.y } : { left: '50%', bottom: '5rem', transform: 'translateX(-50%)' }}
           onPointerDown={handlePdfSpeechPillPointerDown}
           onPointerMove={handlePdfSpeechPillPointerMove}
@@ -2282,6 +2320,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
             Esc
           </button>
         </div>
+        </>
       )}
 
       <div className={`relative ${isPageSliderActive ? 'z-[10150]' : 'z-[10050]'} flex flex-col gap-2 overflow-visible border-t border-bit-border/55 bg-bit-panel/35 px-3 py-2.5 shadow-[0_-18px_45px_rgba(0,0,0,0.18)] backdrop-blur-xl sm:grid sm:items-center sm:gap-3 md:px-6 ${controlsCompact ? 'sm:grid-cols-1 lg:grid-cols-1' : 'sm:grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1fr)_minmax(18rem,30rem)_minmax(0,1fr)] lg:gap-4'}`}>

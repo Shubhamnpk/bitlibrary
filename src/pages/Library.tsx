@@ -753,9 +753,9 @@ const Library: React.FC<LibraryProps> = ({ onBookClick, onAudiobookClick, onRead
                                  event.stopPropagation();
                                  onBookClick(book);
                               }}
-                              className="flex-1 rounded-2xl border border-bit-border bg-bit-panel/50 px-5 py-3 text-[11px] font-mono font-bold uppercase tracking-[0.18em] text-bit-text transition-all hover:border-bit-accent/40 hover:text-bit-accent md:min-w-[160px]"
-                           >
-                              View Details
+                               className="flex-1 rounded-2xl border border-bit-border bg-bit-panel/50 px-5 py-3 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-bit-text transition-all hover:border-bit-accent/40 hover:text-bit-accent md:min-w-[160px]"
+                            >
+                               View Details
                            </button>
                            <button
                               onClick={(event) => {

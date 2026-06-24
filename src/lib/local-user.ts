@@ -318,10 +318,13 @@ export const toggleSavedAudiobook = (audiobook: Audiobook) => {
 };
 
 export const recordRecentlyViewedBook = (book: Book) => {
-  return updateLocalUserState((current) => ({
-    ...current,
-    recentlyViewed: [compactBook(book), ...current.recentlyViewed.filter((entry) => entry.id !== book.id)].slice(0, MAX_RECENTLY_VIEWED),
-  }));
+  return updateLocalUserState((current) => {
+    if (current.recentlyViewed[0]?.id === book.id) return current;
+    return {
+      ...current,
+      recentlyViewed: [compactBook(book), ...current.recentlyViewed.filter((entry) => entry.id !== book.id)].slice(0, MAX_RECENTLY_VIEWED),
+    };
+  });
 };
 
 export const updateDisplayName = (displayName: string) => {
