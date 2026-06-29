@@ -19,6 +19,34 @@ export interface PdfTextHighlight {
   createdAt: number;
 }
 
+export interface PdfTextAnnotation {
+  id: string;
+  type: 'text';
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  color?: PdfHighlightColorId;
+  fontSize: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PdfInkAnnotation {
+  id: string;
+  type: 'ink';
+  page: number;
+  points: Array<{ x: number; y: number }>;
+  color?: PdfHighlightColorId;
+  strokeWidth: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type PdfAnnotation = PdfTextAnnotation | PdfInkAnnotation;
+
 export interface PdfStudyState {
   lastPage?: number;
   pageCount?: number;
@@ -26,6 +54,7 @@ export interface PdfStudyState {
   highlights: number[];
   notes: Record<string, string>;
   textHighlights: PdfTextHighlight[];
+  annotations: PdfAnnotation[];
 }
 
 interface PdfReaderStorage {
@@ -48,6 +77,7 @@ const emptyStudyState = (): PdfStudyState => ({
   highlights: [],
   notes: {},
   textHighlights: [],
+  annotations: [],
 });
 
 const defaultStorage = (): PdfReaderStorage => ({
@@ -65,6 +95,10 @@ const isPdfBackgroundPresetId = (value: unknown): value is PdfBackgroundPresetId
 
 const isPdfHighlightColorId = (value: unknown): value is PdfHighlightColorId => (
   typeof value === 'string' && PDF_HIGHLIGHT_COLOR_IDS.includes(value as PdfHighlightColorId)
+);
+
+const isPercentValue = (value: unknown) => (
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
 );
 
 const compactStudyState = (state: Partial<PdfStudyState> | null | undefined): PdfStudyState => {
@@ -88,6 +122,44 @@ const compactStudyState = (state: Partial<PdfStudyState> | null | undefined): Pd
       Array.isArray(highlight.rects) &&
       (highlight.color === undefined || isPdfHighlightColorId(highlight.color))
     )) as PdfTextHighlight[] : [],
+    annotations: Array.isArray(state?.annotations) ? state.annotations.filter((annotation): annotation is PdfAnnotation => {
+      if (
+        !annotation ||
+        typeof annotation.id !== 'string' ||
+        !Number.isFinite(annotation.page) ||
+        (annotation.color !== undefined && !isPdfHighlightColorId(annotation.color))
+      ) {
+        return false;
+      }
+
+      if (annotation.type === 'text') {
+        return (
+          isPercentValue(annotation.x) &&
+          isPercentValue(annotation.y) &&
+          typeof annotation.width === 'number' &&
+          Number.isFinite(annotation.width) &&
+          annotation.width > 0 &&
+          typeof annotation.height === 'number' &&
+          Number.isFinite(annotation.height) &&
+          annotation.height > 0 &&
+          typeof annotation.text === 'string' &&
+          typeof annotation.fontSize === 'number' &&
+          Number.isFinite(annotation.fontSize)
+        );
+      }
+
+      if (annotation.type === 'ink') {
+        return (
+          Array.isArray(annotation.points) &&
+          annotation.points.length > 1 &&
+          annotation.points.every((point) => isPercentValue(point.x) && isPercentValue(point.y)) &&
+          typeof annotation.strokeWidth === 'number' &&
+          Number.isFinite(annotation.strokeWidth)
+        );
+      }
+
+      return false;
+    }).slice(0, 500) : [],
   };
 };
 

@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UserProfile, UserSettings } from '@/types/index';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, BookOpenText, Bookmark, Clock, Database, HardDrive, LogOut, Moon, Palette, Search, Settings, ShieldCheck, Sun, Trash2, User, User2 } from 'lucide-react';
+import { ArrowLeft, BookOpenText, Bookmark, Clock, Database, Download, HardDrive, LogOut, Moon, Palette, Search, Settings, ShieldCheck, Sun, Trash2, Upload, User, User2 } from 'lucide-react';
 import { clearLocalUserData, readLocalUserState, setThemeMode, updateDisplayName } from '@/lib/local-user';
 import {
   clearRecoverableCaches,
@@ -13,6 +13,14 @@ import {
   getStorageSummary,
   type StorageEntryReport,
 } from '@/lib/storage-manager';
+import {
+  DATA_PORTABILITY_CATEGORIES,
+  createBitLibraryExport,
+  downloadBitLibraryExport,
+  importBitLibraryExport,
+  parseBitLibraryExport,
+  type DataPortabilityCategory,
+} from '@/lib/data-portability';
 
 interface SettingsPageProps {
   profile: UserProfile;
@@ -41,6 +49,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ profile, settings, recentSe
   });
   const [draftName, setDraftName] = useState(profile.displayName);
   const [storageReport, setStorageReport] = useState<StorageEntryReport[]>(() => getStorageReport());
+  const [selectedDataCategories, setSelectedDataCategories] = useState<DataPortabilityCategory[]>(() => DATA_PORTABILITY_CATEGORIES.map((category) => category.id));
+  const [dataTransferStatus, setDataTransferStatus] = useState('');
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const localUser = readLocalUserState();
 
   const storageSummary = useMemo(() => getStorageSummary(storageReport), [storageReport]);
@@ -69,6 +80,39 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ profile, settings, recentSe
   const handleClearStaleCaches = () => { clearStaleCaches(); refreshStorageReport(); };
   const handleClearRecoverableCaches = () => { clearRecoverableCaches(); refreshStorageReport(); };
   const handleClearReaderProgress = () => { clearStorageCategory('reader'); refreshStorageReport(); };
+  const toggleDataCategory = (category: DataPortabilityCategory) => {
+    setSelectedDataCategories((current) => (
+      current.includes(category)
+        ? current.filter((entry) => entry !== category)
+        : [...current, category]
+    ));
+  };
+  const handleExportData = () => {
+    if (selectedDataCategories.length === 0) {
+      setDataTransferStatus('Choose at least one category to export.');
+      return;
+    }
+    downloadBitLibraryExport(createBitLibraryExport(selectedDataCategories));
+    setDataTransferStatus(`Exported ${selectedDataCategories.length} selected categories.`);
+  };
+  const handleImportData = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (selectedDataCategories.length === 0) {
+      setDataTransferStatus('Choose at least one category to import.');
+      return;
+    }
+
+    try {
+      const parsed = parseBitLibraryExport(await file.text());
+      importBitLibraryExport(parsed, selectedDataCategories);
+      refreshStorageReport();
+      setDataTransferStatus(`Imported ${selectedDataCategories.length} selected categories.`);
+    } catch (error) {
+      setDataTransferStatus(error instanceof Error ? error.message : 'Unable to import this file.');
+    }
+  };
 
   const savedBookCount = localUser?.savedBooks?.length || 0;
   const savedAudiobookCount = localUser?.savedAudiobooks?.length || 0;
@@ -193,6 +237,70 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ profile, settings, recentSe
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="rounded-xl border border-bit-border bg-gradient-to-br from-bit-panel/50 to-bit-bg/30 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-bit-text">Export or import personal data</p>
+              <p className="mt-1 text-xs leading-relaxed text-bit-muted">Choose exactly what moves between browsers or devices.</p>
+            </div>
+            <span className="shrink-0 rounded-full border border-bit-accent/20 bg-bit-accent/10 px-2.5 py-1 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent">
+              JSON
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {DATA_PORTABILITY_CATEGORIES.map((category) => {
+              const checked = selectedDataCategories.includes(category.id);
+              return (
+                <label
+                  key={category.id}
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-all ${checked ? 'border-bit-accent/35 bg-bit-accent/10' : 'border-bit-border bg-bit-bg/30 hover:border-bit-accent/25'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleDataCategory(category.id)}
+                    className="mt-1 h-4 w-4 shrink-0 accent-bit-accent"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-bit-text">{category.label}</span>
+                    <span className="mt-0.5 block text-xs leading-relaxed text-bit-muted">{category.description}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={handleExportData}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-bit-accent/25 bg-bit-accent/10 px-4 text-xs font-bold uppercase tracking-widest text-bit-accent transition-all hover:bg-bit-accent hover:text-white"
+            >
+              <Download size={15} />
+              Export selected
+            </button>
+            <button
+              type="button"
+              onClick={() => importInputRef.current?.click()}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-bit-border bg-bit-bg/50 px-4 text-xs font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/35 hover:text-bit-accent"
+            >
+              <Upload size={15} />
+              Import selected
+            </button>
+          </div>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleImportData}
+            className="hidden"
+          />
+          {dataTransferStatus && (
+            <p className="mt-3 text-xs leading-relaxed text-bit-muted">{dataTransferStatus}</p>
+          )}
         </div>
 
         <div className="space-y-1.5">

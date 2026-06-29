@@ -299,7 +299,6 @@ const Navbar: React.FC<NavbarProps> = ({
             <Link to="/library" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/library') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Library</Link>
             <Link to="/research" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/research') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Research</Link>
             <Link to="/curriculum" className={`hover:text-bit-text transition-colors uppercase ${activeTab('/curriculum') ? 'text-bit-accent font-bold' : 'text-bit-muted'}`}>Curriculum</Link>
-            <ThemeToggle />
             <div ref={profileMenuRef} className="relative">
               <button
                 type="button"
@@ -363,17 +362,7 @@ const Navbar: React.FC<NavbarProps> = ({
                       onClick={() => setProfileOpen(false)}
                       className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-bit-muted transition-all hover:bg-bit-bg/50 hover:text-bit-text"
                     >
-                      <Headphones size={16} className="text-bit-accent" />
-                      Audiobooks
-                    </Link>
-                    <Link
-                      to="/search"
-                      role="menuitem"
-                      onClick={() => setProfileOpen(false)}
-                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-bit-muted transition-all hover:bg-bit-bg/50 hover:text-bit-text"
-                    >
-                      <History size={16} className="text-bit-accent" />
-                      Search history
+                      <Headphones size={16} className="text-bit-accent" />Audiobooks
                     </Link>
                     <Link
                       to="/profile"
