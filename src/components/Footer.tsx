@@ -49,10 +49,11 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
             <div>
               <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Library Hub</h4>
               <ul className="space-y-4 text-bit-muted">
-                <li><Link to="/library" className="hover:text-bit-accent transition-all">CENTRAL REGISTRY</Link></li>
-                <li><Link to="/browse" className="hover:text-bit-accent transition-all">COLLECTIONS</Link></li>
+                <li><Link to="/library" className="hover:text-bit-accent transition-all">LIBRARY</Link></li>
                 <li><Link to="/audiobooks" className="hover:text-bit-accent transition-all">AUDIOBOOKS</Link></li>
-                <li><Link to="/mylibrary" className="hover:text-bit-accent transition-all">MY ARCHIVE</Link></li>
+                <li><Link to="/mylibrary" className="hover:text-bit-accent transition-all">MY LIBRARY</Link></li>
+                <li><Link to="/dictionary" className="hover:text-bit-accent transition-all">DICTIONARY</Link></li>
+                <li><Link to="/research" className="hover:text-bit-accent transition-all">RESEARCH</Link></li>
                 <li><Link to="/search?q=public%20domain%20classics" className="hover:text-bit-accent transition-all">PUBLIC DOMAIN CLASSICS</Link></li>
               </ul>
             </div>
@@ -69,13 +70,12 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
               </ul>
             </div>
             <div className="hidden md:block">
-              <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">Protocol</h4>
+              <h4 className="text-bit-text font-medium mb-6 uppercase tracking-widest opacity-40">LINKS</h4>
               <ul className="space-y-4 text-bit-muted">
-                <li><Link to="/about" className="hover:text-bit-accent transition-all">ABOUT BITLIBRARY</Link></li>
-                <li><Link to="/blog" className="hover:text-bit-accent transition-all">BLOG & GUIDES</Link></li>
-                <li><Link to="/releases" className="hover:text-bit-accent transition-all">RELEASE HISTORY</Link></li>
+                <li><Link to="/about" className="hover:text-bit-accent transition-all">ABOUT</Link></li>
+                <li><Link to="/blog" className="hover:text-bit-accent transition-all">BLOGS</Link></li>
+                <li><Link to="/releases" className="hover:text-bit-accent transition-all">RELEASE</Link></li>
                 <li><Link to="/roadmap" className="hover:text-bit-accent transition-all">ROADMAP</Link></li>
-                <li><Link to="/dictionary" className="hover:text-bit-accent transition-all">DICTIONARY</Link></li>
                 <li><Link to="/sources" className="hover:text-bit-accent transition-all">SOURCES & CREDITS</Link></li>
                 <li><Link to="/terms" className="hover:text-bit-accent transition-all">TERMS OF USE</Link></li>
                 <li><a href="https://github.com/Shubhamnpk/bitlibrary" target="_blank" rel="noopener noreferrer" className="hover:text-bit-accent transition-all">SOURCE CODE</a></li>

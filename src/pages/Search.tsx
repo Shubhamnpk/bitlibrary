@@ -113,6 +113,7 @@ interface SearchPageProps {
   onQuerySync: (value: string) => void;
   recentSearches: string[];
   onQuickSearch: (query: string) => void;
+  liveQuery?: string;
 }
 
 const SearchPage: React.FC<SearchPageProps> = ({
@@ -125,6 +126,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
   onQuerySync,
   recentSearches,
   onQuickSearch,
+  liveQuery = '',
 }) => {
   const [searchParams] = useSearchParams();
   const [isSearching, setIsSearching] = useState(false);
@@ -307,6 +309,8 @@ const SearchPage: React.FC<SearchPageProps> = ({
     setMobileSearchDraft(currentQuery);
   }, [currentQuery]);
 
+  const spellcheckQuery = liveQuery || currentQuery;
+
   useEffect(() => {
     if (!isQueryReady || spellcheckLanguage !== 'english') {
       setEnglishSpellcheckResult(null);
@@ -318,7 +322,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
     const timer = window.setTimeout(() => {
       setEnglishSpellcheckLoading(true);
       import('@/services/englishSpellcheckService')
-        .then(({ checkEnglishSpelling }) => checkEnglishSpelling(currentQuery))
+        .then(({ checkEnglishSpelling }) => checkEnglishSpelling(spellcheckQuery))
         .then((result) => {
           if (!cancelled) setEnglishSpellcheckResult(result);
         })
@@ -334,7 +338,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [currentQuery, isQueryReady, spellcheckLanguage]);
+  }, [spellcheckQuery, isQueryReady, spellcheckLanguage]);
 
   useEffect(() => {
     if (!isQueryReady || spellcheckLanguage !== 'nepali') {
@@ -347,7 +351,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
     const timer = window.setTimeout(() => {
       setNepaliSpellcheckLoading(true);
       import('@/services/nepaliSpellcheckService')
-        .then(({ checkNepaliSpelling }) => checkNepaliSpelling(currentQuery))
+        .then(({ checkNepaliSpelling }) => checkNepaliSpelling(spellcheckQuery))
         .then((result) => {
           if (!cancelled) setNepaliSpellcheckResult(result);
         })
@@ -363,7 +367,7 @@ const SearchPage: React.FC<SearchPageProps> = ({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [currentQuery, isQueryReady, spellcheckLanguage]);
+  }, [spellcheckQuery, isQueryReady, spellcheckLanguage]);
 
   useEffect(() => () => {
     dictionaryAudioRef.current?.pause();

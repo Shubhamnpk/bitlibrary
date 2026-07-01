@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Book, ChapterAudio, ResourceLink } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Layout, Minimize2, Palette, PanelRight, Trash2, Type, Zap, GripVertical, Headphones, Play, Pause, Volume2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Minimize2, Palette, PanelRight, Trash2, Type, Zap, GripVertical, Headphones, Play, Pause, Volume2, PictureInPicture } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import PDFFlipBook, { type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
 import AppSelect from './AppSelect';
 import DownloadSplitButton from './DownloadSplitButton';
-import { getPdfProxyUrl, getReaderProxyUrl, isPdfLikeUrl } from '@/lib/pdf';
+import { getPdfProxyUrl, getReaderProxyUrl } from '@/lib/pdf';
+import { isPdfLikeUrl, isTextLikeUrl, isHtmlLikeUrl, isEpubLikeUrl, isArchiveEmbedUrl, isReadableResource } from '@/lib/url-utils';
 import { getBookDownloadOptions } from '@/lib/downloads';
 import { getAccessMode } from '@/lib/access';
 import { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS } from '@/lib/pdf-reader-presets';
@@ -28,10 +29,7 @@ const FRAME_BLOCKED_HOSTS = new Set([
   'dropbox.com',
 ]);
 
-const isTextLikeReaderUrl = (url: string) => /\.(?:txt|xml)(?:$|[?#])/i.test(url) || /fulltextxml/i.test(url) || /[?&](?:format|type)=(?:txt|text|xml)(?:&|$)/i.test(url);
-const isHtmlLikeReaderUrl = (url: string) => /\.x?html?(?:$|[?#])/i.test(url) || /[?&](?:format|type)=(?:html?)(?:&|$)/i.test(url);
-const isArchiveEmbedReaderUrl = (url: string) => /^https:\/\/(?:www\.)?archive\.org\/embed\/[^/?#]+/i.test(url);
-const isEpubLikeReaderUrl = (url: string) => /\.epub(?:$|[?#])/i.test(url);
+
 const isBlockedFrameUrl = (url: string) => {
   try {
     return FRAME_BLOCKED_HOSTS.has(new URL(url).hostname.toLowerCase());
@@ -40,26 +38,22 @@ const isBlockedFrameUrl = (url: string) => {
   }
 };
 
-const isReadableResourceLink = (link: ResourceLink) => (
-  ['pdf', 'text', 'xml', 'epub', 'html'].includes(link.format)
-  && !['source', 'doi', 'metadata'].includes(link.relation || '')
-  && (link.format !== 'html' || link.embeddable !== false)
-);
+
 
 const isSupportedDirectReaderUrl = (url?: string) => (
   Boolean(url)
   && (
     isPdfLikeUrl(url)
-    || isTextLikeReaderUrl(url || '')
-    || isEpubLikeReaderUrl(url || '')
+    || isTextLikeUrl(url || '')
+    || isEpubLikeUrl(url || '')
   )
 );
 
 const shouldUseReaderProxy = (url: string, resource?: ResourceLink) => {
   if (!/^https?:\/\//i.test(url)) return false;
-  if (isArchiveEmbedReaderUrl(url)) return false;
+  if (isArchiveEmbedUrl(url)) return false;
   if (resource?.format && ['html', 'text', 'xml'].includes(resource.format)) return true;
-  return isHtmlLikeReaderUrl(url) || isTextLikeReaderUrl(url);
+  return isHtmlLikeUrl(url) || isTextLikeUrl(url);
 };
 
 const normalizeReaderText = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -71,30 +65,7 @@ const getReaderMatchTokens = (value: string) => (
 );
 
 const READER_SPEECH_CANDIDATE_SELECTOR = [
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'p',
-  'li',
-  'dt',
-  'dd',
-  'caption',
-  'figcaption',
-  'blockquote',
-  'summary',
-  'pre',
-  'td',
-  'th',
-  'aside',
-  '.label',
-  '.meta',
-  '.keywords',
-  'aside > strong',
-  '[role="heading"]',
-  '[data-reader-speech-candidate]',
+  'h1','h2','h3','h4','h5','h6','p','li','dt','dd','caption','figcaption','blockquote','summary','pre','td','th','aside','.label','.meta','.keywords','[role="heading"]','[data-reader-speech-candidate]',
 ].join(',');
 
 const getExternalSpeechCandidates = (root: ParentNode) => {
@@ -301,15 +272,15 @@ const wrapReaderSpeechWord = (root: HTMLElement, word: string, documentRef: Docu
 };
 
 const getReaderResource = (resources: ResourceLink[]) => (
-  resources.find((link) => isReadableResourceLink(link) && link.format === 'html' && link.embeddable !== false)
-  || resources.find((link) => isReadableResourceLink(link) && link.format === 'pdf')
-  || resources.find((link) => isReadableResourceLink(link) && ['text', 'xml'].includes(link.format) && link.embeddable !== false)
-  || resources.find((link) => isReadableResourceLink(link) && link.format === 'epub')
+  resources.find((link) => isReadableResource(link) && link.format === 'html' && link.embeddable !== false)
+  || resources.find((link) => isReadableResource(link) && link.format === 'pdf')
+  || resources.find((link) => isReadableResource(link) && ['text', 'xml'].includes(link.format) && link.embeddable !== false)
+  || resources.find((link) => isReadableResource(link) && link.format === 'epub')
 );
 
 const getSortedReadableResources = (resources: ResourceLink[]) => {
   const readable = resources
-    .filter(isReadableResourceLink)
+    .filter(isReadableResource)
     .filter((link, index, links) => links.findIndex((candidate) => candidate.url === link.url) === index);
   const isCrossref = readable.some((link) => link.provider === 'Crossref');
   const isPubMed = readable.some((link) => /PubMed Central|BioC/i.test(link.provider || ''));
@@ -339,8 +310,8 @@ const getReadableResourceLabel = (entry: ResourceLink) => {
 const canEmbedExternalUrl = (url: string, isPdfReader: boolean) => {
   if (!url) return false;
   if (isPdfReader) return true;
-  if (isEpubLikeReaderUrl(url)) return false;
-  if (isTextLikeReaderUrl(url)) return true;
+  if (isEpubLikeUrl(url)) return false;
+  if (isTextLikeUrl(url)) return true;
 
   return !isBlockedFrameUrl(url);
 };
@@ -1295,7 +1266,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             <div className="p-2.5 bg-bit-panel/60 backdrop-blur-md rounded-full text-bit-text border border-bit-border">
               <Maximize2 size={20} />
             </div>
-            <p className="text-[9px] text-bit-text font-mono uppercase tracking-[0.2em] font-bold">RESTORE_SESSION</p>
+            <p className="text-[9px] text-bit-text font-mono uppercase tracking-[0.2em] font-bold">Open</p>
           </div>
 
           <div className="absolute top-2 right-2 flex gap-2 z-30">
@@ -1316,6 +1287,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   return (
     <div className={`fixed inset-0 z-[1000] bg-bit-bg flex flex-col animate-fade-in overflow-hidden shadow-2xl transition-all duration-700`}>
       {/* Smart Reveal Header */}
+      {(!isImmersive || window.matchMedia('(hover: hover)').matches) && (
       <header className={`h-14 sm:h-16 border-b border-bit-border bg-bit-panel/80 backdrop-blur-2xl flex items-center justify-between gap-3 px-3 sm:px-6 z-[10001] transition-all duration-300 ${isImmersive ? 'absolute top-0 left-0 right-0 -translate-y-full hover:translate-y-0 opacity-0 hover:opacity-100' : 'relative'}`}>
         <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
           <button
@@ -1347,8 +1319,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 value: entry.url,
                 label: `${entry.format.toUpperCase()}${entry.provider ? ` · ${entry.provider}` : ''}${index === 0 ? ' · best' : ''}`,
               }))}
-              className="hidden max-w-72 bg-bit-panel/50 shadow-sm md:inline-flex"
-              selectClassName="max-w-52"
+              className="hidden max-w-72 md:inline-flex"
+              selectClassName="bg-bit-panel/50 shadow-sm max-w-52"
               ariaLabel="Select reading format"
             />
           )}
@@ -1361,8 +1333,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 value: String(index),
                 label: entry.title,
               }))}
-              className="hidden max-w-64 bg-bit-panel/50 shadow-sm md:inline-flex"
-              selectClassName="max-w-44"
+              className="hidden max-w-64 md:inline-flex"
+              selectClassName="bg-bit-panel/50 shadow-sm max-w-44"
               ariaLabel="Select PDF chapter"
             />
           )}
@@ -1417,7 +1389,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               className="rounded-lg p-2.5 text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-accent sm:p-3 group"
               title="Minimize stream (PiP)"
             >
-              <Layout size={17} className="group-hover:scale-110 sm:size-[18px]" />
+              <PictureInPicture size={17} className="group-hover:scale-110 sm:size-[18px]" />
             </button>
             <button
               onClick={enterFocusMode}
@@ -1441,13 +1413,14 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           </div>
         </div>
       </header>
+      )}
 
       {sidebarOpen && (
-        <aside className="fixed bottom-0 right-0 top-14 z-[10120] isolate flex w-full flex-col overflow-hidden border-l border-bit-border bg-bit-bg shadow-[-18px_0_60px_rgba(0,0,0,0.42),0_0_0_1px_rgba(255,255,255,0.05)] ring-1 ring-white/5 animate-fade-in sm:top-16 sm:w-[min(23rem,100vw)]">
+        <aside className={`fixed bottom-0 right-0 z-[10120] isolate flex w-full flex-col overflow-hidden border-l border-bit-border bg-bit-bg shadow-[-18px_0_60px_rgba(0,0,0,0.42),0_0_0_1px_rgba(255,255,255,0.05)] ring-1 ring-white/5 animate-fade-in sm:w-[min(23rem,100vw)] ${isImmersive ? 'top-0' : 'top-14 sm:top-16'}`}>
           <div className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.015)_35%,rgba(0,0,0,0.08))]" />
           <div className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-px bg-gradient-to-b from-bit-accent/60 via-bit-border to-transparent" />
-          <div className="border-b border-bit-border/70 bg-bit-bg px-5 py-3">
-            <div className="flex rounded-full border border-bit-border bg-bit-panel/50 p-1">
+          <div className="border-b border-bit-border/70 bg-bit-bg px-5 py-3 flex items-center gap-2">
+            <div className="flex flex-1 rounded-full border border-bit-border bg-bit-panel/50 p-1">
               {(isPdfReader || canLoadChapterAudio) && (
                 <button
                   type="button"
@@ -1472,6 +1445,13 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 Look
               </button>
             </div>
+            {isImmersive && (
+              <button onClick={() => setSidebarOpen(false)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-bit-border text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-text"
+                aria-label="Close sidebar">
+                <X size={15} />
+              </button>
+            )}
           </div>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-bit-bg p-5">
@@ -2080,8 +2060,8 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                             label: `${voice.name}${voice.lang ? ` (${voice.lang})` : ''}`,
                           })),
                         ]}
-                        className="w-full bg-bit-bg/40"
-                        selectClassName="max-w-[12rem]"
+                        className="w-full"
+                        selectClassName="bg-bit-bg/40 max-w-[12rem]"
                         ariaLabel="Select read aloud voice"
                       />
 
@@ -2479,18 +2459,34 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 export const ReaderSkeleton: React.FC = () => {
   return (
     <div className="fixed inset-0 bg-bit-bg flex flex-col items-center animate-fade-in z-[2000]">
-      <div className="h-16 w-full border-b border-bit-border bg-bit-panel/50 p-6 flex justify-between">
+      <div className="h-16 w-full border-b border-bit-border bg-bit-panel/50 px-6 flex items-center justify-between">
         <div className="h-4 w-32 animate-shimmer bg-bit-panel/20 rounded-full border border-bit-border/30" />
-        <div className="h-4 w-20 animate-shimmer bg-bit-panel/20 rounded-full border border-bit-border/30" />
+        <div className="flex items-center gap-3">
+          <div className="h-4 w-16 animate-shimmer bg-bit-panel/20 rounded-full border border-bit-border/30" />
+          <div className="h-4 w-12 animate-shimmer bg-bit-panel/20 rounded-full border border-bit-border/30" />
+        </div>
       </div>
-      <div className="w-full max-w-[560px] h-full p-20 space-y-8 bg-bit-panel/5 border-x border-bit-border shadow-2xl overflow-hidden relative">
-        <div className="h-10 w-3/4 animate-shimmer bg-bit-panel/20 rounded border border-bit-border/30" />
-        <div className="space-y-4">
+      <div className="flex w-full max-w-[648px] flex-1 items-start gap-0 border-x border-bit-border bg-bit-panel/[0.02] shadow-2xl">
+        <div className="hidden w-56 shrink-0 border-r border-bit-border/50 p-6 md:flex flex-col gap-6">
           {[1, 2, 3, 4, 5].map(i => (
-            <div key={i} className="h-4 w-full animate-shimmer bg-bit-panel/10 rounded border border-bit-border/10" style={{ animationDelay: `${i * 100}ms` }} />
+            <div key={i} className="space-y-2">
+              <div className="h-3 w-full animate-shimmer bg-bit-panel/20 rounded border border-bit-border/10" style={{ animationDelay: `${i * 60}ms` }} />
+              <div className="h-3 w-2/3 animate-shimmer bg-bit-panel/10 rounded border border-bit-border/10" style={{ animationDelay: `${i * 60 + 30}ms` }} />
+            </div>
           ))}
         </div>
-        <div className="h-96 w-full animate-shimmer bg-bit-panel/10 rounded border border-bit-border/20" />
+        <div className="flex-1 space-y-6 overflow-hidden p-10">
+          <div className="h-8 w-3/4 animate-shimmer bg-bit-panel/20 rounded border border-bit-border/20" />
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+              <div key={i} className="flex gap-4">
+                <div className="h-4 flex-1 animate-shimmer bg-bit-panel/10 rounded border border-bit-border/10" style={{ animationDelay: `${i * 80}ms` }} />
+                <div className="h-4 w-12 animate-shimmer bg-bit-panel/10 rounded border border-bit-border/10" style={{ animationDelay: `${i * 80 + 40}ms` }} />
+              </div>
+            ))}
+          </div>
+          <div className="h-64 w-full animate-shimmer bg-bit-panel/10 rounded-lg border border-bit-border/20" />
+        </div>
       </div>
     </div>
   );

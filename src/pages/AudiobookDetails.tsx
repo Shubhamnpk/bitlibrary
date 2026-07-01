@@ -48,6 +48,7 @@ const AudiobookDetails: React.FC = () => {
   ));
   const { state: localUserState } = useLocalUserState();
   const lastProgressSaveAt = useRef(0);
+  const autoPlayNextRef = useRef(false);
 
   useEffect(() => {
     if (!id) return;
@@ -146,7 +147,6 @@ const AudiobookDetails: React.FC = () => {
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
-    setPendingSeekTime(0);
   }, [activeTrack?.id]);
 
   const activeAudioUrls = activeTrack ? (activeTrack.fallbackUrls?.length ? activeTrack.fallbackUrls : [activeTrack.listenUrl]) : [];
@@ -295,7 +295,68 @@ const AudiobookDetails: React.FC = () => {
   if (loading) {
     return (
       <div className="animate-fade-in pb-24">
-        <div className="h-[34rem] rounded-[2.5rem] border border-bit-border bg-bit-panel/30 animate-shimmer" />
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-3 pt-4 sm:pt-0">
+          <div className="h-10 w-24 rounded-full border border-bit-border bg-bit-panel/30 animate-shimmer" />
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-20 rounded-full border border-bit-border bg-bit-panel/30 animate-shimmer" />
+            <div className="h-10 w-10 rounded-full border border-bit-border bg-bit-panel/30 animate-shimmer" />
+          </div>
+        </div>
+        <div className="grid gap-8 lg:grid-cols-[minmax(14rem,19rem)_1fr] xl:grid-cols-[minmax(15rem,21rem)_1fr]">
+          <div className="min-w-0 lg:sticky lg:top-24 lg:h-fit">
+            <div className="mx-auto w-full max-w-md overflow-hidden rounded-[2rem] border border-bit-border bg-bit-panel/35 shadow-2xl lg:max-w-[19rem] xl:max-w-[21rem]">
+              <div className="aspect-[3/4] max-h-[54svh] bg-bit-panel/30 lg:max-h-[24rem] animate-shimmer" />
+              <div className="hidden border-t border-bit-border p-5 lg:block">
+                <div className="mb-4 h-5 w-44 rounded bg-bit-panel/30 animate-shimmer" />
+                <div className="space-y-3">
+                  <div className="h-4 w-full rounded bg-bit-panel/30 animate-shimmer" />
+                  <div className="h-4 w-3/4 rounded bg-bit-panel/30 animate-shimmer" />
+                  <div className="h-4 w-5/6 rounded bg-bit-panel/30 animate-shimmer" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="min-w-0 space-y-8">
+            <div className="hidden gap-3 border-b border-bit-border pb-4 sm:flex">
+              <div className="h-4 w-16 rounded bg-bit-panel/30 animate-shimmer" />
+              <div className="h-4 w-4 rounded bg-bit-panel/30 animate-shimmer" />
+              <div className="h-4 w-24 rounded bg-bit-panel/30 animate-shimmer" />
+              <div className="h-4 w-4 rounded bg-bit-panel/30 animate-shimmer" />
+              <div className="h-4 w-36 rounded bg-bit-panel/30 animate-shimmer" />
+            </div>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="rounded-xl border border-bit-border bg-bit-panel/30 p-4">
+                  <div className="mb-2 h-3 w-16 rounded bg-bit-panel/30 animate-shimmer" />
+                  <div className="h-7 w-20 rounded bg-bit-panel/30 animate-shimmer" />
+                </div>
+              ))}
+            </div>
+            <div className="rounded-[2rem] border border-bit-border bg-bit-panel/30 p-7">
+              <div className="mb-5 h-5 w-44 rounded bg-bit-panel/30 animate-shimmer" />
+              <div className="space-y-3">
+                <div className="h-4 w-full rounded bg-bit-panel/30 animate-shimmer" />
+                <div className="h-4 w-5/6 rounded bg-bit-panel/30 animate-shimmer" />
+                <div className="h-4 w-2/3 rounded bg-bit-panel/30 animate-shimmer" />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-bit-border bg-bit-panel/30 p-4 sm:p-6 lg:p-7">
+              <div className="mb-6 h-6 w-36 rounded bg-bit-panel/30 animate-shimmer" />
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-4 rounded-xl border border-bit-border bg-bit-panel/20 px-4 py-3">
+                    <div className="h-9 w-9 shrink-0 rounded-full bg-bit-panel/30 animate-shimmer" />
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1.5 h-4 w-3/5 rounded bg-bit-panel/30 animate-shimmer" />
+                      <div className="h-3 w-1/4 rounded bg-bit-panel/30 animate-shimmer" />
+                    </div>
+                    <div className="h-3 w-12 shrink-0 rounded bg-bit-panel/30 animate-shimmer" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -313,7 +374,7 @@ const AudiobookDetails: React.FC = () => {
 
   const coverUrl = audiobook.coverUrl || audiobook.thumbnailUrl;
   const displayCoverUrl = coverUrl
-    ? `https://images.weserv.nl/?url=${encodeURIComponent(coverUrl)}&w=640&h=860&fit=cover&output=webp`
+    ? `https://images.weserv.nl/?url=${encodeURIComponent(coverUrl)}&w=400&output=webp`
     : null;
 
   return (
@@ -327,7 +388,7 @@ const AudiobookDetails: React.FC = () => {
         structuredData={structuredData}
       />
 
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3 pt-4 sm:pt-0">
         <button
           onClick={goBack}
           className="inline-flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/30 px-6 py-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-muted shadow-sm transition-all hover:border-bit-accent/30 hover:text-bit-accent"
@@ -378,19 +439,6 @@ const AudiobookDetails: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => setDescriptionExpanded((value) => !value)}
-            className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.2em] shadow-sm transition-all ${
-              descriptionExpanded
-                ? 'border-bit-accent bg-bit-accent/10 text-bit-accent'
-                : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:border-bit-accent/30 hover:text-bit-accent'
-            }`}
-            aria-label={descriptionExpanded ? 'Collapse description' : 'Expand description'}
-          >
-            <Zap size={14} className={descriptionExpanded ? 'text-bit-accent' : ''} />
-            Summary
-          </button>
-          <button
-            type="button"
             onClick={toggleSavedAudiobook}
             className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-[10px] font-mono font-bold uppercase tracking-[0.2em] shadow-sm transition-all ${
               isSaved
@@ -400,7 +448,6 @@ const AudiobookDetails: React.FC = () => {
             aria-label={isSaved ? 'Remove audiobook from saved' : 'Save audiobook'}
           >
             <Heart size={14} className={isSaved ? 'fill-current' : ''} />
-            {isSaved ? 'Saved' : 'Save Audio'}
           </button>
         </div>
       </div>
@@ -408,22 +455,28 @@ const AudiobookDetails: React.FC = () => {
       <article className="grid min-w-0 gap-8 lg:grid-cols-[minmax(14rem,19rem)_1fr] xl:grid-cols-[minmax(15rem,21rem)_1fr]">
         <section className="min-w-0 lg:sticky lg:top-24 lg:h-fit">
           <div className="mx-auto w-full max-w-md overflow-hidden rounded-[2rem] border border-bit-border bg-bit-panel/35 shadow-2xl lg:max-w-[19rem] xl:max-w-[21rem] lg:max-h-[calc(100svh-7rem)] lg:overflow-y-auto">
-            <div className="relative aspect-[3/4] max-h-[54svh] bg-bit-panel/40 lg:max-h-[24rem]">
+            <div className="relative aspect-[3/4] max-h-[54svh] lg:max-h-[24rem]">
               {displayCoverUrl ? (
-                <img src={displayCoverUrl} alt={audiobook.title} className="h-full w-full object-cover opacity-80" />
+                <>
+                  <img src={displayCoverUrl} alt="" className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl opacity-50" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-bit-panel/30 to-bit-bg/40" />
+                  <div className="relative z-10 flex h-full w-full items-center justify-center p-5 lg:p-7">
+                    <img src={displayCoverUrl} alt={audiobook.title} className="h-full w-full object-contain drop-shadow-2xl" />
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-bit-bg/70 via-bit-bg/10 to-transparent z-20" />
+                </>
               ) : (
-                <div className="flex h-full w-full items-center justify-center">
+                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-bit-panel to-bit-bg">
                   <Headphones size={64} className="text-bit-accent/70" />
                 </div>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-bit-bg via-bit-bg/25 to-transparent" />
-              <div className="absolute bottom-6 left-6 right-6">
-                <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/80 px-3 py-1.5 text-[10px] font-mono uppercase tracking-widest text-bit-accent backdrop-blur-md">
-                  <Radio size={12} />
+              <div className="absolute bottom-5 left-5 right-5 z-30">
+                <p className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-bit-border bg-bit-panel/80 px-2.5 py-1 text-[9px] font-mono uppercase tracking-widest text-bit-accent backdrop-blur-md">
+                  <Radio size={10} />
                   {audiobook.source} audio
                 </p>
-                <h1 className="text-3xl font-display font-bold leading-tight text-white md:text-4xl lg:text-2xl xl:text-3xl">{audiobook.title}</h1>
-                <p className="mt-4 text-lg text-white/70 lg:text-sm xl:text-base">by {audiobook.author}</p>
+                <h1 className="text-2xl font-display font-bold leading-tight text-white lg:text-xl xl:text-2xl">{audiobook.title}</h1>
+                <p className="mt-2 text-sm text-white/70 lg:text-xs xl:text-sm">by {audiobook.author}</p>
               </div>
             </div>
 
@@ -479,7 +532,13 @@ const AudiobookDetails: React.FC = () => {
                   key={`${activeTrack.id}-${audioSourceIndex}`}
                   preload="metadata"
                   src={activeAudioUrl}
-                  onCanPlay={() => setAudioError('')}
+                  onCanPlay={(event) => {
+                    setAudioError('');
+                    if (autoPlayNextRef.current) {
+                      autoPlayNextRef.current = false;
+                      event.currentTarget.play().then(() => setIsPlaying(true)).catch(() => {});
+                    }
+                  }}
                   onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || activeTrack.playtimeSeconds || 0)}
                   onLoadedData={(event) => {
                     event.currentTarget.playbackRate = playbackRate;
@@ -501,7 +560,10 @@ const AudiobookDetails: React.FC = () => {
                   onPause={() => setIsPlaying(false)}
                   onEnded={() => {
                     setIsPlaying(false);
-                    if (hasNextTrack) changeTrack(1);
+                    if (hasNextTrack) {
+                      autoPlayNextRef.current = true;
+                      changeTrack(1);
+                    }
                   }}
                   onError={handleAudioError}
                 >
@@ -583,7 +645,8 @@ const AudiobookDetails: React.FC = () => {
                           value: track.id,
                           label: `${track.sectionNumber}. ${track.title}`,
                         }))}
-                        className="w-full bg-bit-panel/60"
+                        className="w-full"
+                        selectClassName="bg-bit-panel/60"
                         ariaLabel="Chapter"
                       />
                     </label>
@@ -599,7 +662,8 @@ const AudiobookDetails: React.FC = () => {
                           value: String(rate),
                           label: `${rate}x`,
                         }))}
-                        className="w-full bg-bit-panel/60"
+                        className="w-full"
+                        selectClassName="bg-bit-panel/60"
                         ariaLabel="Speed"
                       />
                     </label>
@@ -627,7 +691,7 @@ const AudiobookDetails: React.FC = () => {
         </section>
 
         <section className="min-w-0 space-y-8">
-          <nav className="flex items-center gap-3 overflow-x-auto border-b border-bit-border pb-4 text-[10px] font-mono uppercase tracking-[0.2em]">
+          <nav className="hidden items-center gap-3 overflow-x-auto border-b border-bit-border pb-4 text-[10px] font-mono uppercase tracking-[0.2em] sm:flex">
             <button onClick={() => navigate('/library')} className="inline-flex items-center gap-2 text-bit-muted hover:text-bit-accent">
               <Library size={12} />
               Library
@@ -674,7 +738,13 @@ const AudiobookDetails: React.FC = () => {
                 key={`desktop-${activeTrack.id}-${audioSourceIndex}`}
                 preload="metadata"
                 src={activeAudioUrl}
-                onCanPlay={() => setAudioError('')}
+                onCanPlay={(event) => {
+                  setAudioError('');
+                  if (autoPlayNextRef.current) {
+                    autoPlayNextRef.current = false;
+                    event.currentTarget.play().then(() => setIsPlaying(true)).catch(() => {});
+                  }
+                }}
                 onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || activeTrack.playtimeSeconds || 0)}
                 onLoadedData={(event) => {
                   event.currentTarget.playbackRate = playbackRate;
@@ -696,7 +766,10 @@ const AudiobookDetails: React.FC = () => {
                 onPause={() => setIsPlaying(false)}
                 onEnded={() => {
                   setIsPlaying(false);
-                  if (hasNextTrack) changeTrack(1);
+                  if (hasNextTrack) {
+                    autoPlayNextRef.current = true;
+                    changeTrack(1);
+                  }
                 }}
                 onError={handleAudioError}
               >
@@ -779,24 +852,26 @@ const AudiobookDetails: React.FC = () => {
                         value: track.id,
                         label: `${track.sectionNumber}. ${track.title}`,
                       }))}
-                      className="w-full bg-bit-panel/60"
-                      ariaLabel="Jump to chapter"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-bit-muted">
-                      <Gauge size={12} className="text-bit-accent" />
-                      Speed
-                    </span>
-                    <AppSelect
-                      value={String(playbackRate)}
-                      onChange={handlePlaybackRateChange}
-                      options={PLAYBACK_RATES.map((rate) => ({
-                        value: String(rate),
-                        label: `${rate}x`,
-                      }))}
-                      className="w-full bg-bit-panel/60"
-                      ariaLabel="Speed"
+                        className="w-full"
+                        selectClassName="bg-bit-panel/60"
+                        ariaLabel="Jump to chapter"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-2 flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-bit-muted">
+                        <Gauge size={12} className="text-bit-accent" />
+                        Speed
+                      </span>
+                      <AppSelect
+                        value={String(playbackRate)}
+                        onChange={handlePlaybackRateChange}
+                        options={PLAYBACK_RATES.map((rate) => ({
+                          value: String(rate),
+                          label: `${rate}x`,
+                        }))}
+                        className="w-full"
+                        selectClassName="bg-bit-panel/60"
+                        ariaLabel="Speed"
                     />
                   </label>
                 </div>

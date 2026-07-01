@@ -1,6 +1,7 @@
 import { CURRICULUM_GRADES, CURRICULUM_SUBJECTS } from '@/constants';
 import type { Audiobook, Book } from '@/types/index';
 import { isPriorCurriculumEdition } from '@/services/bookService';
+import { dedupeBooks } from '@/lib/url-utils';
 
 export type ResourceMode = 'all' | 'textbooks' | 'audiobooks' | 'stories' | 'teacher-guides';
 export type CurriculumRegion = 'all' | 'nepal' | 'ncert';
@@ -34,10 +35,6 @@ export const emptyAudioRows = (): AudioGradeRows => (
     return rows;
   }, {})
 );
-
-export const dedupeBooks = (books: Book[]) => books.filter((book, index, list) => (
-  list.findIndex((entry) => entry.id === book.id) === index
-));
 
 export const dedupeAudiobooks = (audiobooks: Audiobook[]) => audiobooks.filter((audiobook, index, list) => (
   list.findIndex((entry) => entry.id === audiobook.id) === index

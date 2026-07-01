@@ -214,13 +214,14 @@ const decryptString = async (storageKey: string, value: string) => {
 };
 
 const writeGenerations = new Map<string, number>();
+const pendingWrites = new Map<string, Promise<void>>();
 
-const persistEncryptedValue = (key: string, value: string) => {
+const persistEncryptedValue = (key: string, value: string): Promise<void> => {
   decryptedValues.set(key, value);
   const generation = (writeGenerations.get(key) || 0) + 1;
   writeGenerations.set(key, generation);
   const currentGeneration = () => writeGenerations.get(key);
-  void encryptString(key, value)
+  const promise = encryptString(key, value)
     .then((encryptedValue) => {
       if (currentGeneration() !== generation) return;
       if (encryptedValue) window.localStorage.setItem(key, encryptedValue);
@@ -231,7 +232,14 @@ const persistEncryptedValue = (key: string, value: string) => {
       // Managed storage must not fall back to readable localStorage.
       window.localStorage.removeItem(key);
     });
+  pendingWrites.set(key, promise);
+  promise.finally(() => {
+    if (pendingWrites.get(key) === promise) pendingWrites.delete(key);
+  });
+  return promise;
 };
+
+export const flushPendingWrites = () => Promise.all(Array.from(pendingWrites.values()));
 
 export const initializeEncryptedStorage = async () => {
   if (initialized || typeof window === 'undefined') return;
@@ -239,6 +247,11 @@ export const initializeEncryptedStorage = async () => {
   if (!isBrowserStorageAvailable()) return;
 
   await getStorageKeyOnce();
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', () => { void flushPendingWrites(); });
+  }
+
   await Promise.all(MANAGED_STORAGE_KEYS.map(async (key) => {
     const raw = window.localStorage.getItem(key);
     if (!raw) return;
@@ -261,9 +274,9 @@ export const readStorageItem = (key: string) => {
   return null;
 };
 
-export const writeStorageItem = (key: string, value: string) => {
-  if (typeof window === 'undefined') return;
-  persistEncryptedValue(key, value);
+export const writeStorageItem = (key: string, value: string): Promise<void> => {
+  if (typeof window === 'undefined') return Promise.resolve();
+  return persistEncryptedValue(key, value);
 };
 
 export const removeStorageItem = (key: string) => {

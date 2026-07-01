@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import $ from 'jquery';
 import '@ksedline/turnjs';
-import { Bookmark, BookmarkCheck, ChevronDown, ChevronLeft, ChevronRight, Eraser, ExternalLink, GripVertical, Headphones, Highlighter, Loader2, Pause, Play, RotateCcw, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
+import { Bookmark, BookmarkCheck, ChevronDown, ChevronLeft, ChevronRight, Download, Eraser, ExternalLink, GripVertical, Headphones, Highlighter, Loader2, MousePointer2, Pause, PenLine, Play, RotateCcw, Trash2, Type, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { getPdfProxyUrl } from '@/lib/pdf';
 import { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS } from '@/lib/pdf-reader-presets';
 import { getPdfSpeechSegments, type PdfSpeechItemRange, type PdfSpeechSegment, type PdfSpeechStatus } from '@/lib/pdf-speech';
@@ -17,7 +18,10 @@ import {
   writePdfStudyState,
   type PdfBackgroundPresetId,
   type PdfHighlightColorId,
+  type PdfAnnotation,
+  type PdfInkAnnotation,
   type PdfStudyState,
+  type PdfTextAnnotation,
   type PdfTextHighlight,
 } from '@/lib/pdf-reader-storage';
 import { getPreferredSpeechVoiceURI, getSpeechWordAtBoundary, normalizeSpeechMatchText, speakUtterance } from '@/lib/speech';
@@ -34,7 +38,6 @@ const PDFJS_WASM_URL = '/assets/pdfjs/wasm/';
 const MIN_PDF_RENDER_RATIO = 3;
 const MAX_PDF_RENDER_RATIO = 4.5;
 const PDF_STABLE_RENDER_SCALE = 2.6;
-const MAX_PDF_ZOOM = 2.5;
 const isTurnTouchDevice = () => Boolean(($ as unknown as { isTouch?: boolean }).isTouch);
 
 interface PDFFlipBookProps {
@@ -75,6 +78,9 @@ interface PDFPageCanvasProps {
   isBookmarked: boolean;
   isHighlighted: boolean;
   textHighlights: PdfTextHighlight[];
+  annotations: PdfAnnotation[];
+  selectedAnnotationId: string | null;
+  annotationTool: PdfAnnotationTool;
   activeSpeechText?: string;
   activeSpeechItemRange?: PdfSpeechItemRange | null;
   activeSpeechWord?: string;
@@ -84,6 +90,13 @@ interface PDFPageCanvasProps {
   pendingSelectionRects: PdfSpeechHighlightRect[];
   currentHighlightColor: PdfHighlightColorId;
   onTextSelection: (selection: PdfPendingTextSelection) => void;
+  onAddTextAnnotation: (page: number, x: number, y: number) => void;
+  onAddInkAnnotation: (page: number, points: PdfInkAnnotation['points']) => void;
+  onSelectAnnotation: (annotationId: string | null) => void;
+  onMoveAnnotation: (annotationId: string, dx: number, dy: number) => void;
+  onUpdateTextAnnotation: (annotationId: string, text: string) => void;
+  onRemoveTextHighlight: (highlightId: string) => void;
+  onRemoveAnnotation: (annotationId: string) => void;
 }
 
 const EMPTY_TEXT_HIGHLIGHTS: PdfTextHighlight[] = [];
@@ -111,6 +124,16 @@ type PdfPendingTextSelection = Omit<PdfTextHighlight, 'id' | 'createdAt'> & {
     x: number;
     y: number;
   };
+};
+
+type PdfAnnotationTool = 'highlight' | 'select' | 'text' | 'pen' | 'erase';
+
+type PdfAnnotationDragState = {
+  annotationId: string;
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
 };
 
 const mergeSpeechHighlightRects = (rects: PdfSpeechHighlightRect[]) => {
@@ -250,7 +273,10 @@ const normalizePageNumber = (page: unknown, pageCount: number, fallback = 1) => 
   return Math.min(pageCount, Math.floor(numericPage));
 };
 
-const clampZoom = (value: number) => Math.min(MAX_PDF_ZOOM, Math.max(1, Number(value.toFixed(3))));
+const clampZoom = (value: number) => {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(1, Number(value.toFixed(3)));
+};
 
 const getHighlightOverlay = (color?: PdfHighlightColorId) => (
   PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === color)?.overlay || PDF_HIGHLIGHT_COLOR_PRESETS[0].overlay
@@ -302,6 +328,40 @@ const rectsOverlap = (first: PdfSpeechHighlightRect, second: PdfSpeechHighlightR
 const getPdfSpeechWordOccurrence = (text: string, word: { value: string; start: number } | null) => (
   word ? getPdfSpeechWords(text.slice(0, word.start)).filter((value) => value === normalizeSpeechMatchText(word.value)).length : 0
 );
+
+const getAnnotationId = (page: number) => `${page}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const clampPercent = (value: number, max = 100) => Math.max(0, Math.min(max, Number.isFinite(value) ? value : 0));
+
+const getHighlightSwatch = (color?: PdfHighlightColorId) => (
+  PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === color)?.swatch || PDF_HIGHLIGHT_COLOR_PRESETS[0].swatch
+);
+
+const hexToPdfRgb = (hex: string) => {
+  const normalized = hex.replace('#', '');
+  const value = normalized.length === 3
+    ? normalized.split('').map((char) => `${char}${char}`).join('')
+    : normalized;
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return rgb(
+    Number.isFinite(red) ? red / 255 : 0,
+    Number.isFinite(green) ? green / 255 : 0,
+    Number.isFinite(blue) ? blue / 255 : 0,
+  );
+};
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+};
 
 const resolveOutlinePage = async (document: PDFDocumentProxy, dest: PdfOutlineItem['dest']) => {
   try {
@@ -394,17 +454,26 @@ const playPageTurnSound = () => {
   source.onended = () => void audioContext.close();
 };
 
-const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, shouldRender, shouldRenderTextLayer, textSelectionEnabled, renderScale, targetWidth, targetHeight, isBookmarked, isHighlighted, textHighlights, activeSpeechText = '', activeSpeechItemRange = null, activeSpeechWord = '', activeSpeechWordOccurrence = 0, speechHighlightMode, speechReadingOrder, pendingSelectionRects, currentHighlightColor, onTextSelection }) => {
+const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, shouldRender, shouldRenderTextLayer, textSelectionEnabled, renderScale, targetWidth, targetHeight, isBookmarked, isHighlighted, textHighlights, annotations, selectedAnnotationId, annotationTool, activeSpeechText = '', activeSpeechItemRange = null, activeSpeechWord = '', activeSpeechWordOccurrence = 0, speechHighlightMode, speechReadingOrder, pendingSelectionRects, currentHighlightColor, onTextSelection, onAddTextAnnotation, onAddInkAnnotation, onSelectAnnotation, onMoveAnnotation, onUpdateTextAnnotation, onRemoveTextHighlight, onRemoveAnnotation }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const textLayerRef = useRef<HTMLDivElement | null>(null);
   const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
+  const inkDraftRef = useRef<{ pointerId: number; points: PdfInkAnnotation['points'] } | null>(null);
+  const annotationDragRef = useRef<PdfAnnotationDragState | null>(null);
+  const eraserDragPointerRef = useRef<number | null>(null);
+  const erasedItemIdsRef = useRef(new Set<string>());
+  const focusedTextAnnotationRef = useRef<string | null>(null);
   const speechSpanMetricsRef = useRef<PdfTextSpanMetrics[]>([]);
   const speechHighlightedSpansRef = useRef<HTMLElement[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasRenderedCanvas, setHasRenderedCanvas] = useState(false);
   const [speechHighlightRects, setSpeechHighlightRects] = useState<PdfSpeechHighlightRect[]>([]);
+  const [draftInkPoints, setDraftInkPoints] = useState<PdfInkAnnotation['points']>([]);
+  const [eraserPoint, setEraserPoint] = useState<{ x: number; y: number } | null>(null);
+  const [erasingAnnotationIds, setErasingAnnotationIds] = useState<Set<string>>(() => new Set());
+  const [erasingHighlightIds, setErasingHighlightIds] = useState<Set<string>>(() => new Set());
 
   const cacheSpeechSpanMetrics = useCallback(() => {
     const textLayer = textLayerRef.current;
@@ -642,11 +711,17 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
     applySpeechHighlight();
   }, [applySpeechHighlight]);
 
+  useEffect(() => {
+    if (annotationTool !== 'erase') setEraserPoint(null);
+  }, [annotationTool]);
+
   const handleTextPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!textSelectionEnabled) return;
     if (!event.isPrimary) return;
     selectionStartRef.current = { x: event.clientX, y: event.clientY };
-    clearTextLayerSelection();
+    if (event.pointerType !== 'touch') {
+      clearTextLayerSelection();
+    }
   };
 
   const handleTextPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -654,7 +729,9 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
     const start = selectionStartRef.current;
     selectionStartRef.current = null;
 
-    if (start) {
+    const isTouch = event.pointerType === 'touch';
+
+    if (!isTouch && start) {
       const dragDistance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
       if (dragDistance < 4) {
         clearTextLayerSelection();
@@ -714,6 +791,170 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
     clearTextLayerSelection();
   };
 
+  const getAnnotationPoint = (event: React.PointerEvent<HTMLElement>) => {
+    const content = contentRef.current;
+    if (!content) return null;
+    const rect = content.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return {
+      x: Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100)),
+      y: Math.max(0, Math.min(100, ((event.clientY - rect.top) / rect.height) * 100)),
+    };
+  };
+
+  const handleAnnotationLayerPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (annotationTool === 'select') {
+      onSelectAnnotation(null);
+      return;
+    }
+
+    const point = getAnnotationPoint(event);
+    if (!point) return;
+
+    if (annotationTool === 'erase' && event.isPrimary) {
+      event.preventDefault();
+      eraserDragPointerRef.current = event.pointerId;
+      setEraserPoint(point);
+      return;
+    }
+
+    if (annotationTool === 'text') {
+      event.preventDefault();
+      onAddTextAnnotation(pageNumber, point.x, point.y);
+      return;
+    }
+
+    if (annotationTool === 'pen' && event.isPrimary) {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      inkDraftRef.current = { pointerId: event.pointerId, points: [point] };
+      setDraftInkPoints([point]);
+    }
+  };
+
+  const handleAnnotationLayerPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (annotationTool === 'erase') {
+      setEraserPoint(getAnnotationPoint(event));
+    }
+
+    const draft = inkDraftRef.current;
+    if (!draft || draft.pointerId !== event.pointerId) return;
+    const point = getAnnotationPoint(event);
+    if (!point) return;
+    const previous = draft.points[draft.points.length - 1];
+    if (previous && Math.hypot(point.x - previous.x, point.y - previous.y) < 0.15) return;
+    draft.points = [...draft.points, point];
+    setDraftInkPoints(draft.points);
+  };
+
+  const finishInk = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (eraserDragPointerRef.current === event.pointerId) {
+      eraserDragPointerRef.current = null;
+    }
+
+    const draft = inkDraftRef.current;
+    if (!draft || draft.pointerId !== event.pointerId) return;
+    inkDraftRef.current = null;
+    setDraftInkPoints([]);
+    if (draft.points.length > 1) onAddInkAnnotation(pageNumber, draft.points);
+  };
+
+  const eraseAnnotation = (annotationId: string) => {
+    if (erasedItemIdsRef.current.has(`annotation:${annotationId}`)) return;
+    erasedItemIdsRef.current.add(`annotation:${annotationId}`);
+    setErasingAnnotationIds((current) => new Set(current).add(annotationId));
+    window.setTimeout(() => {
+      onRemoveAnnotation(annotationId);
+      setErasingAnnotationIds((current) => {
+        const next = new Set(current);
+        next.delete(annotationId);
+        return next;
+      });
+      erasedItemIdsRef.current.delete(`annotation:${annotationId}`);
+    }, 170);
+  };
+
+  const handleAnnotationPointerDown = (event: React.PointerEvent<HTMLElement>, annotation: PdfAnnotation) => {
+    event.stopPropagation();
+
+    if (annotationTool === 'erase') {
+      event.preventDefault();
+      eraseAnnotation(annotation.id);
+      return;
+    }
+
+    onSelectAnnotation(annotation.id);
+
+    if (annotationTool === 'select') {
+      if (annotation.type === 'ink') event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      annotationDragRef.current = {
+        annotationId: annotation.id,
+        startX: event.clientX,
+        startY: event.clientY,
+        lastX: event.clientX,
+        lastY: event.clientY,
+      };
+    }
+  };
+
+  const eraseTextHighlight = (event: React.PointerEvent<HTMLElement>, highlightId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (erasedItemIdsRef.current.has(`highlight:${highlightId}`)) return;
+    erasedItemIdsRef.current.add(`highlight:${highlightId}`);
+    setErasingHighlightIds((current) => new Set(current).add(highlightId));
+    window.setTimeout(() => {
+      onRemoveTextHighlight(highlightId);
+      setErasingHighlightIds((current) => {
+        const next = new Set(current);
+        next.delete(highlightId);
+        return next;
+      });
+      erasedItemIdsRef.current.delete(`highlight:${highlightId}`);
+    }, 170);
+  };
+
+  const eraseAnnotationWhileDragging = (event: React.PointerEvent<HTMLElement>, annotationId: string) => {
+    if (annotationTool !== 'erase') return;
+    if (eraserDragPointerRef.current !== null || event.buttons === 1) {
+      event.preventDefault();
+      event.stopPropagation();
+      eraseAnnotation(annotationId);
+    }
+  };
+
+  const eraseHighlightWhileDragging = (event: React.PointerEvent<HTMLElement>, highlightId: string) => {
+    if (annotationTool !== 'erase') return;
+    if (eraserDragPointerRef.current !== null || event.buttons === 1) {
+      eraseTextHighlight(event, highlightId);
+    }
+  };
+
+  const handleAnnotationPointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    const drag = annotationDragRef.current;
+    const content = contentRef.current;
+    if (!drag || !content) return;
+    const rect = content.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const dx = ((event.clientX - drag.lastX) / rect.width) * 100;
+    const dy = ((event.clientY - drag.lastY) / rect.height) * 100;
+    annotationDragRef.current = {
+      ...drag,
+      lastX: event.clientX,
+      lastY: event.clientY,
+    };
+    onMoveAnnotation(drag.annotationId, dx, dy);
+  };
+
+  const finishAnnotationDrag = () => {
+    annotationDragRef.current = null;
+  };
+
+  const renderInkPath = (points: PdfInkAnnotation['points']) => points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .join(' ');
+
   return (
     <div ref={pageRef} className="bit-pdf-page relative flex h-full w-full items-center justify-center overflow-hidden bg-white">
       {shouldRender ? (
@@ -731,6 +972,9 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
               style={{
                 '--bit-pdf-selection-color': getHighlightOverlay(currentHighlightColor),
                 pointerEvents: textSelectionEnabled ? undefined : 'none',
+                touchAction: textSelectionEnabled ? 'auto' : undefined,
+                userSelect: textSelectionEnabled ? 'text' : undefined,
+                WebkitUserSelect: textSelectionEnabled ? 'text' : undefined,
               } as React.CSSProperties}
               onPointerDown={handleTextPointerDown}
               onPointerUp={handleTextPointerUp}
@@ -762,7 +1006,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
                 {highlight.rects.map((rect, index) => (
                   <span
                     key={`${highlight.id}-${index}`}
-                    className="absolute rounded-[3px] mix-blend-multiply"
+                    className={`absolute rounded-[3px] mix-blend-multiply transition-all duration-150 ${erasingHighlightIds.has(highlight.id) ? 'scale-95 opacity-0 blur-[1px]' : ''}`}
                     style={{
                       left: `${rect.x}%`,
                       top: `${rect.y}%`,
@@ -790,6 +1034,154 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
                 ))}
               </div>
             )}
+            <div
+              className="absolute inset-0 z-[6]"
+              style={{
+                pointerEvents: annotationTool === 'highlight' ? 'none' : 'auto',
+                touchAction: annotationTool === 'pen' ? 'none' : 'manipulation',
+              }}
+              onPointerDown={handleAnnotationLayerPointerDown}
+              onPointerMove={handleAnnotationLayerPointerMove}
+              onPointerUp={finishInk}
+              onPointerCancel={finishInk}
+              onPointerLeave={() => setEraserPoint(null)}
+              aria-label="PDF annotations"
+            >
+              {annotationTool === 'erase' && eraserPoint && (
+                <div
+                  className="pointer-events-none absolute z-[12] h-8 w-14 -translate-x-[88%] -translate-y-1/2 -rotate-12 drop-shadow-[0_8px_16px_rgba(127,29,29,0.35)]"
+                  style={{ left: `${eraserPoint.x}%`, top: `${eraserPoint.y}%` }}
+                  aria-hidden="true"
+                >
+                  <div className="relative flex h-full w-full overflow-hidden rounded-[8px] border border-red-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_-6px_10px_rgba(127,29,29,0.1)]">
+                    <div className="flex h-full w-[68%] items-center justify-center bg-gradient-to-br from-red-300 via-red-400 to-red-500 text-white">
+                      <Eraser size={14} />
+                    </div>
+                    <div className="h-full flex-1 border-l border-red-200/80 bg-gradient-to-br from-white via-rose-50 to-zinc-100" />
+                    <div className="absolute inset-x-1 top-1 h-px bg-white/70" />
+                  </div>
+                  <span className="absolute right-0 top-1/2 h-3 w-1 -translate-y-1/2 rounded-r-full bg-white/90 shadow-[0_0_8px_rgba(255,255,255,0.9)]" />
+                  <span className="absolute -bottom-1 left-3 h-1 w-6 rounded-full bg-red-300/40 blur-[1px]" />
+                </div>
+              )}
+              {annotationTool === 'erase' && textHighlights.map((highlight) => (
+                <div key={`${highlight.id}-erase-hit`} className="absolute inset-0 z-[7]">
+                  {highlight.rects.map((rect, index) => (
+                    <button
+                      key={`${highlight.id}-erase-hit-${index}`}
+                      type="button"
+                      onPointerDown={(event) => eraseTextHighlight(event, highlight.id)}
+                      onPointerEnter={(event) => eraseHighlightWhileDragging(event, highlight.id)}
+                      onPointerMove={(event) => eraseHighlightWhileDragging(event, highlight.id)}
+                      className={`absolute cursor-none rounded-[4px] border border-transparent transition-all duration-150 hover:border-red-300 hover:bg-red-500/20 hover:shadow-[0_0_18px_rgba(248,113,113,0.3)] ${erasingHighlightIds.has(highlight.id) ? 'scale-95 border-red-300 bg-red-500/25 opacity-0' : ''}`}
+                      style={{
+                        left: `${rect.x}%`,
+                        top: `${rect.y}%`,
+                        width: `${rect.width}%`,
+                        height: `${rect.height}%`,
+                      }}
+                      aria-label="Erase text highlight"
+                    />
+                  ))}
+                </div>
+              ))}
+              <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                {annotations.filter((annotation): annotation is PdfInkAnnotation => annotation.type === 'ink').map((annotation) => (
+                  <path
+                    key={annotation.id}
+                    d={renderInkPath(annotation.points)}
+                    fill="none"
+                    stroke={PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === annotation.color)?.swatch || PDF_HIGHLIGHT_COLOR_PRESETS[0].swatch}
+                    strokeWidth={annotation.strokeWidth}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                    className={`transition-all duration-150 ${selectedAnnotationId === annotation.id ? 'drop-shadow-[0_0_4px_rgba(0,0,0,0.35)]' : ''} ${erasingAnnotationIds.has(annotation.id) ? 'opacity-0 blur-[2px]' : ''}`}
+                  />
+                ))}
+                {draftInkPoints.length > 1 && (
+                  <path
+                    d={renderInkPath(draftInkPoints)}
+                    fill="none"
+                    stroke={PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === currentHighlightColor)?.swatch || PDF_HIGHLIGHT_COLOR_PRESETS[0].swatch}
+                    strokeWidth={2.25}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
+              </svg>
+              {annotations.filter((annotation): annotation is PdfInkAnnotation => annotation.type === 'ink').map((annotation) => {
+                const minX = Math.min(...annotation.points.map((point) => point.x));
+                const maxX = Math.max(...annotation.points.map((point) => point.x));
+                const minY = Math.min(...annotation.points.map((point) => point.y));
+                const maxY = Math.max(...annotation.points.map((point) => point.y));
+                return (
+                  <button
+                    key={`${annotation.id}-hit`}
+                    type="button"
+                    onPointerDown={(event) => handleAnnotationPointerDown(event, annotation)}
+                    onPointerEnter={(event) => eraseAnnotationWhileDragging(event, annotation.id)}
+                    onPointerMove={(event) => {
+                      eraseAnnotationWhileDragging(event, annotation.id);
+                      handleAnnotationPointerMove(event);
+                    }}
+                    onPointerUp={finishAnnotationDrag}
+                    onPointerCancel={finishAnnotationDrag}
+                    className={`absolute rounded-md border transition-all duration-150 ${selectedAnnotationId === annotation.id ? 'border-bit-accent bg-bit-accent/10' : 'border-transparent'} ${annotationTool === 'erase' ? 'cursor-none hover:border-red-300 hover:bg-red-500/20 hover:shadow-[0_0_18px_rgba(248,113,113,0.28)]' : 'cursor-move'} ${erasingAnnotationIds.has(annotation.id) ? 'scale-95 border-red-300 bg-red-500/25 opacity-0' : ''}`}
+                    style={{
+                      left: `${Math.max(0, minX - 2)}%`,
+                      top: `${Math.max(0, minY - 2)}%`,
+                      width: `${Math.min(100 - Math.max(0, minX - 2), Math.max(3, maxX - minX + 4))}%`,
+                      height: `${Math.min(100 - Math.max(0, minY - 2), Math.max(3, maxY - minY + 4))}%`,
+                    }}
+                    aria-label="Select ink annotation"
+                  />
+                );
+              })}
+              {annotations.filter((annotation): annotation is PdfTextAnnotation => annotation.type === 'text').map((annotation) => (
+                <textarea
+                  key={annotation.id}
+                  ref={(node) => {
+                    if (
+                      node &&
+                      selectedAnnotationId === annotation.id &&
+                      focusedTextAnnotationRef.current !== annotation.id &&
+                      annotation.text.length === 0
+                    ) {
+                      focusedTextAnnotationRef.current = annotation.id;
+                      window.setTimeout(() => {
+                        node.focus();
+                        node.select();
+                      }, 0);
+                    }
+                  }}
+                  value={annotation.text}
+                  placeholder="Type note"
+                  onPointerDown={(event) => handleAnnotationPointerDown(event, annotation)}
+                  onPointerEnter={(event) => eraseAnnotationWhileDragging(event, annotation.id)}
+                  onPointerMove={(event) => {
+                    eraseAnnotationWhileDragging(event, annotation.id);
+                    handleAnnotationPointerMove(event);
+                  }}
+                  onPointerUp={finishAnnotationDrag}
+                  onPointerCancel={finishAnnotationDrag}
+                  onChange={(event) => onUpdateTextAnnotation(annotation.id, event.currentTarget.value)}
+                  onFocus={() => onSelectAnnotation(annotation.id)}
+                  readOnly={annotationTool === 'erase'}
+                  className={`absolute resize-none rounded-md border bg-white/85 px-2 py-1 leading-snug text-zinc-950 shadow-sm outline-none backdrop-blur-sm transition-all duration-150 placeholder:text-zinc-500/70 ${selectedAnnotationId === annotation.id ? 'border-bit-accent ring-2 ring-bit-accent/25' : 'border-zinc-900/15 hover:border-bit-accent/40'} ${annotationTool === 'erase' ? 'cursor-none hover:border-red-300 hover:bg-red-50 hover:shadow-[0_0_18px_rgba(248,113,113,0.35)]' : ''} ${annotationTool === 'select' ? 'cursor-move' : ''} ${erasingAnnotationIds.has(annotation.id) ? 'scale-95 border-red-300 bg-red-50 opacity-0 blur-[1px]' : ''}`}
+                  style={{
+                    left: `${annotation.x}%`,
+                    top: `${annotation.y}%`,
+                    width: `${annotation.width}%`,
+                    height: `${annotation.height}%`,
+                    color: PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === annotation.color)?.swatch || PDF_HIGHLIGHT_COLOR_PRESETS[0].swatch,
+                    fontSize: `${annotation.fontSize}px`,
+                  }}
+                  aria-label="PDF text annotation"
+                />
+              ))}
+            </div>
           </div>
         </>
       ) : (
@@ -859,6 +1251,8 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       : getDimensions(window.innerWidth, Math.max(420, window.innerHeight - 120))
   ));
   const [loading, setLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: 0 });
+  const [showDetailedProgress, setShowDetailedProgress] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [zoom, setZoom] = useState(() => getDefaultZoom());
@@ -877,6 +1271,9 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const [pendingTextSelection, setPendingTextSelection] = useState<PdfPendingTextSelection | null>(null);
   const [selectionColorMenuOpen, setSelectionColorMenuOpen] = useState(false);
   const [internalStudyPanelOpen, setInternalStudyPanelOpen] = useState(false);
+  const [annotationTool, setAnnotationTool] = useState<PdfAnnotationTool>('highlight');
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [exportingAnnotatedPdf, setExportingAnnotatedPdf] = useState(false);
   const [internalBackgroundPreset] = useState<PdfBackgroundPresetId>(() => readPdfBackgroundPreset());
   const [internalHighlightColor, setInternalHighlightColor] = useState<PdfHighlightColorId>(() => readPdfHighlightColor());
   const [studyState, setStudyState] = useState<PdfStudyState>(() => readPdfStudyState(pdfUrl));
@@ -925,7 +1322,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const readerDisplay = effectiveDimensions.display;
   const sortedBookmarks = useMemo(() => [...studyState.bookmarks].sort((a, b) => a - b), [studyState.bookmarks]);
   const studyPanelOpen = controlledStudyPanelOpen ?? internalStudyPanelOpen;
-  const textSelectionModeEnabled = studyPanelOpen;
+  const pdfTextSelectionEnabled = annotationTool === 'highlight';
   const backgroundPreset = controlledBackgroundPreset ?? internalBackgroundPreset;
   const highlightColor = controlledHighlightColor ?? internalHighlightColor;
   const activeBackgroundPreset = useMemo(
@@ -947,6 +1344,24 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const currentPageBookmarked = studyState.bookmarks.includes(currentPage);
   const currentPageHighlighted = studyState.highlights.includes(currentPage);
   const currentPageTextHighlights = textHighlightsByPage.get(currentPage) ?? EMPTY_TEXT_HIGHLIGHTS;
+  const annotationsByPage = useMemo(() => {
+    const pages = new Map<number, PdfAnnotation[]>();
+    studyState.annotations.forEach((annotation) => {
+      const pageAnnotations = pages.get(annotation.page);
+      if (pageAnnotations) {
+        pageAnnotations.push(annotation);
+      } else {
+        pages.set(annotation.page, [annotation]);
+      }
+    });
+    return pages;
+  }, [studyState.annotations]);
+  const currentPageAnnotations = annotationsByPage.get(currentPage) ?? [];
+  const selectedAnnotation = useMemo(() => (
+    selectedAnnotationId
+      ? (studyState.annotations || []).find((annotation) => annotation.id === selectedAnnotationId) || null
+      : null
+  ), [selectedAnnotationId, studyState.annotations]);
   const sortedTextHighlights = useMemo(() => [...studyState.textHighlights].sort((a, b) => b.createdAt - a.createdAt), [studyState.textHighlights]);
   const selectedPdfSpeechVoice = useMemo(
     () => pdfSpeechVoices.find((voice) => voice.voiceURI === selectedPdfSpeechVoiceURI) || null,
@@ -1280,8 +1695,14 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   }, [currentPage]);
 
   useEffect(() => {
-    if (!textSelectionModeEnabled) clearPendingPdfSelection(true);
-  }, [clearPendingPdfSelection, textSelectionModeEnabled]);
+    if (!pdfTextSelectionEnabled) clearPendingPdfSelection(true);
+  }, [clearPendingPdfSelection, pdfTextSelectionEnabled]);
+
+  useEffect(() => {
+    if (studyPanelOpen) return;
+    setAnnotationTool('highlight');
+    setSelectedAnnotationId(null);
+  }, [studyPanelOpen]);
 
   useEffect(() => {
     pageCountRef.current = pageCount;
@@ -1544,6 +1965,10 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       wasmUrl: PDFJS_WASM_URL,
     });
 
+    task.onProgress = (progress: { loaded: number; total: number }) => {
+      if (!cancelled) setLoadProgress({ loaded: progress.loaded, total: progress.total });
+    };
+
     task.promise
       .then((loadedDocument) => {
         if (cancelled) {
@@ -1567,6 +1992,12 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       void task.destroy();
     };
   }, [pdfUrl, preferFullDocumentLoad, proxiedPdfUrl]);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timer = window.setTimeout(() => setShowDetailedProgress(true), 3000);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
 
   useEffect(() => {
     if (!document || currentPage <= document.numPages) return;
@@ -1677,7 +2108,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   }, [dimensions.height, dimensions.width, document, getBook, readerDisplay]);
 
   const canZoomOut = zoom > 1;
-  const canZoomIn = zoom < MAX_PDF_ZOOM;
+  const canZoomIn = true;
   const canGoPrevious = currentPage > 1 || Boolean(onPreviousBoundary);
   const canGoNext = currentPage < pageCount || Boolean(onNextBoundary);
   const renderScale = PDF_STABLE_RENDER_SCALE;
@@ -1826,6 +2257,15 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     setPendingTextSelection(null);
   }, [highlightColor]);
 
+  const handlePdfTextSelection = useCallback((selection: PdfPendingTextSelection) => {
+    if (studyPanelOpen && annotationTool === 'highlight') {
+      addTextHighlight(selection);
+      return;
+    }
+
+    setPendingTextSelection(selection);
+  }, [addTextHighlight, annotationTool, studyPanelOpen]);
+
   const removeTextHighlight = useCallback((highlightId: string) => {
     setStudyState((current) => ({
       ...current,
@@ -1841,6 +2281,116 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       textHighlights: current.textHighlights.filter((highlight) => !removable.has(highlight.id)),
     }));
     setPendingTextSelection(null);
+  }, []);
+
+  const addTextAnnotation = useCallback((page: number, x: number, y: number) => {
+    const now = Date.now();
+    const annotation: PdfTextAnnotation = {
+      id: getAnnotationId(page),
+      type: 'text',
+      page,
+      x: clampPercent(x, 82),
+      y: clampPercent(y, 92),
+      width: typeof window !== 'undefined' && window.innerWidth < 760 ? 34 : 26,
+      height: 8,
+      text: '',
+      color: highlightColor,
+      fontSize: 13,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setStudyState((current) => ({
+      ...current,
+      annotations: [annotation, ...(current.annotations || [])].slice(0, 500),
+    }));
+    setSelectedAnnotationId(annotation.id);
+  }, [highlightColor]);
+
+  const addInkAnnotation = useCallback((page: number, points: PdfInkAnnotation['points']) => {
+    if (points.length < 2) return;
+    const now = Date.now();
+    const annotation: PdfInkAnnotation = {
+      id: getAnnotationId(page),
+      type: 'ink',
+      page,
+      points: points.map((point) => ({ x: clampPercent(point.x), y: clampPercent(point.y) })),
+      color: highlightColor,
+      strokeWidth: 2.25,
+      createdAt: now,
+      updatedAt: now,
+    };
+    setStudyState((current) => ({
+      ...current,
+      annotations: [annotation, ...(current.annotations || [])].slice(0, 500),
+    }));
+    setSelectedAnnotationId(annotation.id);
+  }, [highlightColor]);
+
+  const updateTextAnnotation = useCallback((annotationId: string, text: string) => {
+    setStudyState((current) => ({
+      ...current,
+      annotations: (current.annotations || []).map((annotation) => (
+        annotation.id === annotationId && annotation.type === 'text'
+          ? { ...annotation, text: text.slice(0, 600), updatedAt: Date.now() }
+          : annotation
+      )),
+    }));
+  }, []);
+
+  const updateTextAnnotationFontSize = useCallback((annotationId: string, delta: number) => {
+    setStudyState((current) => ({
+      ...current,
+      annotations: (current.annotations || []).map((annotation) => (
+        annotation.id === annotationId && annotation.type === 'text'
+          ? { ...annotation, fontSize: Math.max(9, Math.min(24, annotation.fontSize + delta)), updatedAt: Date.now() }
+          : annotation
+      )),
+    }));
+  }, []);
+
+  const updateAnnotationColor = useCallback((annotationId: string, color: PdfHighlightColorId) => {
+    setStudyState((current) => ({
+      ...current,
+      annotations: (current.annotations || []).map((annotation) => (
+        annotation.id === annotationId
+          ? { ...annotation, color, updatedAt: Date.now() }
+          : annotation
+      )),
+    }));
+  }, []);
+
+  const moveAnnotation = useCallback((annotationId: string, dx: number, dy: number) => {
+    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return;
+    setStudyState((current) => ({
+      ...current,
+      annotations: (current.annotations || []).map((annotation) => {
+        if (annotation.id !== annotationId) return annotation;
+        if (annotation.type === 'text') {
+          return {
+            ...annotation,
+            x: clampPercent(annotation.x + dx, 100 - Math.min(annotation.width, 100)),
+            y: clampPercent(annotation.y + dy, 100 - Math.min(annotation.height, 100)),
+            updatedAt: Date.now(),
+          };
+        }
+        return {
+          ...annotation,
+          points: annotation.points.map((point) => ({
+            x: clampPercent(point.x + dx),
+            y: clampPercent(point.y + dy),
+          })),
+          updatedAt: Date.now(),
+        };
+      }),
+    }));
+  }, []);
+
+  const removeAnnotation = useCallback((annotationId: string) => {
+    setStudyState((current) => ({
+      ...current,
+      annotations: (current.annotations || []).filter((annotation) => annotation.id !== annotationId),
+    }));
+    setSelectedAnnotationId((current) => current === annotationId ? null : current);
   }, []);
 
   const readSelectedPdfText = useCallback((text: string) => {
@@ -1866,6 +2416,85 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     pdfSpeechSegmentsRef.current = playbackSegments;
     speakPdfSpeechSegment(playbackSegments, 0);
   }, [pendingTextSelection?.page, speakPdfSpeechSegment]);
+
+  const exportAnnotatedPdf = useCallback(async () => {
+    if (!document || exportingAnnotatedPdf) return;
+
+    try {
+      setExportingAnnotatedPdf(true);
+      const response = await fetch(proxiedPdfUrl);
+      if (!response.ok) throw new Error('Unable to load the PDF for export.');
+
+      const sourceBytes = await response.arrayBuffer();
+      const pdfDocument = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
+      const font = await pdfDocument.embedFont(StandardFonts.Helvetica);
+      const pages = pdfDocument.getPages();
+
+      (studyState.annotations || []).forEach((annotation) => {
+        const page = pages[annotation.page - 1];
+        if (!page) return;
+        const { width, height } = page.getSize();
+        const color = hexToPdfRgb(getHighlightSwatch(annotation.color));
+
+        if (annotation.type === 'text') {
+          const fontSize = Math.max(8, Math.min(24, annotation.fontSize || 12));
+          const left = (annotation.x / 100) * width;
+          const top = height - (annotation.y / 100) * height;
+          const maxWidth = Math.max(48, (annotation.width / 100) * width);
+          const lineHeight = fontSize * 1.25;
+          const words = annotation.text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+          const lines: string[] = [];
+          let currentLine = '';
+
+          words.forEach((word) => {
+            const candidate = currentLine ? `${currentLine} ${word}` : word;
+            if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth || !currentLine) {
+              currentLine = candidate;
+            } else {
+              lines.push(currentLine);
+              currentLine = word;
+            }
+          });
+          if (currentLine) lines.push(currentLine);
+
+          lines.slice(0, 10).forEach((line, index) => {
+            page.drawText(line, {
+              x: left,
+              y: top - fontSize - (index * lineHeight),
+              size: fontSize,
+              font,
+              color,
+              maxWidth,
+            });
+          });
+          return;
+        }
+
+        annotation.points.slice(1).forEach((point, index) => {
+          const previous = annotation.points[index];
+          page.drawLine({
+            start: { x: (previous.x / 100) * width, y: height - (previous.y / 100) * height },
+            end: { x: (point.x / 100) * width, y: height - (point.y / 100) * height },
+            thickness: Math.max(0.75, annotation.strokeWidth),
+            color,
+          });
+        });
+      });
+
+      const exportedBytes = await pdfDocument.save();
+      const safeTitle = title
+        .trim()
+        .replace(/[\\/:*?"<>|]+/g, '-')
+        .replace(/\s+/g, ' ')
+        .slice(0, 100) || 'document';
+      downloadBlob(new Blob([exportedBytes], { type: 'application/pdf' }), `${safeTitle}-annotated.pdf`);
+    } catch (exportError) {
+      console.warn('[PDF Turn.js] Annotated export failed:', exportError);
+      setError(exportError instanceof Error ? exportError.message : 'Unable to export annotated PDF.');
+    } finally {
+      setExportingAnnotatedPdf(false);
+    }
+  }, [document, exportingAnnotatedPdf, proxiedPdfUrl, studyState.annotations, title]);
 
   useEffect(() => {
     onStudySnapshotChange?.({
@@ -1963,11 +2592,29 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
   if (loading) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-5 bg-bit-bg text-center">
-        <Loader2 className="animate-spin text-bit-accent" size={44} />
-        <div>
-          <p className="text-[10px] font-mono font-bold uppercase tracking-[0.28em] text-bit-accent">Preparing Turn.js Book</p>
-          <p className="mt-2 text-sm text-bit-muted">Loading the PDF pages.</p>
+      <div className="flex h-full w-full flex-col items-center justify-center gap-6 bg-bit-bg text-center px-8">
+        <Loader2 className="animate-spin text-bit-accent" size={40} />
+        <div className="w-full max-w-xs space-y-4">
+          <p className="text-[10px] font-mono font-bold uppercase tracking-[0.28em] text-bit-accent">
+            Loading PDF
+          </p>
+          {showDetailedProgress && loadProgress.total > 0 ? (
+            <div className="space-y-2 animate-fade-in">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-bit-panel/30">
+                <div
+                  className="h-full rounded-full bg-bit-accent transition-all duration-300 ease-out"
+                  style={{ width: `${Math.min(100, Math.round((loadProgress.loaded / loadProgress.total) * 100))}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-mono text-bit-muted/80">
+                <span>{loadProgress.loaded < 1024 ? `${loadProgress.loaded} B` : loadProgress.loaded < 1048576 ? `${(loadProgress.loaded / 1024).toFixed(1)} KB` : `${(loadProgress.loaded / 1048576).toFixed(1)} MB`}</span>
+                <span className="text-bit-accent/80">{Math.min(100, Math.round((loadProgress.loaded / loadProgress.total) * 100))}%</span>
+                <span>{loadProgress.total < 1024 ? `${loadProgress.total} B` : loadProgress.total < 1048576 ? `${(loadProgress.total / 1024).toFixed(1)} KB` : `${(loadProgress.total / 1048576).toFixed(1)} MB`}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-bit-muted">Loading PDF pages…</p>
+          )}
         </div>
       </div>
     );
@@ -2001,7 +2648,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       <div
         ref={shellRef}
         data-pdf-reader-shell
-        className={`scrollbar-hide relative flex min-h-0 flex-1 touch-none overscroll-contain ${isZoomed ? 'items-start justify-start overflow-auto' : 'items-center justify-center overflow-hidden'} px-4 py-6 md:px-10 md:py-8`}
+        className={`scrollbar-hide relative flex min-h-0 flex-1 overscroll-contain ${pdfTextSelectionEnabled ? '' : 'touch-none'} ${isZoomed ? 'items-start justify-start overflow-auto' : 'items-center justify-center overflow-hidden'} px-4 py-6 md:px-10 md:py-8`}
       >
         <button
           type="button"
@@ -2053,13 +2700,16 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                   pageNumber={currentPage}
                   renderScale={renderScale}
                   shouldRender
-                  shouldRenderTextLayer={textSelectionModeEnabled || pdfSpeechStatus !== 'idle'}
-                  textSelectionEnabled={textSelectionModeEnabled}
+                  shouldRenderTextLayer={pdfTextSelectionEnabled || pdfSpeechStatus !== 'idle'}
+                  textSelectionEnabled={pdfTextSelectionEnabled}
                   targetWidth={pageRenderWidth}
                   targetHeight={pageRenderHeight}
                   isBookmarked={currentPageBookmarked}
                   isHighlighted={currentPageHighlighted}
                   textHighlights={currentPageTextHighlights}
+                  annotations={currentPageAnnotations}
+                  selectedAnnotationId={selectedAnnotationId}
+                  annotationTool={annotationTool}
                   activeSpeechText={activePdfSpeechPage === currentPage ? activePdfSpeechText : ''}
                   activeSpeechItemRange={activePdfSpeechPage === currentPage ? activePdfSpeechItemRange : null}
                   activeSpeechWord={activePdfSpeechPage === currentPage ? activePdfSpeechWord : ''}
@@ -2068,7 +2718,14 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                   speechReadingOrder={speechReadingOrder}
                   pendingSelectionRects={getPendingSelectionRectsForPage(currentPage)}
                   currentHighlightColor={highlightColor}
-                  onTextSelection={setPendingTextSelection}
+                  onTextSelection={handlePdfTextSelection}
+                  onAddTextAnnotation={addTextAnnotation}
+                  onAddInkAnnotation={addInkAnnotation}
+                  onSelectAnnotation={setSelectedAnnotationId}
+                  onMoveAnnotation={moveAnnotation}
+                  onUpdateTextAnnotation={updateTextAnnotation}
+                  onRemoveTextHighlight={removeTextHighlight}
+                  onRemoveAnnotation={removeAnnotation}
                 />
               </div>
             ) : (
@@ -2077,7 +2734,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                   const pageNumber = index + 1;
                   const shouldRender = Math.abs(pageNumber - currentPage) <= renderWindow;
                   const isCurrentSpeechPage = pdfSpeechStatus !== 'idle' && pageNumber === activePdfSpeechPage;
-                  const shouldRenderTextLayer = (textSelectionModeEnabled && Math.abs(pageNumber - currentPage) <= textLayerWindow) || isCurrentSpeechPage;
+                  const shouldRenderTextLayer = (pdfTextSelectionEnabled && Math.abs(pageNumber - currentPage) <= textLayerWindow) || isCurrentSpeechPage;
                   return (
                     <div key={pageNumber} className="bit-turn-page bg-white">
                       <MemoPDFPageCanvas
@@ -2086,12 +2743,15 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                         renderScale={renderScale}
                         shouldRender={shouldRender}
                         shouldRenderTextLayer={shouldRenderTextLayer}
-                        textSelectionEnabled={textSelectionModeEnabled}
+                        textSelectionEnabled={pdfTextSelectionEnabled}
                         targetWidth={pageRenderWidth}
                         targetHeight={pageRenderHeight}
                         isBookmarked={studyState.bookmarks.includes(pageNumber)}
                         isHighlighted={studyState.highlights.includes(pageNumber)}
                         textHighlights={textHighlightsByPage.get(pageNumber) ?? EMPTY_TEXT_HIGHLIGHTS}
+                        annotations={annotationsByPage.get(pageNumber) ?? []}
+                        selectedAnnotationId={selectedAnnotationId}
+                        annotationTool={annotationTool}
                         activeSpeechText={isCurrentSpeechPage ? activePdfSpeechText : ''}
                         activeSpeechItemRange={isCurrentSpeechPage ? activePdfSpeechItemRange : null}
                         activeSpeechWord={isCurrentSpeechPage ? activePdfSpeechWord : ''}
@@ -2100,7 +2760,14 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                         speechReadingOrder={speechReadingOrder}
                         pendingSelectionRects={getPendingSelectionRectsForPage(pageNumber)}
                         currentHighlightColor={highlightColor}
-                        onTextSelection={setPendingTextSelection}
+                        onTextSelection={handlePdfTextSelection}
+                        onAddTextAnnotation={addTextAnnotation}
+                        onAddInkAnnotation={addInkAnnotation}
+                        onSelectAnnotation={setSelectedAnnotationId}
+                        onMoveAnnotation={moveAnnotation}
+                        onUpdateTextAnnotation={updateTextAnnotation}
+                        onRemoveTextHighlight={removeTextHighlight}
+                        onRemoveAnnotation={removeAnnotation}
                       />
                     </div>
                   );
@@ -2137,7 +2804,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       {pendingTextSelection && (
         <div
           className="fixed z-[10080] flex max-w-[min(24rem,calc(100vw-1.5rem))] items-center gap-1 rounded-full border border-bit-border bg-bit-panel/95 p-1.5 text-bit-text shadow-2xl shadow-black/35 backdrop-blur-xl"
-          style={{ left: pendingTextSelection.popover.x, top: pendingTextSelection.popover.y }}
+          style={{ left: pendingTextSelection.popover.x, top: Math.max(12, window.innerWidth < 760 ? pendingTextSelection.popover.y - 12 : pendingTextSelection.popover.y) }}
           data-pdf-selection-popover
           onMouseDown={(event) => event.preventDefault()}
           role="toolbar"
@@ -2150,25 +2817,25 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                 const { popover: _popover, ...highlight } = pendingTextSelection;
                 addTextHighlight(highlight);
               }}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-950 transition-all hover:scale-105"
+              className="inline-flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full text-zinc-950 transition-all hover:scale-105 active:scale-95"
               style={{ backgroundColor: PDF_HIGHLIGHT_COLOR_PRESETS.find((preset) => preset.id === highlightColor)?.swatch || PDF_HIGHLIGHT_COLOR_PRESETS[0].swatch }}
               aria-label="Highlight selected text"
               title="Highlight selected text"
             >
-              <Highlighter size={15} />
+              <Highlighter size={18} className="md:size-[15px]" />
             </button>
             <button
               type="button"
               onClick={() => setSelectionColorMenuOpen((open) => !open)}
-              className="inline-flex h-8 w-6 items-center justify-center rounded-full text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-text"
+              className="inline-flex h-10 w-8 md:h-8 md:w-6 items-center justify-center rounded-full text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-text"
               aria-label="Choose highlight color"
               aria-expanded={selectionColorMenuOpen}
               title="Choose highlight color"
             >
-              <ChevronDown size={14} className={`transition-transform ${selectionColorMenuOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown size={16} className={`md:size-[14px] transition-transform ${selectionColorMenuOpen ? 'rotate-180' : ''}`} />
             </button>
             {selectionColorMenuOpen && (
-              <div className="absolute left-0 top-10 flex w-max max-w-[min(16rem,calc(100vw-1.5rem))] flex-wrap gap-1.5 rounded-full border border-bit-border bg-bit-panel/95 p-1.5 shadow-2xl shadow-black/35 backdrop-blur-xl">
+              <div className="absolute left-0 top-12 md:top-10 flex w-max max-w-[min(16rem,calc(100vw-1.5rem))] flex-wrap gap-1.5 rounded-full border border-bit-border bg-bit-panel/95 p-1.5 shadow-2xl shadow-black/35 backdrop-blur-xl">
                 {PDF_HIGHLIGHT_COLOR_PRESETS.map((preset) => (
                   <button
                     key={preset.id}
@@ -2177,7 +2844,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                       setHighlightColor(preset.id);
                       setSelectionColorMenuOpen(false);
                     }}
-                    className={`h-6 w-6 rounded-full border transition-all ${highlightColor === preset.id ? 'border-white ring-2 ring-bit-accent/45' : 'border-white/35 hover:border-white'}`}
+                    className={`h-8 w-8 md:h-6 md:w-6 rounded-full border transition-all ${highlightColor === preset.id ? 'border-white ring-2 ring-bit-accent/45' : 'border-white/35 hover:border-white'}`}
                     style={{ backgroundColor: preset.swatch }}
                     aria-label={`Use ${preset.label} highlight color`}
                     aria-pressed={highlightColor === preset.id}
@@ -2191,26 +2858,26 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
             <button
               type="button"
               onClick={() => removeTextHighlights(pendingSelectionHighlightIds)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-red-200 transition-all hover:bg-red-500/15 hover:text-red-100"
+              className="inline-flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full text-red-200 transition-all hover:bg-red-500/15 hover:text-red-100 active:scale-95"
               aria-label="Remove highlight from selection"
               title="Remove highlight from selection"
             >
-              <Eraser size={15} />
+              <Eraser size={18} className="md:size-[15px]" />
             </button>
           )}
           <button
             type="button"
             onClick={() => readSelectedPdfText(pendingTextSelection.text)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-bit-accent transition-all hover:bg-bit-accent/12 hover:text-bit-text"
+            className="inline-flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full text-bit-accent transition-all hover:bg-bit-accent/12 hover:text-bit-text active:scale-95"
             aria-label="Read selected text"
             title="Read selected text"
           >
-            <Headphones size={15} />
+            <Headphones size={18} className="md:size-[15px]" />
           </button>
           <button
             type="button"
             onClick={() => clearPendingPdfSelection(true)}
-            className="inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:bg-bit-bg/80 hover:text-bit-text"
+            className="inline-flex h-10 min-w-10 md:h-8 md:min-w-8 items-center justify-center rounded-full px-2.5 md:px-2 text-[11px] md:text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:bg-bit-bg/80 hover:text-bit-text active:scale-95"
             aria-label="Close selection actions"
             title="Close"
           >
@@ -2220,8 +2887,9 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       )}
 
       {pdfSpeechStatus !== 'idle' && (
+        <>
         <div
-          className={`pointer-events-auto fixed z-[10060] hidden items-center gap-2 rounded-full border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/25 backdrop-blur-xl md:flex ${pdfSpeechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`pointer-events-auto fixed z-[10060] items-center gap-2 rounded-full border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/25 backdrop-blur-xl ${pdfSpeechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'} hidden md:flex`}
           style={pdfSpeechPillPosition ? { left: pdfSpeechPillPosition.x, top: pdfSpeechPillPosition.y } : { left: '50%', bottom: '5rem', transform: 'translateX(-50%)' }}
           onPointerDown={handlePdfSpeechPillPointerDown}
           onPointerMove={handlePdfSpeechPillPointerMove}
@@ -2281,6 +2949,110 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           >
             Esc
           </button>
+        </div>
+        </>
+      )}
+
+      {studyPanelOpen && (
+        <div className="relative z-[10055] border-t border-bit-border/55 bg-bit-panel/55 px-3 py-2 shadow-[0_-12px_30px_rgba(0,0,0,0.14)] backdrop-blur-xl md:px-6">
+          <div className="scrollbar-hide flex items-center gap-2 overflow-x-auto">
+            {[
+              { id: 'highlight' as const, label: 'Highlight', icon: Highlighter },
+              { id: 'select' as const, label: 'Select', icon: MousePointer2 },
+              { id: 'text' as const, label: 'Text', icon: Type },
+              { id: 'pen' as const, label: 'Pen', icon: PenLine },
+              { id: 'erase' as const, label: 'Erase', icon: Eraser },
+            ].map((tool) => {
+              const ToolIcon = tool.icon;
+              const active = annotationTool === tool.id;
+              return (
+                <button
+                  key={tool.id}
+                  type="button"
+                  onClick={() => {
+                    setAnnotationTool(tool.id);
+                    clearPendingPdfSelection(true);
+                  }}
+                  className={`inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full border px-3 text-[10px] font-mono font-bold uppercase tracking-widest transition-all ${active ? 'border-bit-accent bg-bit-accent text-white' : 'border-bit-border bg-bit-bg/60 text-bit-muted hover:border-bit-accent/35 hover:text-bit-accent'}`}
+                  aria-pressed={active}
+                  aria-label={`${tool.label} PDF annotation tool`}
+                  title={tool.label}
+                >
+                  <ToolIcon size={14} />
+                  <span className="hidden sm:inline">{tool.label}</span>
+                </button>
+              );
+            })}
+
+            <div className="mx-1 h-7 w-px shrink-0 bg-bit-border/70" />
+
+            <div className="flex shrink-0 items-center gap-1 rounded-full border border-bit-border bg-bit-bg/60 p-1">
+              {PDF_HIGHLIGHT_COLOR_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => {
+                    setHighlightColor(preset.id);
+                    if (selectedAnnotation) updateAnnotationColor(selectedAnnotation.id, preset.id);
+                  }}
+                  className={`h-7 w-7 rounded-full border transition-all ${(selectedAnnotation?.color || highlightColor) === preset.id ? 'border-white ring-2 ring-bit-accent/50' : 'border-white/30 hover:border-white/80'}`}
+                  style={{ backgroundColor: preset.swatch }}
+                  aria-label={`Use ${preset.label}`}
+                  aria-pressed={highlightColor === preset.id}
+                  title={preset.label}
+                />
+              ))}
+            </div>
+
+            {selectedAnnotation?.type === 'text' && (
+              <div className="flex shrink-0 items-center gap-1 rounded-full border border-bit-border bg-bit-bg/60 p-1">
+                <button
+                  type="button"
+                  onClick={() => updateTextAnnotationFontSize(selectedAnnotation.id, -1)}
+                  className="inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-bold text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-accent"
+                  aria-label="Decrease text size"
+                  title="Decrease text size"
+                >
+                  A-
+                </button>
+                <span className="min-w-8 text-center text-[10px] font-mono font-bold text-bit-muted tabular-nums">
+                  {selectedAnnotation.fontSize}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => updateTextAnnotationFontSize(selectedAnnotation.id, 1)}
+                  className="inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-bold text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-accent"
+                  aria-label="Increase text size"
+                  title="Increase text size"
+                >
+                  A+
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => selectedAnnotation && removeAnnotation(selectedAnnotation.id)}
+              disabled={!selectedAnnotation}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-bit-border bg-bit-bg/60 text-bit-muted transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-35"
+              aria-label="Delete selected annotation"
+              title="Delete selected annotation"
+            >
+              <Trash2 size={15} />
+            </button>
+
+            <button
+              type="button"
+              onClick={exportAnnotatedPdf}
+              disabled={!document || exportingAnnotatedPdf}
+              className="ml-auto inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full border border-bit-accent/30 bg-bit-accent/10 px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent transition-all hover:bg-bit-accent hover:text-white disabled:cursor-wait disabled:opacity-45"
+              aria-label="Export annotated PDF"
+              title="Export annotated PDF"
+            >
+              {exportingAnnotatedPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              <span className="hidden sm:inline">Export PDF</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -2345,10 +3117,13 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setStudyPanelOpen((open) => !open)}
+            onClick={() => {
+              setStudyPanelOpen((open) => annotationTool === 'highlight' ? !open : true);
+              setAnnotationTool('highlight');
+            }}
             className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-all ${studyPanelOpen ? 'border-yellow-300 bg-yellow-300 text-zinc-950' : 'border-bit-border bg-bit-bg/60 text-bit-muted hover:border-yellow-300/40 hover:text-yellow-200'}`}
-            aria-label={studyPanelOpen ? 'Disable PDF text selection' : 'Enable PDF text selection'}
-            title={studyPanelOpen ? 'Text selection on' : 'Enable text selection'}
+            aria-label={studyPanelOpen ? 'Close PDF annotation tools' : 'Open PDF annotation tools'}
+            title={studyPanelOpen ? 'Annotation tools on' : 'Open annotation tools'}
           >
             <Highlighter size={15} />
           </button>

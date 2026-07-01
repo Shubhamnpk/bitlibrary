@@ -108,6 +108,10 @@ const readReaderBucket = (): ReaderBucket => {
 
 export const readReaderSnapshot = () => readReaderBucket();
 
+export const writeReaderSnapshot = (bucket: ReaderBucket) => writeReaderBucket(bucket);
+
+export const writeCacheSnapshot = (scope: CacheScope, bucket: CacheBucket) => writeCacheBucket(scope, bucket);
+
 const writeCacheBucket = (scope: CacheScope, bucket: CacheBucket) => {
   if (!isBrowserStorageAvailable()) return;
   writeStorageItem(getCacheStorageKey(scope), JSON.stringify(bucket));

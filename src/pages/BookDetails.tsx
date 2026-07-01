@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Book, ChapterAudio, QuestionPaper, ViewState } from '@/types/index';
+import { Book, ChapterAudio, QuestionPaper } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
 import BookCard from '@/components/BookCard';
 import { ArrowLeft, BookOpen, User, Calendar, BarChart, Zap, Share2, Play, ChevronLeft, ChevronRight, Share, Info, Maximize2, Library, Bookmark, ExternalLink, Headphones, X, Download } from 'lucide-react';
@@ -8,7 +8,7 @@ import { BookCardSkeleton, BookDetailsSkeleton } from '@/components/Skeletons';
 import ReactMarkdown from 'react-markdown';
 import { recordRecentlyViewedBook, toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import { readReaderEntry, getPdfReaderProgressKey } from '@/lib/storage-manager';
-import { isPdfLikeUrl } from '@/lib/pdf';
+import { isPdfLikeUrl } from '@/lib/url-utils';
 import { getStudyId } from '@/lib/pdf-reader-storage';
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, createFaqSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
@@ -493,13 +493,25 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
         </div>
       </div>
 
-      <nav className="mb-8 flex items-center gap-3 overflow-x-auto border-b border-bit-border pb-4 no-scrollbar whitespace-nowrap sm:mb-10">
-        <button
-          onClick={onClose}
+      <nav className="mb-8 hidden items-center gap-3 overflow-x-auto border-b border-bit-border pb-4 scrollbar-hide whitespace-nowrap sm:mb-10 sm:flex">
+        <Link
+          to="/library"
           className="text-[10px] font-mono text-bit-muted hover:text-bit-text uppercase tracking-[0.2em] transition-colors flex items-center gap-2 group/bc"
         >
           <Library size={12} className="group-hover/bc:text-bit-accent" /> Library
-        </button>
+        </Link>
+
+        {book.category && (
+          <>
+            <ChevronRight size={10} className="text-bit-muted/20" />
+            <button
+              onClick={() => onCategoryClick?.(book.category)}
+              className="text-[10px] font-mono text-bit-muted/60 hover:text-bit-accent uppercase tracking-[0.2em] transition-colors"
+            >
+              {book.category.length > 25 ? `${book.category.substring(0, 25)}...` : book.category}
+            </button>
+          </>
+        )}
 
         {breadcrumbPath.map((b, i) => (
           <React.Fragment key={`${b.id}-${i}`}>
@@ -648,13 +660,41 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
           {activeTab === 'overview' && (
             <div className="animate-fade-in">
               <section className="mb-12">
-                <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="flex items-center gap-2 text-xl font-display font-semibold text-bit-text">
-                    <Info size={18} className="text-bit-accent" /> Summary
-                  </h3>
-                  {!questionPaperCollection && (
-                    <div className="grid grid-cols-2 gap-3 sm:flex">
-                      {hasDownloadOptions && <DownloadSplitButton options={downloadOptions} />}
+                <div className="mb-8 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="flex items-center gap-2 text-xl font-display font-semibold text-bit-text">
+                      <Info size={18} className="text-bit-accent" /> Summary
+                    </h3>
+                    {!questionPaperCollection && (
+                      <div className="flex items-center gap-2">
+                        {canReadInApp && (
+                          <button onClick={() => onRead()} className="hidden sm:inline-flex items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6">
+                            <BookOpen size={16} /> read
+                          </button>
+                        )}
+                        {hasDownloadOptions && <DownloadSplitButton options={downloadOptions} />}
+                        <button
+                          onClick={async () => {
+                            const shareUrl = `${window.location.origin}/book/${book.id}`;
+                            const shareTitle = `${book.title} by ${book.author || 'Unknown Author'} | BitLibrary`;
+                            const shareText = `Read "${book.title}" by ${book.author || 'Unknown Author'} on BitLibrary`;
+                            if (navigator.share) {
+                              try { await navigator.share({ title: shareTitle, text: shareText, url: shareUrl }); }
+                              catch (err) { if ((err as DOMException).name !== 'AbortError') console.error('Share failed:', err); }
+                            } else {
+                              try { await navigator.clipboard.writeText(shareUrl); } catch (err) { console.error('Clipboard copy failed:', err); }
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-bit-border bg-bit-panel/50 px-3 py-2 font-mono text-[10px] font-bold uppercase text-bit-muted transition-all hover:text-bit-text hover:border-bit-accent/30"
+                          aria-label="Share book"
+                        >
+                          <Share2 size={14} /> share
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {gutenbergAudioId && (
+                    <div className="flex flex-wrap items-center gap-3">
                       {gutenbergAudioId && (
                         <Link
                           to={`/audiobook/${gutenbergAudioId}`}
@@ -662,11 +702,6 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                         >
                           <Headphones size={16} /> audio
                         </Link>
-                      )}
-                      {canReadInApp && (
-                      <button onClick={() => onRead()} className={`${hasDownloadOptions ? 'hidden sm:flex' : 'col-span-2 hidden sm:flex'} items-center justify-center gap-2 rounded-lg bg-bit-accent px-4 py-2.5 font-mono text-[10px] font-bold uppercase text-white shadow-lg shadow-bit-accent/20 transition-all hover:scale-105 active:scale-95 sm:px-6`}>
-                        <BookOpen size={16} /> read
-                      </button>
                       )}
                     </div>
                   )}
@@ -703,11 +738,7 @@ const BookDetails: React.FC<BookDetailsProps> = ({ book, allBooks, onClose, onRe
                             {isExpanded ? 'Show Less' : 'Show More'}
                           </button>
                         )}
-                        {fullDescription === book.description && (
-                          <button onClick={handleGenerateSummary} className="text-[10px] font-mono text-bit-muted/70 hover:text-bit-accent transition-all uppercase tracking-[0.2em] flex items-center gap-2 border border-bit-border hover:border-bit-accent/30 px-3 py-1.5 rounded-full bg-bit-panel/30 shadow-sm">
-                            <Zap size={12} /> Synthesize AI Summary
-                          </button>
-                        )}
+
                       </div>
                     </>
                   )}

@@ -19,7 +19,7 @@ const formatDuration = (seconds?: number, fallback?: string) => {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 };
 
-const AudiobookCard: React.FC<AudiobookCardProps> = ({ audiobook, onClick, variant = 'full', searchQuery }) => {
+const AudiobookCard = React.memo<AudiobookCardProps>(({ audiobook, onClick, variant = 'full', searchQuery }) => {
   const { state } = useLocalUserState();
   const isSaved = state.savedAudiobooks.some((entry) => entry.id === audiobook.id);
   const coverUrl = audiobook.thumbnailUrl || audiobook.coverUrl;
@@ -120,6 +120,6 @@ const AudiobookCard: React.FC<AudiobookCardProps> = ({ audiobook, onClick, varia
       </div>
     </div>
   );
-};
+});
 
 export default AudiobookCard;

@@ -236,7 +236,7 @@ const groupedCredits = (Object.keys(categoryConfig) as SourceCategory[]).map((ca
 
 const SourcesPage: React.FC<SourcesPageProps> = ({ onBack }) => {
   return (
-    <div className="animate-fade-in pb-24 pt-4 md:pt-6">
+    <div className="animate-fade-in pb-24 px-4 sm:px-6">
       <Seo
         title="Sources and Credits | BitLibrary"
         description="Credits for the book catalogs, dictionaries, audiobook sources, media helpers, AI services, and open-source software used by BitLibrary."

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Book, ViewState } from '@/types/index';
+import { Book } from '@/types/index';
 import { INITIAL_BOOKS, CATEGORIES } from '@/constants';
 import { fetchBooksFromGutendex, fetchBookById } from '@/services/bookService';
 import BookCard from '@/components/BookCard';
@@ -39,7 +39,6 @@ import FloatingScrollButton from '@/components/FloatingScrollButton';
 import MobileBottomNav from '@/components/MobileBottomNav';
 
 
-const SEARCH_DEBOUNCE_MS = 400;
 const EXPLORE_CACHE_KEY = 'explore';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
@@ -233,31 +232,7 @@ const App: React.FC = () => {
     closeSearchSurface();
   };
 
-  // Auto-search after the user has typed enough signal to avoid noisy one-letter searches.
-  useEffect(() => {
-    const trimmed = searchQuery.trim();
-    const isDeepSector = location.pathname.startsWith('/book/') ||
-      location.pathname.startsWith('/reader/') ||
-      location.pathname.startsWith('/author/');
-
-    const isSearchableSector = location.pathname === '/' || location.pathname === '/search';
-    if (trimmed.length < SEARCH_MIN_QUERY_LENGTH) {
-      if (location.pathname === '/search' && searchParams.get('q')) {
-        const timer = setTimeout(() => setSearchParams({}), SEARCH_DEBOUNCE_MS);
-        return () => clearTimeout(timer);
-      }
-      return;
-    }
-
-    if (trimmed.length >= SEARCH_MIN_QUERY_LENGTH && !isDeepSector && isSearchableSector) {
-      const timer = setTimeout(() => {
-        if (searchParams.get('q') !== trimmed) {
-          navigateToSearch(trimmed);
-        }
-      }, SEARCH_DEBOUNCE_MS);
-      return () => clearTimeout(timer);
-    }
-  }, [searchQuery, searchParams, location.pathname, navigateToSearch, setSearchParams]);
+  // Search is now manual only — triggered by Enter or the search button.
 
   const isReaderActive = Boolean(activeBook && !isMinimized);
   const activeTab = (path: string) => location.pathname === path;
@@ -266,7 +241,10 @@ const App: React.FC = () => {
     [location.pathname]
   );
   const isLibraryRoute = /^\/(?:library|books|browse|mylibrary)(?:\/|$)/.test(location.pathname);
-  const hideFloatingScrollControls = Boolean(isReaderActive || readerLoading || mobileMenuOpen);
+  const showScrollButton = isLibraryRoute
+    || /^\/(?:audiobooks|research|about|terms)(?:\/|$)/.test(location.pathname)
+    || /^\/audiobooks\/category\//.test(location.pathname);
+  const hideFloatingScrollControls = Boolean(isReaderActive || readerLoading || mobileMenuOpen || !showScrollButton);
   const hideMobileBottomNav = Boolean(isReaderActive || readerLoading || mobileMenuOpen || isNotFoundRoute);
 
   const handleReadBook = useCallback((book: Book) => {
@@ -280,8 +258,13 @@ const App: React.FC = () => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
         e.preventDefault();
-        searchInputRef.current?.focus();
-        setIsSearchFocused(true);
+        if (isSearchFocused && document.activeElement === searchInputRef.current) {
+          searchInputRef.current?.blur();
+          closeSearchSurface();
+        } else {
+          searchInputRef.current?.focus();
+          setIsSearchFocused(true);
+        }
       }
 
       if (e.key === 'Escape') {
@@ -381,14 +364,14 @@ const App: React.FC = () => {
 
 
       {/* Main Layout */}
-      <main className={`${isNotFoundRoute ? 'min-h-[100svh] pb-0' : 'min-h-screen pb-28 md:pb-20'} relative z-0 ${isReaderActive ? '' : 'pt-16 md:pt-20'}`}>
+      <main className={`${isNotFoundRoute ? 'min-h-[100svh] pb-0' : 'min-h-screen pb-28 md:pb-20'} relative z-0 ${isReaderActive ? '' : 'pt-24 md:pt-28'}`}>
 
         <Routes>
           {/* Home / Discovery */}
           <Route path="/" element={
             <div className="animate-fade-in-up">
               {/* Hero */}
-              <section className="relative mb-12 overflow-hidden py-10 md:mb-16 md:py-16 lg:py-20">
+              <section className="relative mb-12 overflow-hidden pb-10 md:mb-16 md:pb-16 lg:pb-20">
                 <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
                   <div className="absolute inset-y-0 right-0 w-full md:w-[68%] bg-[radial-gradient(ellipse_at_72%_42%,rgba(var(--bit-accent-rgb),0.12),transparent_42%),linear-gradient(110deg,transparent_0%,rgba(var(--bit-accent-rgb),0.03)_48%,rgba(var(--bit-text),0.018)_100%)]" />
                   <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-bit-border to-transparent" />
@@ -618,6 +601,7 @@ const App: React.FC = () => {
                 onQuerySync={syncSearchQueryFromRoute}
                 recentSearches={localUserState.recentSearches}
                 onQuickSearch={applySearchSelection}
+                liveQuery={searchQuery}
               />
             </div>
           } />
@@ -775,12 +759,6 @@ const BookDetailsRoute: React.FC<{ books: Book[], onRead: (id: string, book?: Bo
       breadcrumbPath={breadcrumbPath}
     />
   );
-};
-
-const ReaderRoute: React.FC<{ books: Book[] }> = ({ books }) => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  return <div className="hidden">Triggering Neural Sector {id}...</div>;
 };
 
 const BooksRedirect = () => {

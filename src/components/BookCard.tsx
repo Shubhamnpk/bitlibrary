@@ -4,7 +4,7 @@ import { Book } from '@/types/index';
 import { BookOpen, Bookmark, BarChart, Files, Download } from 'lucide-react';
 import { toggleSavedBook, useLocalUserState } from '@/lib/local-user';
 import { readReaderEntry, getPdfReaderProgressKey } from '@/lib/storage-manager';
-import { isPdfLikeUrl } from '@/lib/pdf';
+import { isPdfLikeUrl } from '@/lib/url-utils';
 import { getStudyId } from '@/lib/pdf-reader-storage';
 import { HighlightedText } from './HighlightedText';
 import { formatCompactAuthors, getBookAuthors } from '@/lib/authors';
@@ -70,7 +70,7 @@ const RESEARCH_SOURCES = new Set([
   'YoBook Research',
 ]);
 
-const BookCard: React.FC<BookCardProps> = ({ 
+const BookCard = React.memo<BookCardProps>(({ 
   book, 
   onClick, 
   onRead, 
@@ -81,6 +81,7 @@ const BookCard: React.FC<BookCardProps> = ({
 }) => {
   const navigate = useNavigate();
   const { state } = useLocalUserState();
+  const [showOverlay, setShowOverlay] = React.useState(false);
   const isSaved = state.savedBooks.some((entry) => entry.id === book.id);
   const savedProgress = showProgress ? readReaderEntry<{ chapterIndex?: number; totalChapters?: number }>(getPdfReaderProgressKey(book.id)) : null;
   const hasChapterProgress = typeof savedProgress?.chapterIndex === 'number';
@@ -141,7 +142,11 @@ const BookCard: React.FC<BookCardProps> = ({
 
   return (
     <div
-      onClick={() => onClick(book)}
+      onClick={() => {
+        const isHoverDevice = window.matchMedia('(hover: hover)').matches;
+        if (isHoverDevice) { onClick(book); return; }
+        if (showOverlay) { onClick(book); } else { setShowOverlay(true); }
+      }}
       className={`group relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-bit-border bg-bit-panel/30 hover:bg-bit-panel/50 transition-all duration-300 cursor-pointer hover:-translate-y-1 hover:border-bit-accent/30 ${variant === 'compact' ? 'p-0' : 'shadow-sm'}`}
     >
       <div className={`absolute inset-0 bg-gradient-to-br ${bgGradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
@@ -194,7 +199,7 @@ const BookCard: React.FC<BookCardProps> = ({
                     <div className={`mb-3 inline-flex max-w-full rounded-full px-2.5 py-1 font-mono text-[8px] font-bold uppercase tracking-widest ${researchTheme.chip}`}>
                       <span className="truncate">{researchType}</span>
                     </div>
-                    <h3 className="mb-3 line-clamp-5 font-display text-[1.05rem] font-bold leading-tight text-bit-text">
+                    <h3 className="mb-3 line-clamp-5 font-display text-[1.05rem] font-bold leading-tight text-bit-text" title={book.title}>
                       <HighlightedText text={book.title} query={searchQuery} />
                     </h3>
                     <div className="flex items-end justify-between gap-3 border-t border-white/10 pt-3">
@@ -218,7 +223,7 @@ const BookCard: React.FC<BookCardProps> = ({
                   }}
                 />
                 <div className="absolute bottom-4 left-4 right-4">
-                  <h3 className="font-display font-bold text-lg leading-tight text-bit-text mb-1 line-clamp-3">
+                  <h3 className="font-display font-bold text-lg leading-tight text-bit-text mb-1 line-clamp-3" title={book.title}>
                      <HighlightedText text={book.title} query={searchQuery} />
                   </h3>
                   <p className="text-[10px] text-bit-muted/40 font-mono tracking-widest uppercase">
@@ -257,7 +262,7 @@ const BookCard: React.FC<BookCardProps> = ({
           )}
 
           {/* Cinematic Overlay & Action HUD Stack */}
-          <div className="absolute inset-0 bg-bit-panel/90 opacity-0 group-hover:opacity-100 backdrop-blur-[6px] transition-all duration-500 flex flex-col items-center justify-center p-6 gap-3 z-20">
+          <div className={`absolute inset-0 bg-bit-panel/90 backdrop-blur-[6px] transition-all duration-500 flex flex-col items-center justify-center p-6 gap-3 z-20 ${showOverlay ? 'opacity-100' : 'opacity-0 md:group-hover:opacity-100'}`}>
             {onRead && accessMode === 'read' && (
               <button
                 onClick={(e) => { e.stopPropagation(); onRead(book); }}
@@ -278,10 +283,10 @@ const BookCard: React.FC<BookCardProps> = ({
             )}
             <button
               onClick={(e) => { e.stopPropagation(); onClick(book); }}
-              className="w-full py-3 bg-bit-panel/50 text-bit-text rounded-xl border border-bit-border flex items-center justify-center gap-3 transform translate-y-4 group-hover:translate-y-0 transition-all duration-500 hover:bg-bit-panel/80 hover:border-bit-accent/30 hover:scale-105 active:scale-95"
+              className="w-full py-3 bg-bit-panel/50 text-bit-text rounded-xl border border-bit-border flex items-center justify-center gap-2.5 transform translate-y-4 group-hover:translate-y-0 transition-all duration-500 hover:bg-bit-panel/80 hover:border-bit-accent/30 hover:scale-105 active:scale-95"
             >
-              <BarChart size={18} className="rotate-90" />
-              <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-bit-muted">View Details</span>
+              <BarChart size={15} className="rotate-90" />
+              <span className="text-[10px] font-mono font-bold tracking-[0.12em] uppercase text-bit-muted">View Details</span>
             </button>
           </div>
 
@@ -310,7 +315,7 @@ const BookCard: React.FC<BookCardProps> = ({
         <div className={`${variant === 'compact' ? 'min-h-[5.75rem] p-3.5' : 'p-5'} flex flex-col flex-1`}>
           <div className="flex flex-col h-full">
             <div className={variant === 'full' ? 'mb-4' : ''}>
-              <h3 className={`font-display font-bold text-bit-text leading-tight group-hover:text-bit-accent transition-colors mb-1 ${variant === 'full' ? 'text-base min-h-[2.5rem] line-clamp-2' : 'text-sm line-clamp-1'}`}>
+              <h3 className={`font-display font-bold text-bit-text leading-tight group-hover:text-bit-accent transition-colors mb-1 ${variant === 'full' ? 'text-base min-h-[2.5rem] line-clamp-2' : 'text-sm line-clamp-1'}`} title={book.title}>
                 <HighlightedText text={book.title} query={searchQuery} />
               </h3>
               <button 
@@ -353,6 +358,6 @@ const BookCard: React.FC<BookCardProps> = ({
       </div>
     </div>
   );
-};
+});
 
 export default BookCard;

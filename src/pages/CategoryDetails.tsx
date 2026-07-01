@@ -172,7 +172,7 @@ const CategoryDetails: React.FC<{ onBookClick: (b: Book) => void }> = ({ onBookC
           <div className="p-2 rounded-lg bg-bit-panel/50 group-hover:bg-bit-accent group-hover:text-white transition-all border border-bit-border">
             <ArrowLeft size={18} />
           </div>
-          <span className="font-mono text-[10px] uppercase tracking-widest">Return to Library</span>
+          <span className="font-mono text-[10px] uppercase tracking-widest">back</span>
         </button>
 
         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bit-accent/5 border border-bit-accent/20">

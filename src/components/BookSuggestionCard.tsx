@@ -21,7 +21,7 @@ const PLACEHOLDER_COVERS = [
   'https://images.unsplash.com/photo-1474932430478-367dbb6832c1?q=80&w=200&auto=format&fit=crop',
 ];
 
-const BookSuggestionCard: React.FC<BookSuggestionCardProps> = ({ book }) => {
+const BookSuggestionCard = React.memo<BookSuggestionCardProps>(({ book }) => {
   const navigate = useNavigate();
   const coverSrc = book.coverUrl || PLACEHOLDER_COVERS[Math.abs(book.id.length) % PLACEHOLDER_COVERS.length];
 
@@ -58,6 +58,6 @@ const BookSuggestionCard: React.FC<BookSuggestionCardProps> = ({ book }) => {
       </div>
     </button>
   );
-};
+});
 
 export default BookSuggestionCard;
