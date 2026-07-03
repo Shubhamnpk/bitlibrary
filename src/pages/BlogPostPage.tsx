@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, ArrowRight, Calendar, Clock, BookOpen, Share2,
-  Tag, Sparkles, Check, Library, Star, TrendingUp, Hash
+  Tag, Sparkles, Check, Library, Star, TrendingUp, Hash, ListTree, X
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -11,6 +11,19 @@ import BookSuggestionCard from '@/components/BookSuggestionCard';
 import BlogTableOfContents from '@/components/BlogTableOfContents';
 import { createBreadcrumbSchema, createFaqSchema, toAbsoluteUrl, truncate } from '@/lib/seo';
 import blogPosts from '@/content/blog.json';
+
+const parseToc = (content: string) => {
+  const headingRegex = /^(#{2,4})\s+(.+)$/gm;
+  const items: Array<{ id: string; text: string; level: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = headingRegex.exec(content)) !== null) {
+    const level = match[1].length;
+    const text = match[2].trim();
+    const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    items.push({ id, text, level });
+  }
+  return items;
+};
 
 const BlogPostPage: React.FC = () => {
   const { slug } = useParams();
@@ -25,6 +38,9 @@ const BlogPostPage: React.FC = () => {
     .slice(0, 3);
 
   const [copied, setCopied] = React.useState(false);
+  const [tocOpen, setTocOpen] = React.useState(false);
+  const tocItems = post ? parseToc(post.content) : [];
+
   const handleShare = async () => {
     const url = `${window.location.origin}/blog/${post?.slug}`;
     if (navigator.share) {
@@ -38,6 +54,15 @@ const BlogPostPage: React.FC = () => {
         setTimeout(() => setCopied(false), 2000);
       } catch { /* ignore */ }
     }
+  };
+
+  const scrollToHeading = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      history.pushState(null, '', `#${id}`);
+    }
+    setTocOpen(false);
   };
 
   if (!post) {
@@ -106,20 +131,26 @@ const BlogPostPage: React.FC = () => {
       />
 
       <div className="max-w-6xl mx-auto">
-        {/* Back + Share */}
-        <div className="mb-8 flex items-center justify-between">
+        {/* Back + ToC button (mobile) + Share */}
+        <div className="mb-6 md:mb-8 flex items-center justify-between">
           <button
             onClick={() => navigate('/blog')}
-            className="inline-flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/30 px-5 py-2.5 text-[10px] font-mono uppercase tracking-[0.2em] text-bit-muted transition-all hover:border-bit-accent/30 hover:text-bit-accent font-bold shadow-sm"
+            className="inline-flex items-center gap-1.5 rounded-full border border-bit-border bg-bit-panel/30 px-4 py-2 text-[9px] font-mono uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/30 hover:text-bit-accent font-bold shadow-sm"
           >
-            <ArrowLeft size={14} />
+            <ArrowLeft size={12} />
             All Guides
           </button>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 text-[9px] font-mono uppercase tracking-widest text-bit-muted/50 px-3 py-1.5 rounded-full border border-bit-border/50 bg-bit-panel/20">
-              <Star size={10} className="text-bit-accent" />
-              Guide
-            </div>
+          <div className="flex items-center gap-1.5">
+          
+            {tocItems.length >= 2 && (
+              <button
+                onClick={() => setTocOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-bit-border bg-bit-panel/30 px-3 py-2 text-[9px] font-mono text-bit-muted transition-all hover:border-bit-accent/30 hover:text-bit-accent lg:hidden"
+              >
+                <ListTree size={13} />
+                Contents
+              </button>
+            )}
             <button
               onClick={handleShare}
               className="inline-flex items-center gap-2 rounded-full border border-bit-border bg-bit-panel/30 px-4 py-2.5 text-[10px] font-mono text-bit-muted transition-all hover:border-bit-accent/30 hover:text-bit-accent"
@@ -354,6 +385,36 @@ const BlogPostPage: React.FC = () => {
           </aside>
         </div>
       </div>
+
+      {tocOpen && (
+        <div className="fixed inset-0 z-[10200] flex flex-col bg-bit-bg lg:hidden">
+          <div className="flex items-center justify-between border-b border-bit-border px-4 py-3">
+            <p className="text-xs font-mono font-bold uppercase tracking-widest text-bit-muted">On this page</p>
+            <button
+              type="button"
+              onClick={() => setTocOpen(false)}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-bit-border text-bit-muted"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="space-y-1">
+              {tocItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => scrollToHeading(item.id)}
+                  className="block w-full rounded-xl border border-bit-border bg-bit-panel/30 px-3.5 py-2.5 text-left text-sm font-semibold text-bit-text transition-all hover:border-bit-accent/30 hover:text-bit-accent active:scale-[0.98]"
+                  style={{ paddingLeft: `${12 + (item.level - 2) * 16}px` }}
+                >
+                  {item.text}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

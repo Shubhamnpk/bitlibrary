@@ -58,7 +58,7 @@ const BlogTableOfContents: React.FC<BlogTableOfContentsProps> = ({ content }) =>
   if (items.length < 2) return null;
 
   return (
-    <nav className="rounded-2xl border border-bit-border bg-bit-panel p-5 sticky top-24 shadow-lg shadow-bit-bg/80">
+    <nav className="rounded-2xl border border-bit-border bg-bit-panel p-5 sticky top-24 z-50 shadow-lg shadow-bit-bg/80">
       <div className="flex items-center gap-2 mb-4">
         <ListTree size={14} className="text-bit-accent" />
         <span className="text-[10px] font-mono uppercase tracking-widest text-bit-accent font-bold">On this page</span>

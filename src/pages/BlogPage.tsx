@@ -1,16 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Calendar, Clock, BookOpen, Search, Tag, TrendingUp, Sparkles, BookMarked } from 'lucide-react';
+import { ArrowRight, Calendar, Clock, BookOpen, Search, Tag, TrendingUp, Sparkles, BookMarked, ChevronLeft, ChevronRight } from 'lucide-react';
 import Seo from '@/components/Seo';
 import { createBreadcrumbSchema, createItemListSchema } from '@/lib/seo';
 import blogPosts from '@/content/blog.json';
 
 const ALL_TAGS = Array.from(new Set(blogPosts.flatMap((p) => p.tags))).sort();
+const POSTS_PER_PAGE = 9;
 
 const BlogPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [activeTag, setActiveTag] = useState<string | null>(searchParams.get('tag') || null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filteredPosts = useMemo(() => {
     return blogPosts.filter((post) => {
@@ -28,6 +30,27 @@ const BlogPage: React.FC = () => {
   }, [activeTag, searchQuery]);
 
   const featuredPost = filteredPosts[0];
+  const displayPosts = useMemo(() => {
+    const posts = featuredPost && !activeTag && !searchQuery ? filteredPosts.slice(1) : filteredPosts;
+    const start = (currentPage - 1) * POSTS_PER_PAGE;
+    return posts.slice(start, start + POSTS_PER_PAGE);
+  }, [filteredPosts, featuredPost, activeTag, searchQuery, currentPage]);
+
+  const totalPages = useMemo(() => {
+    const count = featuredPost && !activeTag && !searchQuery ? filteredPosts.length - 1 : filteredPosts.length;
+    return Math.max(1, Math.ceil(count / POSTS_PER_PAGE));
+  }, [filteredPosts, featuredPost, activeTag, searchQuery]);
+
+  const showFeatured = featuredPost && !activeTag && !searchQuery && currentPage === 1;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTag, searchQuery]);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <div className="animate-fade-in pb-24">
@@ -68,8 +91,7 @@ const BlogPage: React.FC = () => {
             </span>
           </div>
           <h1 className="text-4xl md:text-6xl font-display font-bold text-bit-text tracking-tight leading-[0.95]">
-            Guides &<br />
-            <span className="bg-gradient-to-r from-bit-text via-bit-text to-bit-accent bg-clip-text text-transparent">resources</span>
+            Guides & <span className="bg-gradient-to-r from-bit-text via-bit-text to-bit-accent bg-clip-text text-transparent"> resources</span>
           </h1>
           <p className="mt-4 text-base md:text-lg leading-relaxed text-bit-muted max-w-2xl">
             Learn about public domain books, free audiobooks, the Nepal education curriculum,
@@ -170,7 +192,7 @@ const BlogPage: React.FC = () => {
 
         {/* Post Grid */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {(featuredPost && !activeTag && !searchQuery ? filteredPosts.slice(1) : filteredPosts).map((post, index) => (
+          {displayPosts.map((post) => (
             <Link
               key={post.slug}
               to={`/blog/${post.slug}`}
@@ -215,6 +237,58 @@ const BlogPage: React.FC = () => {
             </Link>
           ))}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-12 flex items-center justify-center gap-2">
+            <button
+              type="button"
+              disabled={currentPage === 1}
+              onClick={() => goToPage(currentPage - 1)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-bit-border bg-bit-panel/30 text-bit-muted transition-all hover:border-bit-accent/30 hover:text-bit-accent disabled:opacity-30 disabled:pointer-events-none"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+              if (
+                page === 1 ||
+                page === totalPages ||
+                (page >= currentPage - 1 && page <= currentPage + 1)
+              ) {
+                return (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => goToPage(page)}
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl border text-[11px] font-mono font-bold transition-all ${
+                      page === currentPage
+                        ? 'border-bit-accent bg-bit-accent text-white shadow-lg shadow-bit-accent/20'
+                        : 'border-bit-border bg-bit-panel/30 text-bit-muted hover:border-bit-accent/30 hover:text-bit-accent'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                );
+              }
+              if (page === currentPage - 2 || page === currentPage + 2) {
+                return (
+                  <span key={page} className="flex h-10 w-6 items-center justify-center text-bit-muted/30 font-mono text-xs">
+                    ...
+                  </span>
+                );
+              }
+              return null;
+            })}
+            <button
+              type="button"
+              disabled={currentPage === totalPages}
+              onClick={() => goToPage(currentPage + 1)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-bit-border bg-bit-panel/30 text-bit-muted transition-all hover:border-bit-accent/30 hover:text-bit-accent disabled:opacity-30 disabled:pointer-events-none"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
 
         {/* Empty State */}
         {filteredPosts.length === 0 && (
