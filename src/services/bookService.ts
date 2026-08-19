@@ -484,6 +484,7 @@ const YOBOOK_SUBJECTS = new Set([
   'Nepali Stories',
   'Science',
   'Social Studies',
+  'Sanskrit',
   'Audio Drama',
 ]);
 

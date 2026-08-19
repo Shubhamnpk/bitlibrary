@@ -325,6 +325,13 @@ const CurriculumPage: React.FC<CurriculumPageProps> = ({ onBookClick, onAudioboo
               Browse subjects
               <ArrowRight size={14} />
             </Link>
+            <Link
+              to="/curriculum/courses"
+              className="hidden sm:inline-flex items-center gap-2 rounded-lg border border-bit-border bg-bit-panel/20 px-4 py-3 text-xs font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-text"
+            >
+              Browse courses
+              <ArrowRight size={14} />
+            </Link>
           </div>
         </div>
       </section>

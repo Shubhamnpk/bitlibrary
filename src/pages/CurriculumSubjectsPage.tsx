@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, BookMarked, BookOpen, Calculator, GraduationCap, HeartPulse, Languages, Leaf, Sigma, UsersRound } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookMarked, BookOpen, Calculator, GraduationCap, HeartPulse, Languages, Leaf, ScrollText, Sigma, UsersRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { CURRICULUM_GRADES } from '@/constants';
 import type { Book } from '@/types/index';
@@ -29,12 +29,15 @@ const SUBJECT_CARDS = [
   { name: 'Social Studies', icon: UsersRound },
   { name: 'Health', icon: HeartPulse },
   { name: 'Hamro Serofero', icon: Leaf },
+  { name: 'Sanskrit', icon: ScrollText },
 ];
 
 const CurriculumSubjectsPage: React.FC<CurriculumSubjectsPageProps> = ({ onBookClick, onRead }) => {
   const [selectedSubject, setSelectedSubject] = useState(SUBJECT_CARDS[0].name);
   const [gradeRows, setGradeRows] = useState<GradeRows>(() => emptyRows());
   const [guideRows, setGuideRows] = useState<GradeRows>(() => emptyRows());
+  const [ungradedBooks, setUngradedBooks] = useState<Book[]>([]);
+  const [ungradedGuides, setUngradedGuides] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -55,15 +58,19 @@ const CurriculumSubjectsPage: React.FC<CurriculumSubjectsPageProps> = ({ onBookC
 
         if (textbooksResult.status === 'fulfilled') {
           setGradeRows({ ...emptyRows(), ...textbooksResult.value.rows });
+          setUngradedBooks(textbooksResult.value.ungraded);
         } else {
           setGradeRows(emptyRows());
+          setUngradedBooks([]);
           setError('Subject browsing is partially unavailable right now.');
         }
 
         if (guidesResult.status === 'fulfilled') {
           setGuideRows({ ...emptyRows(), ...guidesResult.value.rows });
+          setUngradedGuides(guidesResult.value.ungraded);
         } else {
           setGuideRows(emptyRows());
+          setUngradedGuides([]);
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -84,10 +91,12 @@ const CurriculumSubjectsPage: React.FC<CurriculumSubjectsPageProps> = ({ onBookC
         const books = filterBooks(gradeRows[grade] || [], subject.name, 'textbooks', 'nepal');
         const guides = filterGuides(guideRows[grade] || [], subject.name, 'teacher-guides', 'nepal');
         return total + books.length + guides.length;
-      }, 0);
+      }, 0)
+        + filterBooks(ungradedBooks, subject.name, 'textbooks', 'nepal').length
+        + filterGuides(ungradedGuides, subject.name, 'teacher-guides', 'nepal').length;
       return counts;
     }, {})
-  ), [gradeRows, guideRows]);
+  ), [gradeRows, guideRows, ungradedBooks, ungradedGuides]);
 
   const subjectRows = useMemo(() => (
     CURRICULUM_GRADES.map((grade) => {
@@ -106,7 +115,13 @@ const CurriculumSubjectsPage: React.FC<CurriculumSubjectsPageProps> = ({ onBookC
     }).filter((row) => row.visible > 0)
   ), [gradeRows, guideRows, selectedSubject]);
 
-  const visibleCount = subjectRows.reduce((total, row) => total + row.visible, 0);
+  const ungradedVisible = useMemo(() => {
+    const books = filterBooks(ungradedBooks, selectedSubject, 'textbooks', 'nepal');
+    const guides = filterGuides(ungradedGuides, selectedSubject, 'teacher-guides', 'nepal');
+    return { books, guides, visible: books.length + guides.length };
+  }, [ungradedBooks, ungradedGuides, selectedSubject]);
+
+  const visibleCount = subjectRows.reduce((total, row) => total + row.visible, 0) + ungradedVisible.visible;
 
   return (
     <div className="animate-fade-in pb-20">
@@ -143,7 +158,7 @@ const CurriculumSubjectsPage: React.FC<CurriculumSubjectsPageProps> = ({ onBookC
         </div>
       </section>
 
-      <section className="mb-10 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+      <section className="mb-10 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
         {SUBJECT_CARDS.map((subject) => {
           const Icon = subject.icon;
           const active = selectedSubject === subject.name;
@@ -175,7 +190,9 @@ const CurriculumSubjectsPage: React.FC<CurriculumSubjectsPageProps> = ({ onBookC
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
             <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-accent">{selectedSubject}</p>
-            <h2 className="mt-2 text-3xl font-display font-bold tracking-tight text-bit-text">Available Grades</h2>
+            <h2 className="mt-2 text-3xl font-display font-bold tracking-tight text-bit-text">
+              {ungradedVisible.visible > 0 ? 'Available Grades & Other' : 'Available Grades'}
+            </h2>
           </div>
           <p className="text-xs font-mono uppercase tracking-widest text-bit-muted">
             {loading ? 'Loading books' : `${subjectRows.length} grades`}
@@ -197,16 +214,13 @@ const CurriculumSubjectsPage: React.FC<CurriculumSubjectsPageProps> = ({ onBookC
               </div>
             ))}
           </div>
-        ) : subjectRows.length > 0 ? (
+        ) : subjectRows.length > 0 || ungradedVisible.visible > 0 ? (
           <div className="space-y-12">
             {subjectRows.map((row) => (
               <div key={row.grade} className="scroll-mt-32 border-b border-bit-border/60 pb-10 last:border-b-0">
                 <div className="mb-5 flex items-end justify-between gap-4">
                   <div>
-                    <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em] text-bit-muted">
-                      {row.visible} matching resources
-                    </p>
-                    <h3 className="mt-1 text-2xl font-display font-bold tracking-tight text-bit-text">Grade {row.grade}</h3>
+                    <h3 className="text-2xl font-display font-bold tracking-tight text-bit-text">Grade {row.grade}</h3>
                   </div>
                 </div>
 
@@ -250,6 +264,55 @@ const CurriculumSubjectsPage: React.FC<CurriculumSubjectsPageProps> = ({ onBookC
                 )}
               </div>
             ))}
+
+            {ungradedVisible.visible > 0 && (
+              <div className="scroll-mt-32 border-b border-bit-border/60 pb-10 last:border-b-0">
+                <div className="mb-5 flex items-end justify-between gap-4">
+                  <div>
+                    <h3 className="text-2xl font-display font-bold tracking-tight text-bit-text">Other</h3>
+                  </div>
+                </div>
+
+                {ungradedVisible.guides.length > 0 && (
+                  <div className="mb-7">
+                    <div className="mb-3 flex items-center gap-2 text-bit-accent">
+                      <BookMarked size={15} />
+                      <p className="text-[10px] font-mono font-bold uppercase tracking-[0.22em]">Guides</p>
+                    </div>
+                    <div className="flex snap-x gap-4 overflow-x-auto pb-4">
+                      {ungradedVisible.guides.map((guide, index) => (
+                        <div
+                          key={guide.id}
+                          className="w-40 shrink-0 snap-start animate-fade-in-up sm:w-44 lg:w-48"
+                          style={{ animationDelay: `${(index % 5) * 35}ms` }}
+                        >
+                          <div className="relative h-full">
+                            <div className="absolute -top-3 left-3 z-20 rounded-full bg-bit-accent px-2 py-1 text-[8px] font-bold font-mono uppercase tracking-widest text-white shadow-[0_0_15px_rgba(var(--bit-accent-rgb),0.28)]">
+                              Guide
+                            </div>
+                            <BookCard variant="compact" book={guide} onClick={onBookClick} onRead={onRead} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {ungradedVisible.books.length > 0 && (
+                  <div className="flex snap-x gap-4 overflow-x-auto pb-4">
+                    {ungradedVisible.books.map((book, index) => (
+                      <div
+                        key={book.id}
+                        className="w-40 shrink-0 snap-start animate-fade-in-up sm:w-44 lg:w-48"
+                        style={{ animationDelay: `${(index % 5) * 35}ms` }}
+                      >
+                        <BookCard variant="compact" book={book} onClick={onBookClick} onRead={onRead} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-bit-border bg-bit-panel/20 px-6 py-20 text-center">

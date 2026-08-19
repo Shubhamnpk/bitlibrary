@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap, User, ChevronDown, Bookmark, Headphones, History, Settings, FileText, Mic, Microscope } from 'lucide-react';
+import { Search, Disc, Command, Clock3, ArrowUpRight, Zap, X, Menu, House, Library, BookOpenText, Info, AudioLines, GraduationCap, User, ChevronDown, Bookmark, Headphones, History, Settings, FileText, Mic, Microscope, ScrollText } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { getSpeechRecognitionConstructor, isSpeechRecognitionContextAllowed, requestMicrophoneForSpeech } from '@/lib/speech';
 
@@ -503,6 +503,14 @@ const Navbar: React.FC<NavbarProps> = ({
               >
                 <GraduationCap size={17} className="shrink-0" />
                 Curriculum
+              </Link>
+              <Link
+                to="/curriculum/courses"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-bit-muted hover:bg-bit-panel/40 hover:text-bit-text transition-all pl-11"
+              >
+                <ScrollText size={15} className="shrink-0" />
+                Courses
               </Link>
 
               <div className="my-3 border-t border-bit-border/40" />

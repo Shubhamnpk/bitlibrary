@@ -145,24 +145,37 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(var(--bit-border), 0.35);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(var(--bit-accent-rgb), 0.2);
+  background: rgb(var(--bit-accent));
   border-radius: 10px;
-  border: 1px solid rgba(var(--bit-accent-rgb), 0.1);
+  transition: background 160ms ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--bit-accent-rgb), 0.4);
-  border: 1px solid rgba(var(--bit-accent-rgb), 0.3);
+  background: rgb(var(--bit-accent));
+  box-shadow: inset 0 0 0 1px rgba(var(--bit-accent-rgb), 0.5), 0 0 8px rgba(var(--bit-accent-rgb), 0.4);
 }
 
-/* Firefox Registry Synchronization */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(var(--bit-accent-rgb), 0.2) transparent;
+::-webkit-scrollbar-thumb:active {
+  background: rgb(var(--bit-accent));
+  box-shadow: inset 0 0 0 1px rgba(var(--bit-accent-rgb), 0.6);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox Registry Synchronization (Firefox-only: these would otherwise
+   override the ::-webkit-scrollbar styling in Chrome 121+ / Edge / Safari) */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--bit-accent)) rgba(var(--bit-border), 0.35);
+  }
 }
 
 @keyframes scanline {

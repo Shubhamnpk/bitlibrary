@@ -23,6 +23,7 @@ import AudiobooksPage from '@/pages/AudiobooksPage';
 import AudiobookDetails from '@/pages/AudiobookDetails';
 import CurriculumPage from '@/pages/CurriculumPage';
 import CurriculumSubjectsPage from '@/pages/CurriculumSubjectsPage';
+import CurriculumCoursesPage from '@/pages/CurriculumCoursesPage';
 import DictionaryPage from '@/pages/DictionaryPage';
 import SourcesPage from '@/pages/SourcesPage';
 import BlogPage from '@/pages/BlogPage';
@@ -42,7 +43,7 @@ import MobileBottomNav from '@/components/MobileBottomNav';
 const EXPLORE_CACHE_KEY = 'explore';
 const EXPLORE_CACHE_TTL = 30 * 60 * 1000;
 const SEARCH_SUGGESTIONS = ['Philosophy', 'Artificial Intelligence', 'Poetry', 'History', 'Quantum', 'Psychology'];
-const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/curriculum/subjects','/mylibrary','/profile','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources','/blog','/blog/:slug',];
+const ROUTE_PATTERNS = ['/','/library','/library/:categoryId','/books','/books/:categoryId','/browse','/browse/:categoryId','/curriculum','/curriculum/subjects','/curriculum/courses','/mylibrary','/profile','/search','/research','/book/:id','/audiobooks','/audiobooks/category/:categoryId','/audiobook/:id','/author/:name','/category/:categoryId','/terms','/about','/releases','/roadmap','/dictionary','/sources','/blog','/blog/:slug',];
 const HERO_ORBIT_NODES = {
   star: {
     title: 'Archive Star',
@@ -555,6 +556,15 @@ const App: React.FC = () => {
           <Route path="/curriculum/subjects" element={
             <div className="max-w-7xl mx-auto px-4 sm:px-6">
               <CurriculumSubjectsPage
+                onBookClick={navigateToBook}
+                onRead={handleReadBook}
+              />
+            </div>
+          } />
+
+          <Route path="/curriculum/courses" element={
+            <div className="max-w-7xl mx-auto px-4 sm:px-6">
+              <CurriculumCoursesPage
                 onBookClick={navigateToBook}
                 onRead={handleReadBook}
               />

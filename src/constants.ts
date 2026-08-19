@@ -18,4 +18,5 @@ export const CURRICULUM_SUBJECTS = [
   "Social Studies",
   "Health",
   "Hamro Serofero",
+  "Sanskrit",
 ];

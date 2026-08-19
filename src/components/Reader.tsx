@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Book, ChapterAudio, ResourceLink } from '@/types/index';
 import { streamBookChapter } from '@/services/geminiService';
-import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Minimize2, Palette, PanelRight, Trash2, Type, Zap, GripVertical, Headphones, Play, Pause, Volume2, PictureInPicture } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bookmark, BookmarkCheck, BookOpenText, Check, ChevronDown, ChevronUp, Copy, ExternalLink, ChevronLeft, ChevronRight, Highlighter, Loader2, Maximize2, X, Minimize2, Palette, PanelRight, RotateCw, Search, Trash2, Type, Zap, GripVertical, Headphones, Play, Pause, Volume2, PictureInPicture } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import PDFFlipBook, { type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
+import PDFFlipBook, { type PdfBackgroundPresetId, type PdfHighlightColorId, type PdfSearchResults, type PdfStudyAction, type PdfStudySnapshot, type PdfTableOfContentsSnapshot } from './PDFFlipBook';
 import AppSelect from './AppSelect';
 import DownloadSplitButton from './DownloadSplitButton';
 import { getPdfProxyUrl, getReaderProxyUrl } from '@/lib/pdf';
@@ -16,6 +16,8 @@ import { saveBook } from '@/lib/local-user';
 import { fetchYoBookGradeAudio, getYoBookAudioSubjectForBook } from '@/services/bookService';
 import { getPreferredSpeechVoiceURI, getSpeechSegments, getSpeechWordAtBoundary, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
 import { readReaderEntry, writeReaderEntry } from '@/lib/storage-manager';
+import { applyReaderSearch, setReaderSearchActiveMark, splitReaderSearchSnippet, unwrapReaderSearchMatches } from '@/lib/reader-search';
+import { fetchDictionaryEntries, getDictionaryLanguageForQuery, type DictionaryEntry } from '@/services/dictionaryLookupService';
 
 interface ReaderProps {
   book: Book;
@@ -28,6 +30,8 @@ const getPdfReaderProgressKey = (bookId: string) => `pdf-progress:${encodeURICom
 const FRAME_BLOCKED_HOSTS = new Set([
   'dropbox.com',
 ]);
+const MAX_IFRAME_LOAD_ATTEMPTS = 3;
+const IFRAME_LOAD_TIMEOUT_MS = 6000;
 
 
 const isBlockedFrameUrl = (url: string) => {
@@ -362,6 +366,28 @@ const EXTERNAL_HIGHLIGHT_COLOR_PRESETS = [
   { id: 'pink', label: 'Pink', bg: '#f9a8d4', fg: '#500724' },
 ];
 
+const RECENT_SEARCHES_KEY = 'bit:recent-searches';
+const RECENT_SEARCHES_LIMIT = 6;
+
+const readRecentSearches = (): string[] => {
+  try {
+    const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string').slice(0, RECENT_SEARCHES_LIMIT) : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeRecentSearches = (searches: string[]) => {
+  try {
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(searches.slice(0, RECENT_SEARCHES_LIMIT)));
+  } catch {
+    // ignore quota / privacy errors
+  }
+};
+
 const EXTERNAL_READER_BACKGROUND_PRESETS = [
   {
     id: 'dark',
@@ -480,6 +506,24 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [isImmersive, setIsImmersive] = useState(false);
   const [localIsMinimized, setLocalIsMinimized] = useState(isMinimized);
   const [iframeLoading, setIframeLoading] = useState(true);
+  const [iframeLoadAttempt, setIframeLoadAttempt] = useState(0);
+  const iframeLoadedRef = useRef(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+  const [searchWholeWord, setSearchWholeWord] = useState(false);
+  const [searchPageOnly, setSearchPageOnly] = useState(false);
+  const [searchMatchTotal, setSearchMatchTotal] = useState(0);
+  const [searchActiveIndex, setSearchActiveIndex] = useState(0);
+  const [searchRequestVersion, setSearchRequestVersion] = useState(0);
+  const [searchNavRequest, setSearchNavRequest] = useState(0);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<Array<{ page?: number; snippet: string }>>([]);
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => readRecentSearches());
+  const searchMarksRef = useRef<HTMLElement[]>([]);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [searchResultsCollapsed, setSearchResultsCollapsed] = useState(false);
+  const searchPanelRef = useRef<HTMLDivElement | null>(null);
   const [externalReadableText, setExternalReadableText] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<'contents' | 'saved' | 'look'>('saved');
@@ -510,6 +554,11 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const [pdfStudyAction, setPdfStudyAction] = useState<PdfStudyAction | null>(null);
   const [pdfHighlightMode, setPdfHighlightMode] = useState(false);
   const [expandedHighlightPages, setExpandedHighlightPages] = useState<Record<number, boolean>>({});
+  const [lookupPanel, setLookupPanel] = useState<{ word: string; entries: DictionaryEntry[]; loading: boolean; error: string } | null>(null);
+  const lookupControllerRef = useRef<AbortController | null>(null);
+  const lookupAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [readerSelectionBar, setReaderSelectionBar] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [selectionBarCopied, setSelectionBarCopied] = useState(false);
 
   useEffect(() => {
     setLocalIsMinimized(isMinimized);
@@ -529,6 +578,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const autoSavedStudyBookRef = useRef<string | null>(null);
   const speechStoppedRef = useRef(false);
   const speechRestartingRef = useRef(false);
+  const speechPausedRef = useRef(false);
   const speechIgnoreCancelEventsUntilRef = useRef(0);
   const speechRateRef = useRef(speechRate);
   const speechRateRestartTimerRef = useRef<number | null>(null);
@@ -584,6 +634,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   const externalBackgroundPreset = EXTERNAL_READER_BACKGROUND_PRESETS.find((preset) => preset.id === externalBackgroundId) || EXTERNAL_READER_BACKGROUND_PRESETS[0];
   const stopSpeech = useCallback(() => {
     speechStoppedRef.current = true;
+    speechPausedRef.current = false;
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -610,15 +661,16 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       setActiveSpeechWordRange(word ? { segmentIndex: index, start: word.start, end: word.end } : null);
     };
     utterance.onend = () => {
-      if (speechStoppedRef.current || speechRestartingRef.current || Date.now() < speechIgnoreCancelEventsUntilRef.current) return;
+      if (speechStoppedRef.current || speechPausedRef.current || speechRestartingRef.current || Date.now() < speechIgnoreCancelEventsUntilRef.current) return;
       setActiveSpeechWordRange(null);
       speakSpeechSegmentRef.current?.(index + 1);
     };
     utterance.onerror = () => {
-      if (speechRestartingRef.current || Date.now() < speechIgnoreCancelEventsUntilRef.current) return;
+      if (speechPausedRef.current || speechRestartingRef.current || Date.now() < speechIgnoreCancelEventsUntilRef.current) return;
       stopSpeech();
     };
     speechStoppedRef.current = false;
+    speechPausedRef.current = false;
     setActiveSpeechSegmentIndex(index);
     setActiveSpeechWordRange(null);
     setSpeechStatus('playing');
@@ -643,6 +695,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
   const startSpeech = () => {
     if (speechStatus === 'paused' && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      speechPausedRef.current = false;
       window.speechSynthesis.resume();
       setSpeechStatus('playing');
       return;
@@ -683,12 +736,93 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       speakSpeechSegmentRef.current?.(0);
     }, 0);
   }, [stopSpeech]);
+  const closeLookupPanel = useCallback(() => {
+    lookupControllerRef.current?.abort();
+    lookupControllerRef.current = null;
+    lookupAudioRef.current?.pause();
+    lookupAudioRef.current = null;
+    setLookupPanel(null);
+  }, []);
+  const lookupSelectedWord = useCallback((rawText: string) => {
+    const text = rawText.replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    const query = getDictionaryLanguageForQuery(text)
+      ? text
+      : text.match(/[\p{L}\p{N}'-]+/u)?.[0] || '';
+    if (!getDictionaryLanguageForQuery(query)) return;
+
+    lookupControllerRef.current?.abort();
+    const controller = new AbortController();
+    lookupControllerRef.current = controller;
+    setLookupPanel({ word: query, entries: [], loading: true, error: '' });
+    setReaderSelectionBar(null);
+
+    fetchDictionaryEntries(query, controller.signal)
+      .then((entries) => {
+        setLookupPanel((current) => (current ? { ...current, entries, loading: false } : current));
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setLookupPanel((current) => (current ? { ...current, entries: [], loading: false, error: 'Dictionary lookup is unavailable right now.' } : current));
+      });
+  }, []);
+  const refreshReaderSelectionBar = useCallback(() => {
+    if (isExternal || isPdfReader || localIsMinimized || lookupPanel) {
+      setReaderSelectionBar(null);
+      return;
+    }
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+      setReaderSelectionBar(null);
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    if (!contentRef.current?.contains(range.commonAncestorContainer)) {
+      setReaderSelectionBar(null);
+      return;
+    }
+    const text = selection.toString().replace(/\s+/g, ' ').trim();
+    if (!text) {
+      setReaderSelectionBar(null);
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    if (!rect || (rect.width === 0 && rect.height === 0)) {
+      setReaderSelectionBar(null);
+      return;
+    }
+    setSelectionBarCopied(false);
+    setReaderSelectionBar({ x: rect.left + rect.width / 2, y: rect.top, text });
+  }, [isExternal, isPdfReader, localIsMinimized, lookupPanel]);
+  const copyReaderSelection = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try { document.execCommand('copy'); } catch { /* clipboard fallback */ }
+      textarea.remove();
+    }
+    setSelectionBarCopied(true);
+    window.setTimeout(() => setSelectionBarCopied(false), 1600);
+  };
+  const playLookupAudio = (url: string) => {
+    lookupAudioRef.current?.pause();
+    lookupAudioRef.current = new Audio(url);
+    void lookupAudioRef.current.play();
+  };
   const pauseSpeech = () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    speechPausedRef.current = true;
     window.speechSynthesis.pause();
     setSpeechStatus('paused');
   };
   const handleInlineReaderLoad = useCallback(() => {
+    iframeLoadedRef.current = true;
     setIframeLoading(false);
     externalSpeechHighlightRef.current = null;
     externalSpeechCandidateIndexRef.current = 0;
@@ -740,14 +874,44 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   useEffect(() => {
     const handleReaderMessage = (event: MessageEvent) => {
       if (event.source !== inlineReaderFrameRef.current?.contentWindow) return;
-      if (event.data?.type !== 'bitlibrary-read-selection') return;
-      if (typeof event.data.text !== 'string') return;
-      startSpeechFromText(event.data.text);
+      if (event.data?.type === 'bitlibrary-read-selection') {
+        if (typeof event.data.text !== 'string') return;
+        startSpeechFromText(event.data.text);
+        return;
+      }
+      if (event.data?.type === 'bitlibrary-lookup-word') {
+        if (typeof event.data.text !== 'string') return;
+        lookupSelectedWord(event.data.text);
+      }
     };
 
     window.addEventListener('message', handleReaderMessage);
     return () => window.removeEventListener('message', handleReaderMessage);
-  }, [startSpeechFromText]);
+  }, [lookupSelectedWord, startSpeechFromText]);
+
+  useEffect(() => {
+    let hideTimer = 0;
+    const scheduleRefresh = (delay: number) => {
+      window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(refreshReaderSelectionBar, delay);
+    };
+    const handleSelectionChange = () => scheduleRefresh(60);
+    const handleMouseUp = () => scheduleRefresh(0);
+    const handleScroll = () => {
+      if (readerSelectionBar) setReaderSelectionBar(null);
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('scroll', handleScroll, true);
+
+    return () => {
+      window.clearTimeout(hideTimer);
+      document.removeEventListener('selectionchange', handleSelectionChange);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [readerSelectionBar, refreshReaderSelectionBar]);
 
   useEffect(() => {
     if (!isExternalTextReader) return;
@@ -777,6 +941,11 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   }, []);
 
   useEffect(() => () => stopSpeech(), [stopSpeech]);
+
+  useEffect(() => () => {
+    lookupControllerRef.current?.abort();
+    lookupAudioRef.current?.pause();
+  }, []);
 
   useEffect(() => {
     stopSpeech();
@@ -1059,13 +1228,27 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     return () => controller.abort();
   }, [pdfChapters, selectedPdfChapterIndex]);
 
+  const lastIframeUrlRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!isExternal || isPdfReader || !canEmbedReaderUrl) return;
+    if (lastIframeUrlRef.current !== readerUrl) {
+      lastIframeUrlRef.current = readerUrl;
+      setIframeLoadAttempt(0);
+    }
+    iframeLoadedRef.current = false;
     setIframeLoading(true);
     setExternalReadableText('');
-    const fallbackTimer = window.setTimeout(() => setIframeLoading(false), 6000);
+    const fallbackTimer = window.setTimeout(() => {
+      if (iframeLoadedRef.current) return;
+      if (iframeLoadAttempt < MAX_IFRAME_LOAD_ATTEMPTS - 1) {
+        setIframeLoadAttempt((attempt) => attempt + 1);
+      } else {
+        setIframeLoading(false);
+      }
+    }, IFRAME_LOAD_TIMEOUT_MS);
     return () => window.clearTimeout(fallbackTimer);
-  }, [canEmbedReaderUrl, isExternal, isPdfReader, readerUrl]);
+  }, [canEmbedReaderUrl, iframeLoadAttempt, isExternal, isPdfReader, readerUrl]);
 
   useEffect(() => {
     setSelectedPdfChapterIndex(readSavedPdfChapterIndex(book.id, pdfChapters.length));
@@ -1079,6 +1262,14 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     setChapterAudioRequested(false);
     setChapterAudioExpanded(false);
     setSelectedChapterAudioIndex(null);
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSearchActiveIndex(0);
+    setSearchMatchTotal(0);
+    setSearchLoading(false);
+    setSearchResults([]);
+    setSearchPageOnly(false);
+    searchMarksRef.current = [];
   }, [book.id, pdfChapters.length]);
 
   useEffect(() => {
@@ -1100,7 +1291,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (speechStatus !== 'idle') {
+        if (lookupPanel) {
+          closeLookupPanel();
+        } else if (speechStatus !== 'idle') {
           stopSpeech();
         } else if (sidebarOpen) {
           setSidebarOpen(false);
@@ -1112,7 +1305,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isImmersive, isMinimized, sidebarOpen, speechStatus, stopSpeech]);
+  }, [closeLookupPanel, isImmersive, isMinimized, lookupPanel, sidebarOpen, speechStatus, stopSpeech]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -1245,6 +1438,149 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       .map(([page, highlights]) => ({ page, highlights }));
   }, [pdfStudySnapshot?.textHighlights]);
 
+  const getSearchRoot = useCallback((): ParentNode | null => {
+    if (isPdfReader) return null;
+    if (isExternalTextReader) {
+      return inlineReaderFrameRef.current?.contentDocument?.body || null;
+    }
+    return contentRef.current;
+  }, [isExternalTextReader, isPdfReader]);
+
+  const clearTextSearchMarks = useCallback(() => {
+    if (isPdfReader) return;
+    const root = getSearchRoot();
+    if (root) unwrapReaderSearchMatches(root);
+    searchMarksRef.current = [];
+    setSearchMatchTotal(0);
+    setSearchActiveIndex(0);
+  }, [getSearchRoot, isPdfReader]);
+
+  const handleSearchResultsChange = useCallback((results: PdfSearchResults) => {
+    setSearchMatchTotal(results.total);
+    setSearchActiveIndex(results.total > 0 ? Math.min(results.activeIndex, results.total - 1) : 0);
+    setSearchLoading(results.loading);
+    setSearchResults(results.matches);
+  }, []);
+
+  const navigateSearch = useCallback((direction: 'next' | 'prev') => {
+    const total = searchMatchTotal;
+    if (total <= 0) return;
+    let nextIndex: number;
+    if (direction === 'next') {
+      nextIndex = searchActiveIndex >= total - 1 ? 0 : searchActiveIndex + 1;
+    } else {
+      nextIndex = searchActiveIndex <= 0 ? total - 1 : searchActiveIndex - 1;
+    }
+    setSearchActiveIndex(nextIndex);
+    setSearchNavRequest((request) => request + 1);
+  }, [searchActiveIndex, searchMatchTotal]);
+
+  const jumpToSearchResult = useCallback((index: number) => {
+    setSearchActiveIndex(index);
+    setSearchNavRequest((request) => request + 1);
+    setSearchResultsCollapsed(true);
+  }, []);
+
+  const rememberSearch = useCallback((query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    setRecentSearches((current) => {
+      const next = [trimmed, ...current.filter((item) => item.toLowerCase() !== trimmed.toLowerCase())].slice(0, RECENT_SEARCHES_LIMIT);
+      writeRecentSearches(next);
+      return next;
+    });
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    if (searchQuery.trim()) {
+      rememberSearch(searchQuery);
+    }
+    setSearchOpen(false);
+    setSearchLoading(false);
+    setSearchResults([]);
+    setSearchResultsCollapsed(false);
+  }, [rememberSearch, searchQuery]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const handle = window.setTimeout(() => searchInputRef.current?.focus(), 30);
+    return () => window.clearTimeout(handle);
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (searchPanelRef.current && !searchPanelRef.current.contains(event.target as Node)) {
+        setSearchResultsCollapsed(true);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (isPdfReader) {
+      setSearchRequestVersion((version) => version + 1);
+      return;
+    }
+    if (!searchOpen) return;
+    const root = getSearchRoot();
+    if (!root) return;
+    if (!searchQuery.trim()) {
+      unwrapReaderSearchMatches(root);
+      searchMarksRef.current = [];
+      setSearchMatchTotal(0);
+      setSearchActiveIndex(0);
+      setSearchResults([]);
+      return;
+    }
+
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      if (cancelled) return;
+      const { total, marks, snippets } = applyReaderSearch(root, searchQuery, searchCaseSensitive, searchWholeWord);
+      if (cancelled) return;
+      searchMarksRef.current = marks;
+      setSearchMatchTotal(total);
+      setSearchActiveIndex((index) => (total > 0 ? Math.min(index, total - 1) : 0));
+      setSearchResults(snippets.map((snippet) => ({ snippet })));
+    }, 120);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [content, externalReadableText, getSearchRoot, isExternalTextReader, isPdfReader, searchCaseSensitive, searchOpen, searchPageOnly, searchQuery, searchWholeWord]);
+
+  useEffect(() => {
+    if (isPdfReader) return;
+    if (!searchOpen || !searchQuery.trim()) return;
+    const activeMark = setReaderSearchActiveMark(searchMarksRef.current, searchActiveIndex);
+    if (activeMark) {
+      activeMark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, [isPdfReader, searchActiveIndex, searchOpen, searchQuery]);
+
+  useEffect(() => {
+    if (searchOpen || isPdfReader) return;
+    clearTextSearchMarks();
+  }, [clearTextSearchMarks, isPdfReader, searchOpen]);
+
   // If minimized, render as a compact floating node (PiP)
   if (localIsMinimized) {
     return (
@@ -1371,6 +1707,16 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                 </button>
               </>
             )}
+            <button
+              type="button"
+              onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+              className={`rounded-lg p-2.5 transition-all sm:p-3 group ${searchOpen ? 'bg-bit-accent text-white' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-accent'}`}
+              title="Find in this book"
+              aria-label="Find in this book"
+              aria-expanded={searchOpen}
+            >
+              <Search size={17} className="sm:size-[18px]" />
+            </button>
             {isExternal && (
               <a 
                 href={readerUrl}
@@ -2133,6 +2479,292 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
       )}
 
       {/* Main Content Area - Optimized Strip Layout */}
+      {searchOpen && (
+        <div
+          ref={searchPanelRef}
+          className="fixed left-1/2 top-[4.25rem] z-[10005] w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 animate-fade-in sm:top-[4.75rem]"
+        >
+          <div className="flex items-center gap-2 rounded-xl border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <Search size={15} className="shrink-0 text-bit-accent" />
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setSearchResultsCollapsed(false);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  rememberSearch(searchQuery);
+                  navigateSearch(event.shiftKey ? 'prev' : 'next');
+                }
+                if (event.key === 'Escape') {
+                  closeSearch();
+                }
+              }}
+              placeholder="Find in this book…"
+              aria-label="Find in this book"
+              onFocus={() => setSearchResultsCollapsed(false)}
+              className="min-w-0 flex-1 bg-transparent text-sm text-bit-text outline-none placeholder:text-bit-muted"
+            />
+            {searchLoading && searchQuery.trim() ? (
+              <Loader2 size={13} className="shrink-0 animate-spin text-bit-accent" />
+            ) : (
+              <span className="shrink-0 text-[10px] font-mono font-bold text-bit-muted tabular-nums">
+                {searchMatchTotal > 0 ? `${searchActiveIndex + 1}/${searchMatchTotal}` : '0/0'}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setSearchCaseSensitive((value) => !value)}
+              className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider transition-all ${searchCaseSensitive ? 'bg-bit-accent text-white' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
+              title={searchCaseSensitive ? 'Case sensitive (Aa)' : 'Case insensitive (Aa)'}
+              aria-pressed={searchCaseSensitive}
+              aria-label="Toggle case sensitivity"
+            >
+              Aa
+            </button>
+            <button
+              type="button"
+              onClick={() => setSearchWholeWord((value) => !value)}
+              className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider transition-all ${searchWholeWord ? 'bg-bit-accent text-white' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
+              title={searchWholeWord ? 'Whole words only' : 'Match anywhere'}
+              aria-pressed={searchWholeWord}
+              aria-label="Toggle whole word matching"
+            >
+              Ww
+            </button>
+            {isPdfReader && (
+              <button
+                type="button"
+                onClick={() => setSearchPageOnly((value) => !value)}
+                className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider transition-all ${searchPageOnly ? 'bg-bit-accent text-white' : 'text-bit-muted hover:bg-bit-panel hover:text-bit-text'}`}
+                title={searchPageOnly ? 'This page only' : 'Search whole book'}
+                aria-pressed={searchPageOnly}
+                aria-label="Toggle current page only"
+              >
+                1pg
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => navigateSearch('prev')}
+              disabled={searchMatchTotal === 0}
+              className="shrink-0 rounded-md p-1.5 text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-text disabled:cursor-not-allowed disabled:opacity-35"
+              title="Previous match"
+              aria-label="Previous match"
+            >
+              <ChevronUp size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateSearch('next')}
+              disabled={searchMatchTotal === 0}
+              className="shrink-0 rounded-md p-1.5 text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-text disabled:cursor-not-allowed disabled:opacity-35"
+              title="Next match"
+              aria-label="Next match"
+            >
+              <ChevronDown size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={closeSearch}
+              className="shrink-0 rounded-md p-1.5 text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-text"
+              title="Close find"
+              aria-label="Close find"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          {!searchResultsCollapsed && searchQuery.trim() ? (
+            <div className="mt-1.5 max-h-[min(18rem,45vh)] overflow-y-auto rounded-xl border border-bit-border bg-bit-panel/95 shadow-2xl shadow-black/20 backdrop-blur-xl scrollbar-thin">
+              {searchLoading ? (
+                <div className="flex items-center gap-2 px-4 py-3 text-xs text-bit-muted">
+                  <Loader2 size={13} className="animate-spin text-bit-accent" />
+                  Searching…
+                </div>
+              ) : searchMatchTotal === 0 ? (
+                <div className="px-4 py-3 text-xs text-bit-muted">
+                  No matches for <span className="font-mono text-bit-text">&ldquo;{searchQuery}&rdquo;</span>
+                </div>
+              ) : (
+                <ul className="py-1" role="listbox" aria-label="Search results">
+                  {searchResults.map((result, index) => (
+                    <li key={`${result.page ?? 'text'}-${index}`}>
+                      <button
+                        type="button"
+                        onClick={() => jumpToSearchResult(index)}
+                        className={`flex w-full items-start gap-2 px-4 py-2 text-left text-xs transition-colors ${index === searchActiveIndex ? 'bg-bit-accent/10' : 'hover:bg-bit-panel'}`}
+                      >
+                        {isPdfReader && typeof result.page === 'number' && (
+                          <span className="mt-0.5 shrink-0 rounded border border-bit-border bg-bit-bg/50 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-bit-muted">
+                            p. {result.page}
+                          </span>
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-bit-text">
+                          {splitReaderSearchSnippet(result.snippet || '…', searchQuery, searchCaseSensitive, searchWholeWord).map((segment, segmentIndex) =>
+                            segment.matched ? (
+                              <mark
+                                key={segmentIndex}
+                                className="rounded-[2px] bg-[rgba(var(--bit-accent-rgb),0.28)] px-0.5 font-semibold text-bit-accent ring-1 ring-bit-accent/40"
+                              >
+                                {segment.text}
+                              </mark>
+                            ) : (
+                              <span key={segmentIndex}>{segment.text}</span>
+                            )
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : !searchResultsCollapsed && recentSearches.length > 0 ? (
+            <div className="mt-1.5 rounded-xl border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/20 backdrop-blur-xl">
+              <p className="mb-1 px-1 text-[9px] font-mono font-bold uppercase tracking-widest text-bit-muted">
+                Recent searches
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {recentSearches.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery(item);
+                      setSearchResultsCollapsed(false);
+                    }}
+                    className="rounded-full border border-bit-border bg-bit-bg/40 px-2.5 py-1 text-[11px] text-bit-muted transition-all hover:border-bit-accent/50 hover:text-bit-text"
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {readerSelectionBar && !isExternal && (
+        <div
+          className="fixed z-[10005] animate-fade-in pointer-events-none"
+          style={{ left: readerSelectionBar.x, top: readerSelectionBar.y, transform: 'translate(-50%, calc(-100% - 14px))' }}
+        >
+          <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-bit-border bg-bit-panel/95 px-1.5 py-1.5 shadow-2xl shadow-black/25 backdrop-blur-xl">
+            <button
+              type="button"
+              onClick={() => void copyReaderSelection(readerSelectionBar.text)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-colors hover:bg-bit-panel hover:text-bit-text"
+              title="Copy selected text"
+              aria-label="Copy selected text"
+            >
+              {selectionBarCopied ? <Check size={12} className="text-bit-accent" /> : <Copy size={12} />}
+              {selectionBarCopied ? 'Copied' : 'Copy'}
+            </button>
+            <button
+              type="button"
+              onClick={() => lookupSelectedWord(readerSelectionBar.text)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full bg-bit-accent px-3 text-[10px] font-mono font-bold uppercase tracking-widest text-white shadow-sm shadow-bit-accent/20 transition-all hover:brightness-110"
+              title="Look up the selected word"
+              aria-label="Look up the selected word"
+            >
+              <BookOpenText size={12} />
+              Define
+            </button>
+          </div>
+        </div>
+      )}
+
+      {lookupPanel && (
+        <div className="fixed left-1/2 top-[4.25rem] z-[10005] w-[min(38rem,calc(100%-2rem))] -translate-x-1/2 animate-fade-in sm:top-[4.75rem]">
+          <div className="overflow-hidden rounded-xl border border-bit-border bg-bit-panel/95 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-3 border-b border-bit-border/70 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <BookOpenText size={15} className="shrink-0 text-bit-accent" />
+                <span className="shrink-0 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-accent">Word lookup</span>
+                <span className="min-w-0 truncate font-serif text-lg font-semibold text-bit-text">&ldquo;{lookupPanel.word}&rdquo;</span>
+              </div>
+              <button
+                type="button"
+                onClick={closeLookupPanel}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-bit-muted transition-colors hover:bg-bit-panel hover:text-bit-text"
+                aria-label="Close word lookup"
+                title="Close word lookup"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="max-h-[min(22rem,55vh)] overflow-y-auto p-4 scrollbar-thin">
+              {lookupPanel.error ? (
+                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-bit-border bg-bit-bg/25 px-3 py-5 text-center">
+                  <p className="text-sm leading-6 text-bit-muted">{lookupPanel.error}</p>
+                  <button
+                    type="button"
+                    onClick={() => lookupSelectedWord(lookupPanel.word)}
+                    className="inline-flex h-9 items-center gap-2 rounded-md border border-bit-border bg-bit-panel/60 px-3 text-xs font-semibold text-bit-text transition-colors hover:border-bit-accent/40 hover:text-bit-accent"
+                  >
+                    <RotateCw size={13} />
+                    Retry lookup
+                  </button>
+                </div>
+              ) : lookupPanel.loading ? (
+                <div className="flex min-h-24 items-center justify-center gap-3 text-sm text-bit-muted">
+                  <Loader2 size={18} className="animate-spin text-bit-accent" />
+                  Looking up definition...
+                </div>
+              ) : lookupPanel.entries.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-bit-border bg-bit-bg/25 px-3 py-5 text-center text-sm leading-6 text-bit-muted">
+                  No definition found for &ldquo;{lookupPanel.word}&rdquo;.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {lookupPanel.entries.map((entry, entryIndex) => (
+                    <article key={`${entry.word}-${entryIndex}`} className="rounded-xl border border-bit-border bg-bit-panel/35 p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-display text-xl font-bold text-bit-text">{entry.word}</h3>
+                        {entry.audio && (
+                          <button
+                            type="button"
+                            onClick={() => playLookupAudio(entry.audio as string)}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-bit-border bg-bit-bg/35 text-bit-muted transition-colors hover:border-bit-accent/35 hover:text-bit-accent"
+                            aria-label={`Play pronunciation for ${entry.word}`}
+                            title="Play pronunciation"
+                          >
+                            <Volume2 size={14} />
+                          </button>
+                        )}
+                        {entry.phonetic && <p className="text-sm text-bit-muted">{entry.phonetic}</p>}
+                      </div>
+                      <div className="mt-3 space-y-3">
+                        {entry.meanings.slice(0, 3).map((meaning, meaningIndex) => (
+                          <section key={`${meaning.partOfSpeech}-${meaningIndex}`} className="border-t border-bit-border/70 pt-3">
+                            <p className="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-bit-accent">{meaning.partOfSpeech}</p>
+                            <ol className="mt-2 space-y-2">
+                              {meaning.definitions.slice(0, 3).map((definition, definitionIndex) => (
+                                <li key={`${definition.definition}-${definitionIndex}`} className="text-sm leading-7 text-bit-muted">
+                                  <span className="mr-2 font-mono text-[10px] text-bit-accent">{definitionIndex + 1}.</span>
+                                  <span className="text-bit-text">{definition.definition}</span>
+                                  {definition.example && (
+                                    <p className="mt-1 pl-6 text-xs italic leading-6 text-bit-muted">&ldquo;{definition.example}&rdquo;</p>
+                                  )}
+                                </li>
+                              ))}
+                            </ol>
+                          </section>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1 overflow-y-auto relative scrollbar-hide bg-bit-bg flex flex-col items-center">
         {isPdfReader && pdfChapters.length > 1 && (
           <div className="flex w-full items-center gap-2 overflow-x-auto border-b border-bit-border bg-bit-bg px-3 py-2 md:hidden">
@@ -2181,6 +2813,9 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             onPreviousBoundary={selectedPdfChapterIndex > 0 ? goToPreviousPdfChapter : undefined}
             onNextBoundary={selectedPdfChapterIndex < pdfChapters.length - 1 ? goToNextPdfChapter : undefined}
             preferFullDocumentLoad={preferFullPdfDocumentLoad}
+            searchRequest={isPdfReader ? { query: searchQuery, caseSensitive: searchCaseSensitive, wholeWord: searchWholeWord, pageOnly: searchPageOnly, activeIndex: searchActiveIndex, navRequest: searchNavRequest, version: searchRequestVersion } : undefined}
+            onSearchResultsChange={handleSearchResultsChange}
+            onLookupWord={lookupSelectedWord}
             controlsCompact={false}
           />
         ) : isExternal && canEmbedReaderUrl && !isDownloadOnly ? (
@@ -2198,6 +2833,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
             )}
 
             <iframe
+              key={`reader-frame-${iframeLoadAttempt}`}
               ref={inlineReaderFrameRef}
               src={inlineReaderUrl}
               onLoad={handleInlineReaderLoad}

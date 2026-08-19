@@ -203,13 +203,15 @@ const readerSelectionStyle = `
     .color-menu.open{display:grid}.color-action{width:24px;height:24px!important;padding:0!important;border:2px solid transparent!important;background:var(--swatch)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.45),0 5px 12px rgba(0,0,0,.22)}.color-action[aria-pressed="true"]{border-color:#fff!important;box-shadow:0 0 0 2px rgba(103,232,249,.34),inset 0 0 0 1px rgba(255,255,255,.5)}
     @media (max-width:560px){#highlight-popover{gap:2px;padding:4px}.icon-action{width:32px}#highlight-popover button{height:31px}.color-menu{left:50%;transform:translateX(-50%);border-radius:18px;grid-template-columns:repeat(4,24px)}}`;
 
-const readerSelectionToolbarHtml = `<div id="highlight-popover" role="toolbar" aria-label="Selection actions"><button id="highlight-action" class="icon-action marker-action" type="button" title="Highlight selected text" aria-label="Highlight selected text"><span id="current-highlight-swatch" class="marker-swatch"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 11 4 4L22 6l-4-4-9 9Z"/><path d="m13 15-5 5H4v-4l5-5"/><path d="m16 5 3 3"/></svg></button><button id="color-toggle" type="button" title="Choose highlight color" aria-label="Choose highlight color" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="color-menu" class="color-menu"><button class="color-action" type="button" data-bg="#facc15" data-fg="#111827" style="--swatch:#facc15" aria-label="Yellow highlight" aria-pressed="true"></button><button class="color-action" type="button" data-bg="#67e8f9" data-fg="#083344" style="--swatch:#67e8f9" aria-label="Cyan highlight" aria-pressed="false"></button><button class="color-action" type="button" data-bg="#86efac" data-fg="#052e16" style="--swatch:#86efac" aria-label="Green highlight" aria-pressed="false"></button><button class="color-action" type="button" data-bg="#f9a8d4" data-fg="#500724" style="--swatch:#f9a8d4" aria-label="Pink highlight" aria-pressed="false"></button></div><button id="remove-highlight-action" class="icon-action" type="button" title="Remove highlight from selection" aria-label="Remove highlight from selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 21-4-4 11-11 4 4-9 9"/><path d="m14 6 3-3 4 4-3 3"/><path d="M3 21h18"/><path d="m9 19 2 2"/></svg></button><button id="read-action" class="icon-action" type="button" title="Read selected text" aria-label="Read selected text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg></button></div>`;
+const readerSelectionToolbarHtml = `<div id="highlight-popover" role="toolbar" aria-label="Selection actions"><button id="highlight-action" class="icon-action marker-action" type="button" title="Highlight selected text" aria-label="Highlight selected text"><span id="current-highlight-swatch" class="marker-swatch"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 11 4 4L22 6l-4-4-9 9Z"/><path d="m13 15-5 5H4v-4l5-5"/><path d="m16 5 3 3"/></svg></button><button id="color-toggle" type="button" title="Choose highlight color" aria-label="Choose highlight color" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><div id="color-menu" class="color-menu"><button class="color-action" type="button" data-bg="#facc15" data-fg="#111827" style="--swatch:#facc15" aria-label="Yellow highlight" aria-pressed="true"></button><button class="color-action" type="button" data-bg="#67e8f9" data-fg="#083344" style="--swatch:#67e8f9" aria-label="Cyan highlight" aria-pressed="false"></button><button class="color-action" type="button" data-bg="#86efac" data-fg="#052e16" style="--swatch:#86efac" aria-label="Green highlight" aria-pressed="false"></button><button class="color-action" type="button" data-bg="#f9a8d4" data-fg="#500724" style="--swatch:#f9a8d4" aria-label="Pink highlight" aria-pressed="false"></button></div><button id="remove-highlight-action" class="icon-action" type="button" title="Remove highlight from selection" aria-label="Remove highlight from selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 21-4-4 11-11 4 4-9 9"/><path d="m14 6 3-3 4 4-3 3"/><path d="M3 21h18"/><path d="m9 19 2 2"/></svg></button><button id="read-action" class="icon-action" type="button" title="Read selected text" aria-label="Read selected text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg></button><button id="copy-action" class="icon-action" type="button" title="Copy selected text" aria-label="Copy selected text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button id="lookup-action" class="icon-action" type="button" title="Look up selected word" aria-label="Look up selected word"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></button></div>`;
 
 const readerSelectionScript = `(() => {
       const popover = document.getElementById('highlight-popover');
       const highlightAction = document.getElementById('highlight-action');
       const removeAction = document.getElementById('remove-highlight-action');
       const readAction = document.getElementById('read-action');
+      const copyAction = document.getElementById('copy-action');
+      const lookupAction = document.getElementById('lookup-action');
       const colorToggle = document.getElementById('color-toggle');
       const colorMenu = document.getElementById('color-menu');
       const colorActions = Array.from(document.querySelectorAll('.color-action'));
@@ -345,12 +347,45 @@ const readerSelectionScript = `(() => {
         if (!savedRange || savedRange.collapsed) return hide();
         highlightsInRange(savedRange).forEach(unwrapHighlight);
         window.getSelection()?.removeAllRanges();
-        hide();
+hide();
       });
       readAction.addEventListener('click', () => {
         if (!savedRange || savedRange.collapsed) return hide();
         const text = savedRange.toString().replace(/\\s+/g, ' ').trim();
         if (text) window.parent?.postMessage({ type: 'bitlibrary-read-selection', text }, window.location.origin);
+        hide();
+      });
+      copyAction.addEventListener('click', () => {
+        if (!savedRange || savedRange.collapsed) return hide();
+        const text = savedRange.toString().replace(/\\s+/g, ' ').trim();
+        if (!text) return hide();
+        const done = () => hide();
+        const fallback = () => {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+          try { document.execCommand('copy'); } catch (e) {}
+          textarea.remove();
+          done();
+        };
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(fallback);
+          } else {
+            fallback();
+          }
+        } catch (e) {
+          fallback();
+        }
+      });
+      lookupAction.addEventListener('click', () => {
+        if (!savedRange || savedRange.collapsed) return hide();
+        const text = savedRange.toString().replace(/\\s+/g, ' ').trim();
+        if (text) window.parent?.postMessage({ type: 'bitlibrary-lookup-word', text }, window.location.origin);
         hide();
       });
       document.addEventListener('mousedown', (event) => {

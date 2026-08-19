@@ -309,7 +309,7 @@ const BlogPage: React.FC = () => {
           <TrendingUp size={24} className="mx-auto mb-4 text-bit-accent" />
           <h2 className="text-2xl md:text-3xl font-display font-bold text-bit-text">Explore the library</h2>
           <p className="mt-3 text-sm leading-relaxed text-bit-muted max-w-lg mx-auto">
-            Put these guides into practice — browse thousands of free public domain books, audiobooks, and educational resources.
+            Put these guides into practice browse thousands of free public domain books, audiobooks, and educational resources.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <Link

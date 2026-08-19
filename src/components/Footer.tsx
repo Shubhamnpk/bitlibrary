@@ -13,13 +13,13 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
   if (isReaderActive) return null;
 
   return (
-    <footer className="border-t border-bit-border/50 pt-20 pb-12 bg-bit-panel/30 relative overflow-hidden">
+    <footer className="border-t border-bit-border/50 pt-10 pb-6 bg-bit-panel/30 relative overflow-hidden">
       <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-bit-accent/50 to-transparent opacity-20" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 mb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-8">
           <div className="lg:col-span-4">
-            <Link to="/" className="inline-flex items-center mb-6 group">
+            <Link to="/" className="inline-flex items-center mb-4 group">
               <img
                 src="/assets/bitlibrary-icon-clean.svg"
                 alt="BitLibrary"
@@ -27,7 +27,7 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
               />
               <span className="ml-3 font-display font-bold text-2xl text-bit-text tracking-tighter">BitLibrary</span>
             </Link>
-            <p className="text-bit-muted text-sm leading-relaxed mb-8 max-w-sm">
+            <p className="text-bit-muted text-sm leading-relaxed mb-6 max-w-sm">
               The Open Digital Library for accessible discovery, open archives, and modern reading.
               Built to connect books, authors, and knowledge in one searchable interface.
             </p>
@@ -84,9 +84,9 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
           </div>
 
           <div className="lg:col-span-3">
-            <div className="p-6 rounded-2xl bg-bit-panel/30 border border-bit-border relative group hover:border-bit-accent/40 transition-all shadow-sm">
+            <div className="p-5 rounded-2xl bg-bit-panel/30 border border-bit-border relative group hover:border-bit-accent/40 transition-all shadow-sm">
               <h4 className="text-bit-text font-display font-bold mb-2">Join the Lab</h4>
-              <p className="text-[10px] text-bit-muted mb-6 font-mono leading-relaxed uppercase">
+              <p className="text-[10px] text-bit-muted mb-4 font-mono leading-relaxed uppercase">
                 Enroll in the neural notification stream.
               </p>
               <div className="relative">
@@ -101,7 +101,7 @@ const Footer: React.FC<FooterProps> = ({ isReaderActive }) => {
           </div>
         </div>
 
-        <div className="grid gap-6 border-t border-bit-border/50 pt-12 text-[10px] font-mono text-bit-muted uppercase tracking-widest md:grid-cols-3 md:items-center">
+        <div className="grid gap-4 border-t border-bit-border/50 pt-6 text-[10px] font-mono text-bit-muted uppercase tracking-widest md:grid-cols-3 md:items-center">
           <div>© 2026 BitLibrary • The Open Digital Library Platform</div>
           <div className="flex flex-wrap items-center justify-center gap-2 text-center">
             <Link to="/releases" className="text-bit-muted transition-colors hover:text-bit-accent">

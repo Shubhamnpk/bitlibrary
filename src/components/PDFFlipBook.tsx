@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import $ from 'jquery';
 import '@ksedline/turnjs';
-import { Bookmark, BookmarkCheck, ChevronDown, ChevronLeft, ChevronRight, Download, Eraser, ExternalLink, GripVertical, Headphones, Highlighter, Loader2, MousePointer2, Pause, PenLine, Play, RotateCcw, Trash2, Type, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react';
+import { Bookmark, BookmarkCheck, BookOpenText, ChevronDown, ChevronLeft, ChevronRight, Copy, Download, Eraser, ExternalLink, GripVertical, Headphones, Highlighter, Loader2, MousePointer2, Pause, PenLine, Play, RotateCcw, Trash2, Type, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
@@ -25,6 +25,7 @@ import {
   type PdfTextHighlight,
 } from '@/lib/pdf-reader-storage';
 import { getPreferredSpeechVoiceURI, getSpeechWordAtBoundary, normalizeSpeechMatchText, speakUtterance } from '@/lib/speech';
+import { buildNormalizedPoints, buildSearchSnippet, collectTextNodes, findReaderSearchRanges } from '@/lib/reader-search';
 
 export type {
   PdfBackgroundPresetId,
@@ -38,7 +39,31 @@ const PDFJS_WASM_URL = '/assets/pdfjs/wasm/';
 const MIN_PDF_RENDER_RATIO = 3;
 const MAX_PDF_RENDER_RATIO = 4.5;
 const PDF_STABLE_RENDER_SCALE = 2.6;
+const MAX_PDF_LOAD_ATTEMPTS = 3;
+const PDF_LOAD_RETRY_DELAY_MS = 400;
 const isTurnTouchDevice = () => Boolean(($ as unknown as { isTouch?: boolean }).isTouch);
+
+export interface PdfSearchResultEntry {
+  page: number;
+  snippet: string;
+}
+
+export interface PdfSearchResults {
+  total: number;
+  activeIndex: number;
+  loading: boolean;
+  matches: PdfSearchResultEntry[];
+}
+
+export interface PdfSearchRequest {
+  query: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  pageOnly: boolean;
+  activeIndex: number;
+  navRequest: number;
+  version: number;
+}
 
 interface PDFFlipBookProps {
   pdfUrl: string;
@@ -58,6 +83,9 @@ interface PDFFlipBookProps {
   onNextBoundary?: () => void;
   preferFullDocumentLoad?: boolean;
   controlsCompact?: boolean;
+  searchRequest?: PdfSearchRequest;
+  onSearchResultsChange?: (results: PdfSearchResults) => void;
+  onLookupWord?: (text: string) => void;
 }
 
 interface FlipDimensions {
@@ -88,6 +116,10 @@ interface PDFPageCanvasProps {
   speechHighlightMode: 'paragraph' | 'word';
   speechReadingOrder: 'page' | 'source';
   pendingSelectionRects: PdfSpeechHighlightRect[];
+  searchHighlightText?: string;
+  searchActiveOccurrence?: number;
+  searchCaseSensitive?: boolean;
+  searchWholeWord?: boolean;
   currentHighlightColor: PdfHighlightColorId;
   onTextSelection: (selection: PdfPendingTextSelection) => void;
   onAddTextAnnotation: (page: number, x: number, y: number) => void;
@@ -454,7 +486,7 @@ const playPageTurnSound = () => {
   source.onended = () => void audioContext.close();
 };
 
-const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, shouldRender, shouldRenderTextLayer, textSelectionEnabled, renderScale, targetWidth, targetHeight, isBookmarked, isHighlighted, textHighlights, annotations, selectedAnnotationId, annotationTool, activeSpeechText = '', activeSpeechItemRange = null, activeSpeechWord = '', activeSpeechWordOccurrence = 0, speechHighlightMode, speechReadingOrder, pendingSelectionRects, currentHighlightColor, onTextSelection, onAddTextAnnotation, onAddInkAnnotation, onSelectAnnotation, onMoveAnnotation, onUpdateTextAnnotation, onRemoveTextHighlight, onRemoveAnnotation }) => {
+const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, shouldRender, shouldRenderTextLayer, textSelectionEnabled, renderScale, targetWidth, targetHeight, isBookmarked, isHighlighted, textHighlights, annotations, selectedAnnotationId, annotationTool, activeSpeechText = '', activeSpeechItemRange = null, activeSpeechWord = '', activeSpeechWordOccurrence = 0, speechHighlightMode, speechReadingOrder, pendingSelectionRects, searchHighlightText = '', searchActiveOccurrence = -1, searchCaseSensitive = false, searchWholeWord = false, currentHighlightColor, onTextSelection, onAddTextAnnotation, onAddInkAnnotation, onSelectAnnotation, onMoveAnnotation, onUpdateTextAnnotation, onRemoveTextHighlight, onRemoveAnnotation }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -470,6 +502,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
   const [loading, setLoading] = useState(false);
   const [hasRenderedCanvas, setHasRenderedCanvas] = useState(false);
   const [speechHighlightRects, setSpeechHighlightRects] = useState<PdfSpeechHighlightRect[]>([]);
+  const [searchHighlightRects, setSearchHighlightRects] = useState<Array<{ rect: PdfSpeechHighlightRect; active: boolean }>>([]);
   const [draftInkPoints, setDraftInkPoints] = useState<PdfInkAnnotation['points']>([]);
   const [eraserPoint, setEraserPoint] = useState<{ x: number; y: number } | null>(null);
   const [erasingAnnotationIds, setErasingAnnotationIds] = useState<Set<string>>(() => new Set());
@@ -557,6 +590,69 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
     speechHighlightedSpansRef.current = nextHighlightedSpans;
     setSpeechHighlightRects(mergeSpeechHighlightRects(nextRects));
   }, [activeSpeechItemRange, activeSpeechText, activeSpeechWord, activeSpeechWordOccurrence, shouldRenderTextLayer, speechHighlightMode]);
+
+  const computeSearchHighlight = useCallback(() => {
+    if (!searchHighlightText || !shouldRenderTextLayer) {
+      setSearchHighlightRects([]);
+      return;
+    }
+
+    const textLayer = textLayerRef.current;
+    const content = contentRef.current;
+    if (!textLayer || !content) {
+      setSearchHighlightRects([]);
+      return;
+    }
+
+    const contentRect = content.getBoundingClientRect();
+    if (contentRect.width <= 0 || contentRect.height <= 0) {
+      setSearchHighlightRects([]);
+      return;
+    }
+
+    const nodes = collectTextNodes(textLayer);
+    const { normalizedText, points } = buildNormalizedPoints(nodes);
+    const normalizedQuery = normalizeSpeechMatchText(searchHighlightText);
+    const ranges = findReaderSearchRanges(normalizedText, normalizedQuery, searchCaseSensitive, searchWholeWord);
+    const rects: Array<{ rect: PdfSpeechHighlightRect; active: boolean }> = [];
+
+    ranges.forEach((range, rangeIndex) => {
+      const pointRuns: Array<{ node: Text; start: number; end: number }> = [];
+      for (let index = range.start; index < range.end; index += 1) {
+        const point = points[index];
+        if (!point) continue;
+        const lastRun = pointRuns[pointRuns.length - 1];
+        if (lastRun && lastRun.node === point.node) {
+          lastRun.end = point.offset;
+        } else {
+          pointRuns.push({ node: point.node, start: point.offset, end: point.offset });
+        }
+      }
+
+      pointRuns.forEach((run) => {
+        const domRange = textLayer.ownerDocument.createRange();
+        domRange.setStart(run.node, run.start);
+        domRange.setEnd(run.node, run.end + 1);
+        const rect = domRange.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+        rects.push({
+          rect: {
+            x: ((rect.left - contentRect.left) / contentRect.width) * 100,
+            y: ((rect.top - contentRect.top) / contentRect.height) * 100,
+            width: (rect.width / contentRect.width) * 100,
+            height: (rect.height / contentRect.height) * 100,
+          },
+          active: rangeIndex === searchActiveOccurrence,
+        });
+      });
+    });
+
+    setSearchHighlightRects(rects);
+  }, [searchActiveOccurrence, searchCaseSensitive, searchHighlightText, searchWholeWord, shouldRenderTextLayer]);
+
+  useEffect(() => {
+    computeSearchHighlight();
+  }, [computeSearchHighlight]);
 
   const clearTextLayerSelection = () => {
     const selection = window.getSelection();
@@ -689,6 +785,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
         await pdfTextLayer.render();
         cacheSpeechSpanMetrics();
         applySpeechHighlight();
+        computeSearchHighlight();
         clearTextLayerSelection();
       } catch (textLayerError) {
         if ((textLayerError as { name?: string })?.name !== 'AbortException') {
@@ -705,7 +802,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
       pdfTextLayer?.cancel();
       clearTextLayerSelection();
     };
-  }, [applySpeechHighlight, cacheSpeechSpanMetrics, clearSpeechHighlight, document, pageNumber, shouldRender, shouldRenderTextLayer, targetHeight, targetWidth]);
+  }, [applySpeechHighlight, cacheSpeechSpanMetrics, clearSpeechHighlight, computeSearchHighlight, document, pageNumber, shouldRender, shouldRenderTextLayer, targetHeight, targetWidth]);
 
   useEffect(() => {
     applySpeechHighlight();
@@ -724,21 +821,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
     }
   };
 
-  const handleTextPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!textSelectionEnabled) return;
-    const start = selectionStartRef.current;
-    selectionStartRef.current = null;
-
-    const isTouch = event.pointerType === 'touch';
-
-    if (!isTouch && start) {
-      const dragDistance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
-      if (dragDistance < 4) {
-        clearTextLayerSelection();
-        return;
-      }
-    }
-
+  const captureTextLayerSelection = () => {
     const selection = window.getSelection();
     const pageElement = contentRef.current;
     const textLayer = textLayerRef.current;
@@ -789,6 +872,43 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
       },
     });
     clearTextLayerSelection();
+  };
+
+  const handleTextPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!textSelectionEnabled) return;
+    const start = selectionStartRef.current;
+    selectionStartRef.current = null;
+
+    const isTouch = event.pointerType === 'touch';
+
+    if (!isTouch && start) {
+      const dragDistance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+      if (dragDistance < 4) {
+        // A stationary click only counts as a selection when the browser has already
+        // established one, e.g. a double-click word selection. Otherwise clear it.
+        const selection = window.getSelection();
+        const textLayer = textLayerRef.current;
+        const hasWordSelection = Boolean(
+          selection
+          && !selection.isCollapsed
+          && textLayer
+          && selection.rangeCount > 0
+          && textLayer.contains(selection.anchorNode)
+          && textLayer.contains(selection.focusNode)
+        );
+        if (!hasWordSelection) {
+          clearTextLayerSelection();
+          return;
+        }
+      }
+    }
+
+    captureTextLayerSelection();
+  };
+
+  const handleTextDoubleClick = () => {
+    if (!textSelectionEnabled) return;
+    captureTextLayerSelection();
   };
 
   const getAnnotationPoint = (event: React.PointerEvent<HTMLElement>) => {
@@ -978,6 +1098,7 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
               } as React.CSSProperties}
               onPointerDown={handleTextPointerDown}
               onPointerUp={handleTextPointerUp}
+              onDoubleClick={handleTextDoubleClick}
               onPointerCancel={() => {
                 selectionStartRef.current = null;
                 clearTextLayerSelection();
@@ -1024,6 +1145,22 @@ const PDFPageCanvas: React.FC<PDFPageCanvasProps> = ({ document, pageNumber, sho
                   <span
                     key={`${pageNumber}-speech-${index}`}
                     className="absolute rounded-[3px] bg-bit-accent/25 ring-1 ring-bit-accent/30"
+                    style={{
+                      left: `${rect.x}%`,
+                      top: `${rect.y}%`,
+                      width: `${rect.width}%`,
+                      height: `${Math.max(rect.height, 1.2)}%`,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {searchHighlightRects.length > 0 && (
+              <div className="pointer-events-none absolute inset-0 z-[4]">
+                {searchHighlightRects.map(({ rect, active }, index) => (
+                  <span
+                    key={`${pageNumber}-search-${index}`}
+                    className={`absolute rounded-[3px] ${active ? 'bg-[rgba(var(--bit-accent-rgb),0.52)] ring-2 ring-bit-accent' : 'bg-[rgba(var(--bit-accent-rgb),0.22)] ring-1 ring-bit-accent/50'}`}
                     style={{
                       left: `${rect.x}%`,
                       top: `${rect.y}%`,
@@ -1242,6 +1379,9 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   onNextBoundary,
   preferFullDocumentLoad = false,
   controlsCompact = false,
+  searchRequest,
+  onSearchResultsChange,
+  onLookupWord,
 }) => {
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(() => readPdfStudyState(pdfUrl).lastPage || 1);
@@ -1254,6 +1394,9 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const [loadProgress, setLoadProgress] = useState({ loaded: 0, total: 0 });
   const [showDetailedProgress, setShowDetailedProgress] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pdfLoadAttempt, setPdfLoadAttempt] = useState(0);
+  const [pdfSearchMatches, setPdfSearchMatches] = useState<PdfSearchResultEntry[]>([]);
+  const [pdfSearchLoading, setPdfSearchLoading] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [zoom, setZoom] = useState(() => getDefaultZoom());
   const [turnFallbackMode, setTurnFallbackMode] = useState(false);
@@ -1295,6 +1438,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const loadedTableOfContentsRequestRef = useRef<string | null>(null);
   const pdfSpeechStoppedRef = useRef(false);
   const pdfSpeechRestartingRef = useRef(false);
+  const pdfSpeechPausedRef = useRef(false);
   const pdfSpeechIgnoreCancelEventsUntilRef = useRef(0);
   const pdfSpeechRateRef = useRef(pdfSpeechRate);
   const pdfSpeechRateRestartTimerRef = useRef<number | null>(null);
@@ -1302,6 +1446,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
   const speakPdfSpeechSegmentRef = useRef<((segments: PdfSpeechPlaybackSegment[], index: number) => void) | null>(null);
   const readCurrentPdfPageRef = useRef<(() => Promise<void>) | null>(null);
   const selectedTextSpeechActiveRef = useRef(false);
+  const selectedPdfSpeechTextRef = useRef('');
   const pdfSpeechSegmentsRef = useRef<PdfSpeechPlaybackSegment[]>([]);
   const activePdfSpeechSegmentIndexRef = useRef<number | null>(null);
   const pdfSpeechSegmentsCacheRef = useRef(new Map<number, PdfSpeechSegment[]>());
@@ -1431,6 +1576,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       const target = event.target as Element | null;
       if (
         target?.closest('[data-pdf-selection-popover]')
+        || target?.closest('[data-pdf-speech-pill]')
         || target?.closest('.bit-pdf-text-layer')
       ) {
         return;
@@ -1449,6 +1595,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     pdfSpeechAutoAdvanceRef.current = false;
     pdfSpeechAdvanceInProgressRef.current = false;
     pdfSpeechStoppedRef.current = true;
+    pdfSpeechPausedRef.current = false;
     selectedTextSpeechActiveRef.current = false;
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -1471,6 +1618,12 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
         setPdfSpeechAdvancePending(true);
         return;
       }
+      if (selectedTextSpeechActiveRef.current) {
+        setPdfSpeechStatus('paused');
+        setActivePdfSpeechWord('');
+        setActivePdfSpeechWordOccurrence(0);
+        return;
+      }
       stopPdfSpeech();
       return;
     }
@@ -1485,13 +1638,13 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       setActivePdfSpeechWordOccurrence(getPdfSpeechWordOccurrence(segments[index].text, word));
     };
     utterance.onend = () => {
-      if (pdfSpeechStoppedRef.current || pdfSpeechRestartingRef.current || Date.now() < pdfSpeechIgnoreCancelEventsUntilRef.current) return;
+      if (pdfSpeechStoppedRef.current || pdfSpeechPausedRef.current || pdfSpeechRestartingRef.current || Date.now() < pdfSpeechIgnoreCancelEventsUntilRef.current) return;
       setActivePdfSpeechWord('');
       setActivePdfSpeechWordOccurrence(0);
       speakPdfSpeechSegmentRef.current?.(segments, index + 1);
     };
     utterance.onerror = () => {
-      if (pdfSpeechRestartingRef.current || Date.now() < pdfSpeechIgnoreCancelEventsUntilRef.current) return;
+      if (pdfSpeechPausedRef.current || pdfSpeechRestartingRef.current || Date.now() < pdfSpeechIgnoreCancelEventsUntilRef.current) return;
       stopPdfSpeech();
     };
     activePdfSpeechSegmentIndexRef.current = index;
@@ -1507,6 +1660,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     if (!document || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
     if (pdfSpeechStatus === 'paused') {
+      pdfSpeechPausedRef.current = false;
       window.speechSynthesis.resume();
       setPdfSpeechStatus('playing');
       return;
@@ -1555,6 +1709,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
   const pausePdfSpeech = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    pdfSpeechPausedRef.current = true;
     window.speechSynthesis.pause();
     setPdfSpeechStatus('paused');
   }, []);
@@ -1945,11 +2100,13 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
 
   useEffect(() => {
     let cancelled = false;
+    let activeTask: ReturnType<typeof pdfjsLib.getDocument> | null = null;
     const savedState = readPdfStudyState(pdfUrl);
     const pageToRestore = savedState.lastPage && savedState.lastPage > 0 ? savedState.lastPage : 1;
     setLoading(true);
     setError(null);
     setTurnFallbackMode(false);
+    setLoadProgress({ loaded: 0, total: 0 });
     currentPageRef.current = pageToRestore;
     setCurrentPage(pageToRestore);
     const defaultZoom = getDefaultZoom();
@@ -1957,47 +2114,137 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     pendingZoomRef.current = defaultZoom;
     setZoom(defaultZoom);
 
-    const task = pdfjsLib.getDocument({
-      url: proxiedPdfUrl,
-      disableRange: preferFullDocumentLoad,
-      disableAutoFetch: false,
-      disableStream: false,
-      wasmUrl: PDFJS_WASM_URL,
-    });
+    const attemptLoad = (attempt: number) => {
+      if (cancelled) return;
 
-    task.onProgress = (progress: { loaded: number; total: number }) => {
-      if (!cancelled) setLoadProgress({ loaded: progress.loaded, total: progress.total });
+      const task = pdfjsLib.getDocument({
+        url: proxiedPdfUrl,
+        disableRange: preferFullDocumentLoad,
+        disableAutoFetch: false,
+        disableStream: false,
+        wasmUrl: PDFJS_WASM_URL,
+      });
+      activeTask = task;
+
+      task.onProgress = (progress: { loaded: number; total: number }) => {
+        if (!cancelled) setLoadProgress({ loaded: progress.loaded, total: progress.total });
+      };
+
+      task.promise
+        .then((loadedDocument) => {
+          if (cancelled) {
+            loadedDocument.destroy();
+            return;
+          }
+          activeTask = null;
+          setDocument(loadedDocument);
+          setLoading(false);
+        })
+        .catch((loadError: unknown) => {
+          if (cancelled) return;
+          activeTask = null;
+          if (attempt < MAX_PDF_LOAD_ATTEMPTS) {
+            console.warn(`[PDF Turn.js] Load attempt ${attempt}/${MAX_PDF_LOAD_ATTEMPTS} failed; retrying…`, loadError);
+            window.setTimeout(() => attemptLoad(attempt + 1), PDF_LOAD_RETRY_DELAY_MS * attempt);
+          } else {
+            console.error(`[PDF Turn.js] Load failed after ${MAX_PDF_LOAD_ATTEMPTS} attempts:`, loadError);
+            setError('This PDF could not be prepared for flip-book reading.');
+            setLoading(false);
+          }
+        });
     };
 
-    task.promise
-      .then((loadedDocument) => {
-        if (cancelled) {
-          loadedDocument.destroy();
-          return;
-        }
-        setDocument(loadedDocument);
-      })
-      .catch((loadError: unknown) => {
-        if (!cancelled) {
-          console.error('[PDF Turn.js] Load failed:', loadError);
-          setError('This PDF could not be prepared for flip-book reading.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    attemptLoad(1);
 
     return () => {
       cancelled = true;
-      void task.destroy();
+      if (activeTask) void activeTask.destroy();
     };
-  }, [pdfUrl, preferFullDocumentLoad, proxiedPdfUrl]);
+  }, [pdfUrl, pdfLoadAttempt, preferFullDocumentLoad, proxiedPdfUrl]);
 
   useEffect(() => {
     if (!loading) return;
     const timer = window.setTimeout(() => setShowDetailedProgress(true), 3000);
     return () => window.clearTimeout(timer);
   }, [loading]);
+
+  const activePdfSearchMatch = pdfSearchMatches[searchRequest?.activeIndex ?? 0] ?? null;
+
+  const searchMatchPages = useMemo(() => {
+    const pages = new Map<number, number[]>();
+    pdfSearchMatches.forEach((match, index) => {
+      const occurrence = pages.get(match.page) ?? [];
+      occurrence.push(index);
+      pages.set(match.page, occurrence);
+    });
+    return pages;
+  }, [pdfSearchMatches]);
+
+  useEffect(() => {
+    const query = searchRequest?.query.trim() || '';
+    if (!document) return;
+
+    if (!query) {
+      setPdfSearchMatches([]);
+      setPdfSearchLoading(false);
+      onSearchResultsChange?.({ total: 0, activeIndex: 0, loading: false, matches: [] });
+      return;
+    }
+
+    const caseSensitive = Boolean(searchRequest?.caseSensitive);
+    const wholeWord = Boolean(searchRequest?.wholeWord);
+    const pageOnly = Boolean(searchRequest?.pageOnly);
+    const currentPageNumber = normalizePageNumber(currentPageRef.current, document.numPages);
+
+    let cancelled = false;
+    setPdfSearchLoading(true);
+    onSearchResultsChange?.({ total: 0, activeIndex: 0, loading: true, matches: [] });
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const matches: PdfSearchResultEntry[] = [];
+
+        for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+          if (cancelled) return;
+          if (pageOnly && pageNumber !== currentPageNumber) continue;
+          let pageSegments = pdfSpeechSegmentsCacheRef.current.get(pageNumber);
+          if (!pageSegments) {
+            const page = await document.getPage(pageNumber);
+            const textContent = await page.getTextContent();
+            const itemTexts = getPdfSpeechTextItems(textContent.items, 'source');
+            pageSegments = getPdfSpeechSegments(itemTexts);
+            pdfSpeechSegmentsCacheRef.current.set(pageNumber, pageSegments);
+          }
+          const pageText = pageSegments.map((segment) => segment.text).join(' ');
+          const ranges = findReaderSearchRanges(pageText, query, caseSensitive, wholeWord);
+          ranges.forEach((range) => {
+            matches.push({
+              page: pageNumber,
+              snippet: buildSearchSnippet(pageText, range.start, range.end),
+            });
+          });
+        }
+
+        if (cancelled) return;
+        setPdfSearchMatches(matches);
+        setPdfSearchLoading(false);
+        const currentPageMatchIndex = matches.findIndex((match) => match.page === currentPageNumber);
+        const nextActiveIndex = matches.length > 0 ? Math.max(0, currentPageMatchIndex) : 0;
+        onSearchResultsChange?.({ total: matches.length, activeIndex: nextActiveIndex, loading: false, matches });
+      } catch {
+        if (!cancelled) {
+          setPdfSearchMatches([]);
+          setPdfSearchLoading(false);
+          onSearchResultsChange?.({ total: 0, activeIndex: 0, loading: false, matches: [] });
+        }
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [document, onSearchResultsChange, searchRequest?.caseSensitive, searchRequest?.pageOnly, searchRequest?.query, searchRequest?.version, searchRequest?.wholeWord]);
 
   useEffect(() => {
     if (!document || currentPage <= document.numPages) return;
@@ -2218,6 +2465,19 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     }
   }, [getBook, pageCount, readerDisplay]);
 
+  const lastProcessedNavRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (!activePdfSearchMatch || pdfSearchLoading) return;
+    const navRequest = searchRequest?.navRequest ?? 0;
+    if (navRequest === lastProcessedNavRequestRef.current) return;
+    lastProcessedNavRequestRef.current = navRequest;
+    const currentPageNumber = normalizePageNumber(currentPageRef.current, pageCount);
+    if (activePdfSearchMatch.page !== currentPageNumber) {
+      goToPage(activePdfSearchMatch.page);
+    }
+  }, [activePdfSearchMatch, goToPage, pageCount, pdfSearchLoading, searchRequest?.navRequest]);
+
   const handlePageSliderChange = useCallback((event: React.ChangeEvent<HTMLInputElement> | React.FormEvent<HTMLInputElement>) => {
     goToPage(Number(event.currentTarget.value));
   }, [goToPage]);
@@ -2411,11 +2671,44 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
     pdfSpeechAutoAdvanceRef.current = false;
     pdfSpeechStoppedRef.current = false;
     selectedTextSpeechActiveRef.current = true;
+    selectedPdfSpeechTextRef.current = speechText;
     window.speechSynthesis.cancel();
     setPdfSpeechSegments(playbackSegments);
     pdfSpeechSegmentsRef.current = playbackSegments;
     speakPdfSpeechSegment(playbackSegments, 0);
   }, [pendingTextSelection?.page, speakPdfSpeechSegment]);
+
+  const replaySelectedPdfText = useCallback(() => {
+    const text = selectedPdfSpeechTextRef.current;
+    if (!text) return;
+    readSelectedPdfText(text);
+  }, [readSelectedPdfText]);
+
+  const copySelectedPdfText = useCallback((text: string) => {
+    const copyText = text.replace(/\s+/g, ' ').trim();
+    if (!copyText) return;
+    const fallback = () => {
+      const textarea = window.document.createElement('textarea');
+      textarea.value = copyText;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      window.document.body.appendChild(textarea);
+      textarea.select();
+      try { window.document.execCommand('copy'); } catch { /* clipboard fallback */ }
+      textarea.remove();
+    };
+    try {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(copyText).catch(fallback);
+      } else {
+        fallback();
+      }
+    } catch {
+      fallback();
+    }
+    clearPendingPdfSelection(true);
+  }, [clearPendingPdfSelection]);
 
   const exportAnnotatedPdf = useCallback(async () => {
     if (!document || exportingAnnotatedPdf) return;
@@ -2630,15 +2923,25 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
             {error || 'The PDF could not be loaded here.'} You can still open the source PDF directly.
           </p>
         </div>
-        <a
-          href={pdfUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-full bg-bit-accent px-5 py-3 text-[10px] font-mono font-bold uppercase tracking-widest text-white"
-        >
-          <ExternalLink size={15} />
-          Open PDF
-        </a>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => setPdfLoadAttempt((attempt) => attempt + 1)}
+            className="inline-flex items-center gap-2 rounded-full border border-bit-border px-5 py-3 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-bit-accent/40 hover:text-bit-accent"
+          >
+            <RotateCcw size={14} />
+            Try again
+          </button>
+          <a
+            href={pdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-full bg-bit-accent px-5 py-3 text-[10px] font-mono font-bold uppercase tracking-widest text-white"
+          >
+            <ExternalLink size={15} />
+            Open PDF
+          </a>
+        </div>
       </div>
     );
   }
@@ -2717,6 +3020,10 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                   speechHighlightMode={speechHighlightMode}
                   speechReadingOrder={speechReadingOrder}
                   pendingSelectionRects={getPendingSelectionRectsForPage(currentPage)}
+                  searchHighlightText={searchRequest?.query && searchMatchPages.has(currentPage) ? searchRequest.query : ''}
+                  searchActiveOccurrence={activePdfSearchMatch?.page === currentPage ? (searchMatchPages.get(currentPage)?.indexOf(searchRequest?.activeIndex ?? 0) ?? -1) : -1}
+                  searchCaseSensitive={Boolean(searchRequest?.caseSensitive)}
+                  searchWholeWord={Boolean(searchRequest?.wholeWord)}
                   currentHighlightColor={highlightColor}
                   onTextSelection={handlePdfTextSelection}
                   onAddTextAnnotation={addTextAnnotation}
@@ -2759,6 +3066,10 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
                         speechHighlightMode={speechHighlightMode}
                         speechReadingOrder={speechReadingOrder}
                         pendingSelectionRects={getPendingSelectionRectsForPage(pageNumber)}
+                        searchHighlightText={searchRequest?.query && searchMatchPages.has(pageNumber) ? searchRequest.query : ''}
+                        searchActiveOccurrence={activePdfSearchMatch?.page === pageNumber ? (searchMatchPages.get(pageNumber)?.indexOf(searchRequest?.activeIndex ?? 0) ?? -1) : -1}
+                        searchCaseSensitive={Boolean(searchRequest?.caseSensitive)}
+                        searchWholeWord={Boolean(searchRequest?.wholeWord)}
                         currentHighlightColor={highlightColor}
                         onTextSelection={handlePdfTextSelection}
                         onAddTextAnnotation={addTextAnnotation}
@@ -2876,12 +3187,34 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           </button>
           <button
             type="button"
+            onClick={() => {
+              const { popover: _popover, ...lookupSelection } = pendingTextSelection;
+              clearPendingPdfSelection(true);
+              onLookupWord?.(lookupSelection.text);
+            }}
+            className="inline-flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full bg-bit-accent/12 text-bit-accent transition-all hover:bg-bit-accent hover:text-white active:scale-95"
+            aria-label="Look up selected word"
+            title="Look up selected word"
+          >
+            <BookOpenText size={18} className="md:size-[15px]" />
+          </button>
+          <button
+            type="button"
+            onClick={() => copySelectedPdfText(pendingTextSelection.text)}
+            className="inline-flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full text-bit-muted transition-all hover:bg-bit-panel hover:text-bit-text active:scale-95"
+            aria-label="Copy selected text"
+            title="Copy selected text"
+          >
+            <Copy size={18} className="md:size-[15px]" />
+          </button>
+          <button
+            type="button"
             onClick={() => clearPendingPdfSelection(true)}
-            className="inline-flex h-10 min-w-10 md:h-8 md:min-w-8 items-center justify-center rounded-full px-2.5 md:px-2 text-[11px] md:text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:bg-bit-bg/80 hover:text-bit-text active:scale-95"
+            className="inline-flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full text-bit-muted transition-all hover:bg-bit-bg/80 hover:text-bit-text active:scale-95"
             aria-label="Close selection actions"
             title="Close"
           >
-            Esc
+            <X size={18} className="md:size-[15px]" />
           </button>
         </div>
       )}
@@ -2895,6 +3228,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           onPointerMove={handlePdfSpeechPillPointerMove}
           onPointerUp={handlePdfSpeechPillPointerUp}
           onPointerCancel={handlePdfSpeechPillPointerUp}
+          data-pdf-speech-pill
           aria-label="Read aloud controls"
         >
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bit-accent/12 text-bit-accent" title="Drag read aloud controls" aria-hidden="true">
@@ -2910,6 +3244,18 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           >
             {pdfSpeechStatus === 'loading' ? <Loader2 size={14} className="animate-spin" /> : pdfSpeechStatus === 'playing' ? <Pause size={14} /> : <Play size={14} />}
           </button>
+          {selectedTextSpeechActiveRef.current && (
+            <button
+              type="button"
+              onClick={replaySelectedPdfText}
+              disabled={!document || pdfSpeechStatus === 'loading'}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-bit-border bg-bit-bg/60 text-bit-muted transition-all hover:border-bit-accent/35 hover:bg-bit-accent/10 hover:text-bit-accent disabled:cursor-wait disabled:opacity-50"
+              aria-label="Replay selected text"
+              title="Replay selected text"
+            >
+              <RotateCcw size={14} />
+            </button>
+          )}
           <select
             value={selectedPdfSpeechVoiceURI}
             onChange={(event) => setSelectedPdfSpeechVoiceURI(event.target.value)}
@@ -2943,11 +3289,11 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
           <button
             type="button"
             onClick={stopPdfSpeech}
-            className="inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-bit-border bg-bit-bg/60 px-2 text-[10px] font-mono font-bold uppercase tracking-widest text-bit-muted transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-bit-border bg-bit-bg/60 text-bit-muted transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
             aria-label="Stop read aloud"
             title="Stop read aloud (Esc)"
           >
-            Esc
+            <X size={14} />
           </button>
         </div>
         </>
