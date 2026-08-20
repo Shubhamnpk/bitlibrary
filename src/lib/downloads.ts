@@ -1,5 +1,5 @@
-import type { Book, ResourceFormat, ResourceLink } from '@/types/index';
-import { clickDownloadLink } from '@/lib/url-utils';
+import type { Book, ResourceFormat } from '@/types/index';
+import { clickDownloadLink, isDownloadableResource } from '@/lib/url-utils';
 
 export interface DownloadOption {
   id: string;
@@ -57,13 +57,6 @@ export const downloadResource = (option: DownloadOption) => {
   clickDownloadLink(option.href);
 };
 
-const isDownloadableResource = (link: ResourceLink) => (
-  link.downloadable !== false
-  && (link.relation !== 'reader' || link.format === 'pdf')
-  && !['source', 'doi', 'metadata', 'landing'].includes(link.relation || '')
-  && link.format !== 'source'
-);
-
 export const inferDownloadFormat = (url = '', label = ''): ResourceFormat => {
   const signature = `${url} ${label}`.toLowerCase();
   if (/\.pdf(?:$|[?#])|\/pdf\/?|application\/pdf|\bpdf\b/.test(signature)) return 'pdf';
@@ -117,7 +110,7 @@ export const getBookDownloadOptions = (book: Book): DownloadOption[] => {
   const seen = new Set<string>();
 
   (book.resourceLinks || [])
-    .filter(isDownloadableResource)
+    .filter((link) => isDownloadableResource(link) && (link.relation !== 'reader' || link.format === 'pdf'))
     .forEach((link) => addOption(options, seen, book.title, link.url, link.format, link.label, link.provider));
 
   addOption(options, seen, book.title, book.downloadUrl, inferDownloadFormat(book.downloadUrl), 'Primary download', book.source);

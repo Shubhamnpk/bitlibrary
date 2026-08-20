@@ -36,6 +36,13 @@ export const getPreferredSpeechVoiceURI = (voices: SpeechSynthesisVoice[]) => {
 
 export const normalizeSpeechMatchText = (value: string) => value.toLowerCase().replace(/\s+/g, ' ').trim();
 
+const SPEECH_VOICE_BRAND_PREFIX = /^(microsoft|google|amazon|apple|samsung|siri)\s+/i;
+
+export const getSpeechVoiceDisplayName = (voice: SpeechSynthesisVoice) => {
+  const name = voice.name.replace(SPEECH_VOICE_BRAND_PREFIX, '').trim();
+  return name || voice.name;
+};
+
 export const getSpeechWordAtBoundary = (text: string, charIndex: number) => {
   if (!text || !Number.isFinite(charIndex) || charIndex < 0) return null;
   const safeIndex = Math.min(charIndex, Math.max(0, text.length - 1));

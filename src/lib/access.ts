@@ -1,11 +1,5 @@
 import type { Book, ResourceLink } from '@/types/index';
-import { isPdfLikeUrl, isTextLikeUrl, isHtmlLikeUrl, isReadableResource } from '@/lib/url-utils';
-
-const isDownloadableResource = (link: ResourceLink) => (
-  link.downloadable !== false
-  && !['source', 'doi', 'metadata', 'landing'].includes(link.relation || '')
-  && link.format !== 'source'
-);
+import { isPdfLikeUrl, isTextLikeUrl, isHtmlLikeUrl, isReadableResource, isDownloadableResource } from '@/lib/url-utils';
 
 const isDownloadOnlySource = (book: Pick<Book, 'source' | 'providerSource'>) => {
   const sourceText = `${book.source || ''} ${book.providerSource || ''}`.toLowerCase();

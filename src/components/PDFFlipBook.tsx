@@ -8,6 +8,7 @@ import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { getPdfProxyUrl } from '@/lib/pdf';
 import { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS } from '@/lib/pdf-reader-presets';
+import AppSelect from '@/components/AppSelect';
 import { getPdfSpeechSegments, type PdfSpeechItemRange, type PdfSpeechSegment, type PdfSpeechStatus } from '@/lib/pdf-speech';
 import {
   readPdfBackgroundPreset,
@@ -24,7 +25,7 @@ import {
   type PdfTextAnnotation,
   type PdfTextHighlight,
 } from '@/lib/pdf-reader-storage';
-import { getPreferredSpeechVoiceURI, getSpeechWordAtBoundary, normalizeSpeechMatchText, speakUtterance } from '@/lib/speech';
+import { getPreferredSpeechVoiceURI, getSpeechVoiceDisplayName, getSpeechWordAtBoundary, normalizeSpeechMatchText, speakUtterance } from '@/lib/speech';
 import { buildNormalizedPoints, buildSearchSnippet, collectTextNodes, findReaderSearchRanges } from '@/lib/reader-search';
 
 export type {
@@ -3222,7 +3223,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
       {pdfSpeechStatus !== 'idle' && (
         <>
         <div
-          className={`pointer-events-auto fixed z-[10060] items-center gap-2 rounded-full border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/25 backdrop-blur-xl ${pdfSpeechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'} hidden md:flex`}
+          className={`pointer-events-auto fixed z-[10095] flex max-w-[calc(100vw-0.75rem)] items-center gap-1.5 rounded-full border border-bit-border bg-bit-panel/95 px-2 py-1.5 shadow-2xl shadow-black/25 backdrop-blur-xl md:gap-2 md:px-3 md:py-2 ${pdfSpeechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'}`}
           style={pdfSpeechPillPosition ? { left: pdfSpeechPillPosition.x, top: pdfSpeechPillPosition.y } : { left: '50%', bottom: '5rem', transform: 'translateX(-50%)' }}
           onPointerDown={handlePdfSpeechPillPointerDown}
           onPointerMove={handlePdfSpeechPillPointerMove}
@@ -3256,23 +3257,26 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
               <RotateCcw size={14} />
             </button>
           )}
-          <select
+          <AppSelect
+            label=""
+            size="xs"
+            searchable
+            searchPlaceholder="Search voice or language…"
             value={selectedPdfSpeechVoiceURI}
-            onChange={(event) => setSelectedPdfSpeechVoiceURI(event.target.value)}
-            className="h-8 w-32 cursor-pointer rounded-full border border-bit-border bg-bit-bg/75 px-3 text-[11px] text-bit-text outline-none transition-all hover:border-bit-accent/35 focus:border-bit-accent"
-            aria-label="Read aloud voice"
-          >
-            {pdfSpeechVoices.length === 0 ? (
-              <option value="">System voice</option>
-            ) : (
-              pdfSpeechVoices.map((voice) => (
-                <option key={voice.voiceURI} value={voice.voiceURI}>
-                  {voice.name}
-                </option>
-              ))
-            )}
-          </select>
-          <label className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-bg/60 px-3 py-1 text-[10px] font-mono font-bold text-bit-muted">
+            onChange={setSelectedPdfSpeechVoiceURI}
+            options={pdfSpeechVoices.length === 0
+              ? [{ value: '', label: 'System voice' }]
+              : pdfSpeechVoices.map((voice) => ({
+                  value: voice.voiceURI,
+                  label: getSpeechVoiceDisplayName(voice),
+                  meta: voice.lang || '',
+                  searchText: `${getSpeechVoiceDisplayName(voice)} ${voice.name} ${voice.lang || ''}`,
+                }))}
+            className="w-24 min-w-0 flex-1 md:w-36 md:flex-none"
+            selectClassName="rounded-full border-bit-border bg-bit-bg/75 hover:border-bit-accent/35"
+            ariaLabel="Read aloud voice"
+          />
+          <label className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-bg/60 px-2 py-1 text-[10px] font-mono font-bold text-bit-muted md:px-3">
             <span className="tabular-nums">{pdfSpeechRate.toFixed(1)}x</span>
             <input
               type="range"
@@ -3282,7 +3286,7 @@ const PDFFlipBook: React.FC<PDFFlipBookProps> = ({
               value={pdfSpeechRate}
               onInput={(event) => handlePdfSpeechRateChange(Number(event.currentTarget.value))}
               onChange={(event) => handlePdfSpeechRateChange(Number(event.currentTarget.value))}
-              className="h-6 w-20 accent-bit-accent"
+              className="h-6 w-14 accent-bit-accent md:w-20"
               aria-label="Read aloud speed"
             />
           </label>

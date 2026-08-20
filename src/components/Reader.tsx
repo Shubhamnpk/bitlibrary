@@ -14,7 +14,7 @@ import { PDF_BACKGROUND_PRESETS, PDF_HIGHLIGHT_COLOR_PRESETS } from '@/lib/pdf-r
 import { readPdfBackgroundPreset, readPdfHighlightColor } from '@/lib/pdf-reader-storage';
 import { saveBook } from '@/lib/local-user';
 import { fetchYoBookGradeAudio, getYoBookAudioSubjectForBook } from '@/services/bookService';
-import { getPreferredSpeechVoiceURI, getSpeechSegments, getSpeechWordAtBoundary, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
+import { getPreferredSpeechVoiceURI, getSpeechSegments, getSpeechVoiceDisplayName, getSpeechWordAtBoundary, speakUtterance, type TextToSpeechStatus } from '@/lib/speech';
 import { readReaderEntry, writeReaderEntry } from '@/lib/storage-manager';
 import { applyReaderSearch, setReaderSearchActiveMark, splitReaderSearchSnippet, unwrapReaderSearchMatches } from '@/lib/reader-search';
 import { fetchDictionaryEntries, getDictionaryLanguageForQuery, type DictionaryEntry } from '@/services/dictionaryLookupService';
@@ -2403,7 +2403,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
                           { value: '', label: 'Default voice' },
                           ...speechVoices.map((voice) => ({
                             value: voice.voiceURI,
-                            label: `${voice.name}${voice.lang ? ` (${voice.lang})` : ''}`,
+                            label: `${getSpeechVoiceDisplayName(voice)}${voice.lang ? ` (${voice.lang})` : ''}`,
                           })),
                         ]}
                         className="w-full"
@@ -2994,7 +2994,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
 
       {canUseReaderSpeech && speechStatus !== 'idle' && (
         <div
-          className={`pointer-events-auto fixed z-[10010] hidden items-center gap-2 rounded-full border border-bit-border bg-bit-panel/95 px-3 py-2 shadow-2xl shadow-black/25 backdrop-blur-xl md:flex ${speechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`pointer-events-auto fixed z-[10010] flex max-w-[calc(100vw-0.75rem)] items-center gap-1.5 rounded-full border border-bit-border bg-bit-panel/95 px-2 py-1.5 shadow-2xl shadow-black/25 backdrop-blur-xl md:gap-2 md:px-3 md:py-2 ${speechPillDragRef.current ? 'cursor-grabbing' : 'cursor-grab'}`}
           style={speechPillPosition ? { left: speechPillPosition.x, top: speechPillPosition.y } : { left: '50%', bottom: '1.5rem', transform: 'translateX(-50%)' }}
           onPointerDown={handleSpeechPillPointerDown}
           onPointerMove={handleSpeechPillPointerMove}
@@ -3015,23 +3015,26 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
           >
             {speechStatus === 'playing' ? <Pause size={14} /> : <Play size={14} />}
           </button>
-          <select
+          <AppSelect
+            label=""
+            size="xs"
+            searchable
+            searchPlaceholder="Search voice or language…"
             value={selectedSpeechVoiceURI}
-            onChange={(event) => setSelectedSpeechVoiceURI(event.target.value)}
-            className="h-8 w-32 cursor-pointer rounded-full border border-bit-border bg-bit-bg/75 px-3 text-[11px] text-bit-text outline-none transition-all hover:border-bit-accent/35 focus:border-bit-accent"
-            aria-label="Read aloud voice"
-          >
-            {speechVoices.length === 0 ? (
-              <option value="">System voice</option>
-            ) : (
-              speechVoices.map((voice) => (
-                <option key={voice.voiceURI} value={voice.voiceURI}>
-                  {voice.name}
-                </option>
-              ))
-            )}
-          </select>
-          <label className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-bg/60 px-3 py-1 text-[10px] font-mono font-bold text-bit-muted">
+            onChange={setSelectedSpeechVoiceURI}
+            options={speechVoices.length === 0
+              ? [{ value: '', label: 'System voice' }]
+              : speechVoices.map((voice) => ({
+                  value: voice.voiceURI,
+                  label: getSpeechVoiceDisplayName(voice),
+                  meta: voice.lang || '',
+                  searchText: `${getSpeechVoiceDisplayName(voice)} ${voice.name} ${voice.lang || ''}`,
+                }))}
+            className="w-24 min-w-0 flex-1 md:w-36 md:flex-none"
+            selectClassName="rounded-full border-bit-border bg-bit-bg/75 hover:border-bit-accent/35"
+            ariaLabel="Read aloud voice"
+          />
+          <label className="flex items-center gap-2 rounded-full border border-bit-border bg-bit-bg/60 px-2 py-1 text-[10px] font-mono font-bold text-bit-muted md:px-3">
             <span className="tabular-nums">{speechRate.toFixed(1)}x</span>
             <input
               type="range"
@@ -3041,7 +3044,7 @@ const Reader: React.FC<ReaderProps> = ({ book, onClose, isMinimized = false, onT
               value={speechRate}
               onInput={(event) => handleSpeechRateChange(Number(event.currentTarget.value))}
               onChange={(event) => handleSpeechRateChange(Number(event.currentTarget.value))}
-              className="h-6 w-20 accent-bit-accent"
+              className="h-6 w-14 accent-bit-accent md:w-20"
               aria-label="Read aloud speed"
             />
           </label>
